@@ -65,7 +65,7 @@ for i = 1:length(filedataExp.Key)
         expCTData.(filedataExp.Key(i)).refInit.RawCT = importFolderImages(imgFiles);
 
     % CT final ref
-    refFinalFolderPathCT = fullfile(refFinalFolderContent.folder, expFolderName);
+    refFinalFolderPathCT = fullfile(refFinalFolderContent.folder, refFinalFolderName);
         % pca
         pcaFiles = dir(fullfile(refFinalFolderPathCT, '*.pca'));
         expCTData.(filedataExp.Key(i)).refFinal.pca = importPCA(pcaFiles);
@@ -98,13 +98,19 @@ for i = 1:length(filedataExp.Key)
     end
 end
 
+%% Crop 
 
-    % CT crop and save for each ref (maybe dont save raw in the struct)
+for i = 1:length(filedataExp.Key)
+    % reference for crop, init ref
+    
 
-    % CT ref final
-    % same procedure for all
-    % CT exp
-    % same procedure for all but have loops for each rotation
+end
+
+% Where to crop
+
+% Crop, save cropped file in struct (maybe dont save raw in the struct or delete it after crop ok)
+
+
     % have final results in a full array with angle and time
     % create breakthrough curve in the end point with time
 

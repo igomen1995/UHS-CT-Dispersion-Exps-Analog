@@ -1,4 +1,4 @@
-function out = findcrop(image,pixDistTol,partsNoCore)
+function out = findcropCore_xAxis(image,pixDistTol,partsNoCore)
 %This function finds the core part of the image to crop
 % by differentiating the different parts of the scan:
 % air, coreholder (CH), conf, sleeve, core
