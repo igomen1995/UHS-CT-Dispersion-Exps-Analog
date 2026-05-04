@@ -1,7 +1,7 @@
-function [outputArg1,outputArg2] = cropImage(inputArg1,inputArg2)
+function croppedImage = cropImage(image,cropx, cropy)
 %CROPIMAGE Summary of this function goes here
+% cropx and cropy contains two values, limits fo the image
 %   Detailed explanation goes here
-outputArg1 = inputArg1;
-outputArg2 = inputArg2;
+croppedImage = image(cropx(1):cropx(2),cropy(1):cropy(2));
 end
 
