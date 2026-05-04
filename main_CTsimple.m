@@ -137,6 +137,47 @@ for i = 1:length(filedataExp.Key)
 end
 
 %% Concentration profiles and histograms of normalized images
+expCTCFvars = table();
+for i = 1:length(filedataExp.Key)
+    for j = 1:length(expFolderName) % number of runs
+        CTCFvars = table();
+        run_name = "run_" + string(j);
+        expCTData.(filedataExp.Key(i)).exp.(run_name).concProfile = {};
+        expCTData.(filedataExp.Key(i)).exp.(run_name).concAxial = {};
+        concCTImage = expCTData.(filedataExp.Key(i)).exp.(run_name).concCT;
+        for k = 1:length(concCTImage) % numbers of images per run
+            % y vars
+            runConcVert = table();
+            concVert = mean(concCTImage{k}');
+            imgNr = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.ImgNr(k);
+            rotPos = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.RotPos(k);
+            timeStamp = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.Time(k);
+            timeStart = filedataExp.st(i);
+            timeElapsed = timeStamp - timeStart;
+            secondsElapsed = seconds(timeElapsed);
+            volInjected = secondsElapsed*filedataExp.Q(i)/60;
+            tDtotal = volInjected/filedataExp.Vtotal(i);
+            runConcVert.imgNr = repmat(imgNr,length(concVert),1);
+            runConcVert.rotPos = repmat(rotPos,length(concVert),1);
+            runConcVert.timeStamp = repmat(timeStamp,length(concVert),1);
+            runConcVert.timeElapsed = repmat(timeElapsed,length(concVert),1);
+            runConcVert.secondsElapsed = repmat(secondsElapsed,length(concVert),1);
+            runConcVert.volInjected = repmat(volInjected,length(concVert),1);
+            runConcVert.tDtotal = repmat(tDtotal,length(concVert),1);
+            runConcVert.C1 = concVert';
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concProfile{k} = runConcVert;
+            % expCTData.(filedataExp.Key(i)).exp.(run_name).concProfile.ImgNr = repmat(ImgNr,length(concVert),1);
+            % expCTData.(filedataExp.Key(i)).exp.(run_name).concProfile.C1 = concVert';
+
+            % x vars
+            runConcHorz = table();
+            concHorz = mean(concCTImage{k});
+            runConcHorz.C1 = concHorz';
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concAxial{k} = runConcHorz;
+            % expCTData.(filedataExp.Key(i)).exp.(run_name).concAxial.C1 = concHorz';       
+        end
+    end
+end
 
 %% Imaging
 % Plot as movies with angle and profiles in x and y
