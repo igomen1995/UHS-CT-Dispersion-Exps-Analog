@@ -24,7 +24,7 @@ filenameExp = inputFileConfig.inputFileName{:};
 pathExportAll = inputFileConfig.exportPath{:}; % Path for OUTPUT
 mkdir(pathExportAll); % Create directory for output
 
-%% IMPORT data
+%% IMPORT, NORM and CROP data
 
 filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
 
@@ -60,10 +60,26 @@ for i = 1:length(filedataExp.Key)
         % pcp
         pcpFiles = dir(fullfile(refInitFolderPathCT, '*.pcp'));
         expCTData.(filedataExp.Key(i)).refInit.pcp = importPCP(pcpFiles);
+
         % CT images
         imgFiles = dir(fullfile(refInitFolderPathCT, '*.tif'));
-        expCTData.(filedataExp.Key(i)).refInit.RawCT = importFolderImages(imgFiles);
-
+            % Raw and cropped CT
+            rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
+            croppedImage = cell(size(rawImage));
+            % Crop params
+            imageRefCrop = rawImage{1};
+            pixDist = 70;
+            partsScanned = 5; % Parts scanned: from left to middle: air, CH. water,sleeve, core
+            crop_xCoords = findcropCore_xAxis(imageRefCrop,pixDist,partsScanned-1);
+            crop_xCoords = [crop_xCoords(1)+60;crop_xCoords(2)-60];
+            crop_yCoords = [1;length(imageRefCrop)];          
+            % Norm and cropp CT
+            for k = 1:length(rawImage)
+                rawImage{k} = normImage(rawImage{k});
+                croppedImage{k} = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
+            end
+            expCTData.(filedataExp.Key(i)).refInit.croppedCT = croppedImage;
+   
     % CT final ref
     refFinalFolderPathCT = fullfile(refFinalFolderContent.folder, refFinalFolderName);
         % pca
@@ -75,10 +91,19 @@ for i = 1:length(filedataExp.Key)
         % pcp
         pcpFiles = dir(fullfile(refFinalFolderPathCT, '*.pcp'));
         expCTData.(filedataExp.Key(i)).refFinal.pcp = importPCP(pcpFiles);
+
         % CT images
         imgFiles = dir(fullfile(refFinalFolderPathCT, '*.tif'));
-        expCTData.(filedataExp.Key(i)).refFinal.RawCT = importFolderImages(imgFiles);
-        
+            % Raw and cropped CT
+            rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).refFinal.RawCT = importImages(imgFiles);
+            croppedImage = cell(size(rawImage));
+            % Norm and cropp CT
+            for k = 1:length(rawImage)
+                rawImage{k} = normImage(rawImage{k});
+                croppedImage{k} = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
+            end
+            expCTData.(filedataExp.Key(i)).refFinal.croppedCT = croppedImage;
+
     % CT exps
     for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
@@ -92,23 +117,30 @@ for i = 1:length(filedataExp.Key)
             % pcp
             pcpFiles = dir(fullfile(expFolderPathCT, '*.pcp'));
             expCTData.(filedataExp.Key(i)).exp.(run_name).pcp = importPCP(pcpFiles);
+
             % CT images
             imgFiles = dir(fullfile(expFolderPathCT, '*.tif'));
-            expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importFolderImages(imgFiles);
+            % Raw and cropped CT
+            rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
+            croppedImage = cell(size(rawImage));
+            concImage = cell(size(rawImage));
+            % Norm and cropp CT
+            for k = 1:length(rawImage)
+                rawImage{k} = normImage(rawImage{k});
+                croppedImage{k} = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
+                minImage = expCTData.(filedataExp.Key(i)).refInit.croppedCT{k};
+                maxImage = expCTData.(filedataExp.Key(i)).refFinal.croppedCT{k};
+                concImage{k} = satImage(croppedImage{k},minImage,maxImage);
+            end
+            expCTData.(filedataExp.Key(i)).exp.(run_name).croppedCT = croppedImage;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concCT = concImage;
     end
 end
 
-%% Crop 
+%% Concentration profiles and histograms of normalized images
 
-for i = 1:length(filedataExp.Key)
-    % reference for crop, init ref
-    
-
-end
-
-% Where to crop
-
-% Crop, save cropped file in struct (maybe dont save raw in the struct or delete it after crop ok)
+%% Imaging
+% Plot as movies with angle and profiles in x and y
 
 
     % have final results in a full array with angle and time

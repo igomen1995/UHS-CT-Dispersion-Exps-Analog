@@ -1,7 +1,7 @@
-function croppedImage = cropImage(image,cropx, cropy)
+function sat = satImage(image,minRefimage, maxRefimage)
 %CROPIMAGE Summary of this function goes here
 % cropx and cropy contains two values, limits fo the image
 %   Detailed explanation goes here
-croppedImage = image(cropy(1):cropy(2),cropx(1):cropx(2));
+sat = (image - minRefimage)./ (maxRefimage-minRefimage);
 end
 
