@@ -122,17 +122,16 @@ for i = 1:length(filedataExp.Key)
             imgFiles = dir(fullfile(expFolderPathCT, '*.tif'));
             % Raw and cropped CT
             rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
-            croppedImage = cell(size(rawImage));
             concImage = cell(size(rawImage));
             % Norm and cropp CT
             for k = 1:length(rawImage)
                 rawImage{k} = normImage(rawImage{k});
-                croppedImage{k} = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
+                croppedImage = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
                 minImage = expCTData.(filedataExp.Key(i)).refInit.croppedCT{k};
                 maxImage = expCTData.(filedataExp.Key(i)).refFinal.croppedCT{k};
-                concImage{k} = satImage(croppedImage{k},minImage,maxImage);
+                concImage{k} = satImage(croppedImage,minImage,maxImage);
             end
-            expCTData.(filedataExp.Key(i)).exp.(run_name).croppedCT = croppedImage;
+            % expCTData.(filedataExp.Key(i)).exp.(run_name).croppedCT = croppedImage;
             expCTData.(filedataExp.Key(i)).exp.(run_name).concCT = concImage;
     end
 end
