@@ -210,41 +210,78 @@ for i = 1:length(filedataExp.Key)
     v = VideoWriter(pathExportAll + "movie_" + filedataExp.Key(i), 'MPEG-4');
     v.FrameRate = 100;   % frames per second
     open(v);
-    fig = figure('Position', [50, 50, 800, 1000]); % [left, bottom, width, height];
+    fig = figure('Position', [50, 50, 600, 1000]); % [left, bottom, width, height];
+    % Shared geometry
+    imgPos  = [0.12 0.2  0.3 0.5];   % image axes
+    cbPos  = [0.45 0.2 0.02 0.5];
+    ax1Pos  = [imgPos(1) 0.78 imgPos(3) 0.14]; % same WIDTH as image
+    ax4Pos  = [0.62 0.2  0.27 imgPos(4)];      % same HEIGHT as image  
+    ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)]; 
+    ax1 = axes('Position',ax1Pos);
+    ax2 = axes('Position',ax2Pos);
+    ax3 = axes('Position',imgPos);
+    ax4 = axes('Position',ax4Pos);
+
     for j = 1:length(expFolderName) % number of runs
         run_name = "run_" + string(j);
+
         for k = 1:length(concCTImage)
             vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k);
-            % plot concentration in x
-            subplot(3,2,1,'Position',[0.12 0.8 0.4 0.13]);
-            xy = vars.C1Axial;
-            x = xy(:,1);
-            y = xy(:,2);
-            plot(x,y)
-            xlim([min(x),max(x)])
-            ylim([0,1])
-            xlabel('X Distance [cm]')
-            ylabel('Average concentration')
-            title("timeElapsed: " + vars.secondsElapsed +"s, volInjected: "+ vars.volInjected + "mL")
-            grid on            
-            % plot concentration in z
-            subplot(3,2,4,'Position',[0.68 0.2 0.2 0.5]);
-            xy = vars.C1Profile;
-            x = xy(:,1);
-            y = xy(:,2);
-            plot(x,y)
-            xlabel('Z Distance [cm]')
-            ylabel('Average concentration')
-            grid on
-            axis tight
-            camroll(270)
-            xlim([min(x),max(x)])
-            ylim([0,1])
 
-            % plot image
+            % plot concentration in x ax1
+            xy1 = vars.C1Axial;
+            x1 = xy1(:,1);
+            y1 = xy1(:,2);
+            cla(ax1)
+            plot(ax1, x1, y1)
+            xlim(ax1,[min(x1) max(x1)])
+            ylim(ax1,[0 1])
+            xlabel(ax1,'X Distance [cm]')
+            ylabel(ax1,'Average concentration')
+            title(ax1,"timeElapsed: " + vars.secondsElapsed + ...
+                      " s, volInjected: " + vars.volInjected + " mL")
+            grid(ax1,'on')
+    
+            % plot concentration in z ax4
+            xy2 = vars.C1Profile;
+            x2 = xy2(:,1);
+            y2 = xy2(:,2);
+            cla(ax4)
+            plot(ax4, x2, y2)
+            xlabel(ax4,'Z Distance [cm]')
+            ylabel(ax4,'Average concentration')
+            grid(ax4,'on')          
+            axis(ax4,'tight')
+            axis(ax4,'manual')
+            camroll(ax4,270)
+            ylim(ax4,[0 1])
+
+            % plot image ax3
             concCTimages = expCTData.(filedataExp.Key(i)).exp.(run_name).concCT;
-            subplot(3,2,3,'Position',[0.12 0.2 0.2 0.5]);
-            imshow(concCTimages{k})
+            cla(ax3)
+            imagesc(ax3, concCTimages{k})
+            axis(ax3,'xy','fill')
+            set(ax3,'YDir','reverse')
+            colormap(ax3,turbo)
+            clim(ax3,[0 1]);
+            
+            cb = colorbar(ax3,'Position',cbPos);
+            cb.Label.String = 'Concentration';
+
+            % plot histogram ax3
+            histData = vars.histImage;
+            freq = histData(:,1);
+            binCenters = (histData(:,2)+histData(:,3))/2;
+            binWidth = abs(histData(:,3)-histData(:,2));
+            cla(ax2)
+            bar(ax2,binCenters,freq,1)
+            xlim(ax2,[0,1])
+            ylim(ax2,[0,length(x1)*length(x2)])
+            xlabel(ax2,'Concentration')
+            ylabel(ax2,'Counts')
+            title(ax2,"run: " +string(j)+" , angle: " + vars.rotPos + "°")
+            grid(ax2, 'on')
+
             drawnow;
             frame = getframe(fig);  % capture frame
             writeVideo(v, frame); % write to movie
