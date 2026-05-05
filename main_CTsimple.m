@@ -140,6 +140,7 @@ end
 BTlinesBefore = table(); 
 BTcore = table();
 for i = 1:length(filedataExp.Key)
+    concVarsAll = table();
     for j = 1:length(expFolderName) % number of runs
         run_name = "run_" + string(j);
         concCTImage = expCTData.(filedataExp.Key(i)).exp.(run_name).concCT;
@@ -186,10 +187,22 @@ for i = 1:length(filedataExp.Key)
             BTlinesBefore = [BTlinesBefore;BTlinesBefore_temp];
             BTcore = [BTcore;BTcore_temp];
         end
+        concVars_temp =  expCTData.(filedataExp.Key(i)).exp.(run_name).concVars;
+        concVars_tempTable = struct2table(concVars_temp);
+        concVarsAll = [concVarsAll;concVars_tempTable];
     end
+    expCTData.(filedataExp.Key(i)).BTlinesBefore = BTlinesBefore;
+    expCTData.(filedataExp.Key(i)).BTcore = BTcore;
+    expCTData.(filedataExp.Key(i)).concVarsAll = concVarsAll;
 end
-expCTData.(filedataExp.Key(i)).BTlinesBefore = BTlinesBefore;
-expCTData.(filedataExp.Key(i)).BTcore = BTcore;
+
+
+%% save
+for i = 1:length(filedataExp.Key)
+    expCT_name = pathExportAll + "expCTlight_"+filedataExp.Key(i);
+    expCTDataLight = rmfield(expCTData.(filedataExp.Key(i)), {'refInit','refFinal','exp'});
+    save(expCT_name + '.mat','expCTDataLight')
+end
 
 %% Imaging
 % Plot as movies with angle and profiles in x and y
