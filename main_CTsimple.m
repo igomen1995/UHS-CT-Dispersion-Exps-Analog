@@ -146,12 +146,20 @@ for i = 1:length(filedataExp.Key)
         for k = 1:length(concCTImage) % numbers of images per run
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).imgNr = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.ImgNr(k);
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).rotPos = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.RotPos(k);
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).timeStamp = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.Time(k);
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).timeStart = filedataExp.st(i);
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).timeElapsed = timeStamp - timeStart;
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).secondsElapsed = seconds(timeElapsed);
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).volInjected = secondsElapsed*filedataExp.Q(i)/60;
+            timeStamp = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.Time(k);
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).timeStamp = timeStamp;
+            timeStart = filedataExp.st(i);
+            timeElapsed = timeStamp - timeStart;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).timeElapsed = timeElapsed;
+            secondsElapsed = seconds(timeElapsed);
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).secondsElapsed = secondsElapsed;
+            volInjected = secondsElapsed*filedataExp.Q(i)/60;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).volInjected = volInjected;
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).tDtotal = volInjected/filedataExp.Vtotal(i);
+            % histogram 
+            numBins = 100;
+            [counts, edges] = histcounts(concCTImage{k}, numBins);
+            xpCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).histImage = {[counts, edges]};
             % y vars
             concVert = mean(concCTImage{k}');
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Profile = {concVert'};
