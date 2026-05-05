@@ -210,13 +210,13 @@ for i = 1:length(filedataExp.Key)
     v = VideoWriter(pathExportAll + "movie_" + filedataExp.Key(i), 'MPEG-4');
     v.FrameRate = 100;   % frames per second
     open(v);
-    fig = figure('Position', [100, 100, 600, 900]); % [left, bottom, width, height];
+    fig = figure('Position', [50, 50, 800, 1000]); % [left, bottom, width, height];
     for j = 1:length(expFolderName) % number of runs
         run_name = "run_" + string(j);
         for k = 1:length(concCTImage)
             vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k);
             % plot concentration in x
-            subplot(3,2,1);
+            subplot(3,2,1,'Position',[0.12 0.8 0.4 0.13]);
             xy = vars.C1Axial;
             x = xy(:,1);
             y = xy(:,2);
@@ -226,10 +226,9 @@ for i = 1:length(filedataExp.Key)
             xlabel('X Distance [cm]')
             ylabel('Average concentration')
             title("timeElapsed: " + vars.secondsElapsed +"s, volInjected: "+ vars.volInjected + "mL")
-            grid on
-            
+            grid on            
             % plot concentration in z
-            subplot(3,2,4);
+            subplot(3,2,4,'Position',[0.68 0.2 0.2 0.5]);
             xy = vars.C1Profile;
             x = xy(:,1);
             y = xy(:,2);
@@ -243,7 +242,9 @@ for i = 1:length(filedataExp.Key)
             ylim([0,1])
 
             % plot image
-    
+            concCTimages = expCTData.(filedataExp.Key(i)).exp.(run_name).concCT;
+            subplot(3,2,3,'Position',[0.12 0.2 0.2 0.5]);
+            imshow(concCTimages{k})
             drawnow;
             frame = getframe(fig);  % capture frame
             writeVideo(v, frame); % write to movie
