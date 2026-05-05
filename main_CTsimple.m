@@ -216,11 +216,13 @@ for i = 1:length(filedataExp.Key)
     cbPos  = [0.45 0.2 0.02 0.5];
     ax1Pos  = [imgPos(1) 0.78 imgPos(3) 0.14]; % same WIDTH as image
     ax4Pos  = [0.62 0.2  0.27 imgPos(4)];      % same HEIGHT as image  
-    ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)]; 
+    ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)];
+    ax5Pos = [ax1Pos(1) 0.05 0.77 ax1Pos(1)];  
     ax1 = axes('Position',ax1Pos);
     ax2 = axes('Position',ax2Pos);
     ax3 = axes('Position',imgPos);
     ax4 = axes('Position',ax4Pos);
+    ax5 = axes('Position',ax5Pos);
 
     for j = 1:length(expFolderName) % number of runs
         run_name = "run_" + string(j);
@@ -281,6 +283,19 @@ for i = 1:length(filedataExp.Key)
             ylabel(ax2,'Counts')
             title(ax2,"run: " +string(j)+" , angle: " + vars.rotPos + "°")
             grid(ax2, 'on')
+
+            % plot BTcore ax5
+            t = vars.secondsElapsed;
+            C = y2(end);
+            tmin = expCTData.(filedataExp.Key(i)).BTcore.secondsElapsed(1);
+            tmax = expCTData.(filedataExp.Key(i)).BTcore.secondsElapsed(end);
+            scatter(ax5,t,C,15,'filled','MarkerFaceColor',[0, 0.4470, 0.7410],'MarkerEdgeColor','none')
+            hold(ax5,'on')
+            ylim(ax5,[0,1])
+            xlim(ax5,[tmin,tmax])
+            xlabel(ax5,'secondsElapsed')
+            ylabel(ax5,'Concentration')
+            grid(ax5, 'on')
 
             drawnow;
             frame = getframe(fig);  % capture frame
