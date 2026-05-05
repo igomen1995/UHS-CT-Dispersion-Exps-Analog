@@ -137,39 +137,59 @@ for i = 1:length(filedataExp.Key)
 end
 
 %% Concentration profiles and histograms of normalized images
-expCTCFvars = table();
+BTlinesBefore = table(); 
+BTcore = table();
 for i = 1:length(filedataExp.Key)
     for j = 1:length(expFolderName) % number of runs
         run_name = "run_" + string(j);
         concCTImage = expCTData.(filedataExp.Key(i)).exp.(run_name).concCT;
         concVars = cell(size(concCTImage));
         for k = 1:length(concCTImage) % numbers of images per run
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).imgNr = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.ImgNr(k);
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).rotPos = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.RotPos(k);
+            imgNr = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.ImgNr(k);
+            rotPos = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.RotPos(k);
             timeStamp = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.Time(k);
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).timeStamp = timeStamp;
             timeStart = filedataExp.st(i);
             timeElapsed = timeStamp - timeStart;
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).timeElapsed = timeElapsed;
             secondsElapsed = seconds(timeElapsed);
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).secondsElapsed = secondsElapsed;
             volInjected = secondsElapsed*filedataExp.Q(i)/60;
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).volInjected = volInjected;
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).tDtotal = volInjected/filedataExp.Vtotal(i);
+            tDtotal = volInjected/filedataExp.Vtotal(i);
+            % ct prop
+            resXmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeX; % mm
+            resYmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeY; % mm
             % histogram 
             numBins = 100;
             [counts, edges] = histcounts(concCTImage{k}, numBins);
-            xpCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).histImage = {[counts, edges]};
             % y vars
             concVert = mean(concCTImage{k}');
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Profile = {concVert'};
+            pixelVert = 1:1:length(concVert);
+            zVertcm = pixelVert*resYmm/100; %cm
             % x vars
             concHorz = mean(concCTImage{k});
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Axial = {concHorz'};
-    
+            pixelHorz = 1:1:length(concHorz);
+            xHorzcm = pixelHorz*resXmm/10; %cm
+            % store in struct
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).imgNr = imgNr;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).rotPos = rotPos;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).timeStamp = timeStamp;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).timeElapsed = timeElapsed;     
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).secondsElapsed = secondsElapsed; 
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).volInjected = volInjected;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).tDtotal = tDtotal;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).histImage = {[counts', edges(1:end-1)',edges(2:end)']}; % hist
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Profile = {[zVertcm',concVert']}; % y vars
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Axial = {[xHorzcm',concHorz']}; % x vars
+            % BT
+            BTlinesBefore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(1),...
+                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1'});
+            BTcore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(end),...
+                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1'});
+            BTlinesBefore = [BTlinesBefore;BTlinesBefore_temp];
+            BTcore = [BTcore;BTcore_temp];
         end
     end
 end
+expCTData.(filedataExp.Key(i)).BTlinesBefore = BTlinesBefore;
+expCTData.(filedataExp.Key(i)).BTcore = BTcore;
 
 %% Imaging
 % Plot as movies with angle and profiles in x and y
