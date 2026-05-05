@@ -163,7 +163,7 @@ for i = 1:length(filedataExp.Key)
             % y vars
             concVert = mean(concCTImage{k}');
             pixelVert = 1:1:length(concVert);
-            zVertcm = pixelVert*resYmm/100; %cm
+            zVertcm = pixelVert*resYmm/10; %cm
             % x vars
             concHorz = mean(concCTImage{k});
             pixelHorz = 1:1:length(concHorz);
@@ -176,9 +176,9 @@ for i = 1:length(filedataExp.Key)
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).secondsElapsed = secondsElapsed; 
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).volInjected = volInjected;
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).tDtotal = tDtotal;
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).histImage = {[counts', edges(1:end-1)',edges(2:end)']}; % hist
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Profile = {[zVertcm',concVert']}; % y vars
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Axial = {[xHorzcm',concHorz']}; % x vars
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).histImage = [counts', edges(1:end-1)',edges(2:end)']; % hist
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Profile = [zVertcm',concVert']; % y vars
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Axial = [xHorzcm',concHorz']; % x vars
             % BT
             BTlinesBefore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(1),...
                 'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1'});
@@ -205,6 +205,52 @@ for i = 1:length(filedataExp.Key)
 end
 
 %% Imaging
+
+for i = 1:length(filedataExp.Key)
+    v = VideoWriter(pathExportAll + "movie_" + filedataExp.Key(i), 'MPEG-4');
+    v.FrameRate = 100;   % frames per second
+    open(v);
+    fig = figure('Position', [100, 100, 600, 900]); % [left, bottom, width, height];
+    for j = 1:length(expFolderName) % number of runs
+        run_name = "run_" + string(j);
+        for k = 1:length(concCTImage)
+            vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k);
+            % plot concentration in x
+            subplot(3,2,1);
+            xy = vars.C1Axial;
+            x = xy(:,1);
+            y = xy(:,2);
+            plot(x,y)
+            xlim([min(x),max(x)])
+            ylim([0,1])
+            xlabel('X Distance [cm]')
+            ylabel('Average concentration')
+            title("timeElapsed: " + vars.secondsElapsed +"s, volInjected: "+ vars.volInjected + "mL")
+            grid on
+            
+            % plot concentration in z
+            subplot(3,2,4);
+            xy = vars.C1Profile;
+            x = xy(:,1);
+            y = xy(:,2);
+            plot(x,y)
+            xlabel('Z Distance [cm]')
+            ylabel('Average concentration')
+            grid on
+            axis tight
+            camroll(270)
+            xlim([min(x),max(x)])
+            ylim([0,1])
+
+            % plot image
+    
+            drawnow;
+            frame = getframe(fig);  % capture frame
+            writeVideo(v, frame); % write to movie
+        end
+    end
+    close(v)
+end
 % Plot as movies with angle and profiles in x and y
 % plot histogram per figure or for movie, allow movie to stop, or
 % interactive with angl or time
