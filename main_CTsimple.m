@@ -21,6 +21,7 @@ inputFileConfig = readtable(inputFileConfigName);
 
 filenameExp = inputFileConfig.inputFileName{:};
 
+pathImportAll = inputFileConfig.importPath{:}; % Path for OUTPUT
 pathExportAll = inputFileConfig.exportPath{:}; % Path for OUTPUT
 mkdir(pathExportAll); % Create directory for output
 
@@ -70,8 +71,9 @@ for i = 1:length(filedataExp.Key)
             imageRefCrop = rawImage{1};
             pixDist = 70;
             partsScanned = 5; % Parts scanned: from left to middle: air, CH. water,sleeve, core
-            crop_xCoords = findcropCore_xAxis(imageRefCrop,pixDist,partsScanned-1);
-            crop_xCoords = [crop_xCoords(1)+60;crop_xCoords(2)-60];
+            % crop_xCoords = findcropCore_xAxis(imageRefCrop,pixDist,partsScanned-1);
+            % crop_xCoords = [crop_xCoords(1)+60;crop_xCoords(2)-60];
+            load(pathImportAll+ "crop_xCoords.mat");
             crop_yCoords = [1;length(imageRefCrop)];          
             % Norm and cropp CT
             for k = 1:length(rawImage)
@@ -203,7 +205,7 @@ for i = 1:length(filedataExp.Key)
     expCTDataLight = rmfield(expCTData.(filedataExp.Key(i)), {'refInit','refFinal','exp'});
     save(expCT_name + '.mat','expCTDataLight')
 end
-
+save(pathExportAll + "crop_xCoords.mat",'crop_xCoords')
 %% Imaging
 
 for i = 1:length(filedataExp.Key)
