@@ -206,7 +206,7 @@ for i = 1:length(filedataExp.Key)
     save(expCT_name + '.mat','expCTDataLight')
 end
 save(pathExportAll + "crop_xCoords.mat",'crop_xCoords')
-%% Imaging
+%% Imaging movie
 
 for i = 1:length(filedataExp.Key)
     v = VideoWriter(pathExportAll + "movie_" + filedataExp.Key(i), 'MPEG-4');
@@ -306,13 +306,76 @@ for i = 1:length(filedataExp.Key)
     end
     close(v)
 end
-% Plot as movies with angle and profiles in x and y
-% plot histogram per figure or for movie, allow movie to stop, or
-% interactive with angl or time
-% plot breakthrough curve
 
+%% Interactive imaging
 
-    % have final results in a full array with angle and time
-    % create breakthrough curve in the end point with time
+figure('Position',[50 50 600 1000])
+imgPos  = [0.12 0.2  0.3 0.5];
+cbPos   = [0.45 0.2 0.02 0.5];
+ax1Pos  = [imgPos(1) 0.78 imgPos(3) 0.14];
+ax4Pos  = [0.62 0.2  0.27 imgPos(4)];
+ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)];
+ax5Pos  = [ax1Pos(1) 0.05 0.77 0.12];
+ax1 = axes('Position',ax1Pos);
+ax2 = axes('Position',ax2Pos);
+ax3 = axes('Position',imgPos);
+ax4 = axes('Position',ax4Pos);
+ax5 = axes('Position',ax5Pos);
+hold(ax5,'on')
+grid(ax5,'on')
+xlabel(ax5,'secondsElapsed')
+ylabel(ax5,'Concentration')
 
+% store BT
+BT.t = [];
+BT.C = [];
+BT.i = [];
+BT.j = [];
+BT.k = [];
 
+% build data to plot
+for i = 1:length(filedataExp.Key)
+
+    for j = 1:length(expFolderName)
+
+        run_name = "run_" + string(j);
+        concCTimages = expCTData.(filedataExp.Key(i)).exp.(run_name).concCT;
+
+        for k = 1:length(concCTimages)
+
+            vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k);
+
+            % breakthrough point
+            t = vars.secondsElapsed;
+            xy2 = vars.C1Profile;
+            y2 = xy2(:,2);
+            C = y2(end);
+
+            % store
+            BT.t(end+1) = t;
+            BT.C(end+1) = C;
+            BT.i(end+1) = i;
+            BT.j(end+1) = j;
+            BT.k(end+1) = k;
+
+        end
+    end
+end
+
+% plot BT
+hScatter = scatter(ax5, BT.t, BT.C, 20, ...
+    'filled', ...
+    'MarkerFaceColor',[0 0.4470 0.7410], ...
+    'MarkerEdgeColor','none');
+tmin = min(BT.t);
+tmax = max(BT.t);
+xlim(ax5,[tmin tmax])
+ylim(ax5,[0 1])
+
+% callback part
+hScatter.ButtonDownFcn = @(src,event) ...
+    onClickCallback(src,event,BT, ...
+    expCTData,filedataExp, ...
+    ax1,ax2,ax3,ax4,cbPos);
+
+% mark point with a red dot in the BT curve
