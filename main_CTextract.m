@@ -53,81 +53,98 @@ for i = 1:length(filedataExp.Key)
     % CT init ref
     refInitFolderPathCT = fullfile(refInitFolderContent.folder, refInitFolderName);
         % pca
-        pcaFiles = dir(fullfile(refInitFolderPathCT, '*.pca'));
-        expCTData.(filedataExp.Key(i)).refInit.pca = importPCA(pcaFiles);
+        refInitpcaFiles = dir(fullfile(refInitFolderPathCT, '*.pca'));
+        expCTData.(filedataExp.Key(i)).refInit.pca = importPCA(refInitpcaFiles);
         % pcj 
-        pcjFiles = dir(fullfile(refInitFolderPathCT, '*.pcj'));
-        expCTData.(filedataExp.Key(i)).refInit.pcj = importPCJ(pcjFiles);
+        refInitpcjFiles = dir(fullfile(refInitFolderPathCT, '*.pcj'));
+        expCTData.(filedataExp.Key(i)).refInit.pcj = importPCJ(refInitpcjFiles);
         % pcp
-        pcpFiles = dir(fullfile(refInitFolderPathCT, '*.pcp'));
-        expCTData.(filedataExp.Key(i)).refInit.pcp = importPCP(pcpFiles);
+        refInitpcpFiles = dir(fullfile(refInitFolderPathCT, '*.pcp'));
+        expCTData.(filedataExp.Key(i)).refInit.pcp = importPCP(refInitpcpFiles);
+        % CTimages folder 
+        refInitimgFiles = dir(fullfile(refInitFolderPathCT, '*.tif'));
+        
+    nn_refInit = height(expCTData.(filedataExp.Key(i)).refInit.pcp);
 
-        % CT images
-        imgFiles = dir(fullfile(refInitFolderPathCT, '*.tif'));
-            % Raw and cropped CT
-            rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
-            croppedImage = cell(size(rawImage));
-            % Crop params
-            imageRefCrop = rawImage{1};
-            pixDist = 70;
-            partsScanned = 5; % Parts scanned: from left to middle: air, CH. water,sleeve, core
-            % crop_xCoords = findcropCore_xAxis(imageRefCrop,pixDist,partsScanned-1);
-            % crop_xCoords = [crop_xCoords(1)+60;crop_xCoords(2)-60];
-            load(pathImportAll+ "crop_xCoords.mat");
-            crop_yCoords = [1;length(imageRefCrop)];          
-            % Norm and cropp CT
-            for k = 1:length(rawImage)
-                rawImage{k} = normImage(rawImage{k});
-                croppedImage{k} = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
-            end
-            expCTData.(filedataExp.Key(i)).refInit.croppedCT = croppedImage;
-   
     % CT final ref
     refFinalFolderPathCT = fullfile(refFinalFolderContent.folder, refFinalFolderName);
         % pca
-        pcaFiles = dir(fullfile(refFinalFolderPathCT, '*.pca'));
-        expCTData.(filedataExp.Key(i)).refFinal.pca = importPCA(pcaFiles);
+        refFinalpcaFiles = dir(fullfile(refFinalFolderPathCT, '*.pca'));
+        expCTData.(filedataExp.Key(i)).refFinal.pca = importPCA(refFinalpcaFiles);
         % pcj 
-        pcjFiles = dir(fullfile(refFinalFolderPathCT, '*.pcj'));
-        expCTData.(filedataExp.Key(i)).refFinal.pcj = importPCJ(pcjFiles);
+        refFinalpcjFiles = dir(fullfile(refFinalFolderPathCT, '*.pcj'));
+        expCTData.(filedataExp.Key(i)).refFinal.pcj = importPCJ(refFinalpcjFiles);
         % pcp
-        pcpFiles = dir(fullfile(refFinalFolderPathCT, '*.pcp'));
-        expCTData.(filedataExp.Key(i)).refFinal.pcp = importPCP(pcpFiles);
+        refFinalpcpFiles = dir(fullfile(refFinalFolderPathCT, '*.pcp'));
+        expCTData.(filedataExp.Key(i)).refFinal.pcp = importPCP(refFinalpcpFiles);
+        refFinalimgFiles = dir(fullfile(refFinalFolderPathCT, '*.tif'));
 
-        % CT images
-        imgFiles = dir(fullfile(refFinalFolderPathCT, '*.tif'));
-            % Raw and cropped CT
-            rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).refFinal.RawCT = importImages(imgFiles);
-            croppedImage = cell(size(rawImage));
-            % Norm and cropp CT
-            for k = 1:length(rawImage)
-                rawImage{k} = normImage(rawImage{k});
-                croppedImage{k} = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
-            end
-            expCTData.(filedataExp.Key(i)).refFinal.croppedCT = croppedImage;
+    nn_refFinal = height(expCTData.(filedataExp.Key(i)).refFinal.pcp);
 
-    % CT exps
     for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
-        run_name = "run_" + string(j);
+        run_name = "run_" + sprintf('%02d', j);
             % pca
-            pcaFiles = dir(fullfile(expFolderPathCT, '*.pca'));
-            expCTData.(filedataExp.Key(i)).exp.(run_name).pca = importPCA(pcaFiles);
+            exppcaFiles = dir(fullfile(expFolderPathCT, '*.pca'));
+            expCTData.(filedataExp.Key(i)).exp.(run_name).pca = importPCA(exppcaFiles);
             % pcj 
-            pcjFiles = dir(fullfile(expFolderPathCT, '*.pcj'));
-            expCTData.(filedataExp.Key(i)).exp.(run_name).pcj = importPCJ(pcjFiles);
+            exppcjFiles = dir(fullfile(expFolderPathCT, '*.pcj'));
+            expCTData.(filedataExp.Key(i)).exp.(run_name).pcj = importPCJ(exppcjFiles);
             % pcp
-            pcpFiles = dir(fullfile(expFolderPathCT, '*.pcp'));
-            expCTData.(filedataExp.Key(i)).exp.(run_name).pcp = importPCP(pcpFiles);
+            exppcpFiles = dir(fullfile(expFolderPathCT, '*.pcp'));
+            expCTData.(filedataExp.Key(i)).exp.(run_name).pcp = importPCP(exppcpFiles);
+            expimgFiles = dir(fullfile(expFolderPathCT, '*.tif'));
 
-            % CT images
-            imgFiles = dir(fullfile(expFolderPathCT, '*.tif'));
+        nn_exp = height(expCTData.(filedataExp.Key(i)).exp.(run_name).pcp); % per run
+
+        % Check number of imaging in reference and exp are same
+        if nn_refInit ~= nn_refFinal
+            error("Mismatch: initial reference (%d) vs final references (%d) projections", nn_refInit, nn_refFinal);
+        elseif nn_refInit ~= nn_exp
+            error("Mismatch: initial reference (%d) vs experiment run_%02d (%d) projections"', nn_refInit, j, nn_exp);
+        end
+
+        % Create function to take parameters to crop!!!
+        % rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
+        % croppedImage = cell(size(rawImage));
+        % % Crop params
+        % imageRefCrop = rawImage{1};
+        % pixDist = 70;
+        % partsScanned = 5; % Parts scanned: from left to middle: air, CH. water,sleeve, core
+        % % crop_xCoords = findcropCore_xAxis(imageRefCrop,pixDist,partsScanned-1);
+        % % crop_xCoords = [crop_xCoords(1)+60;crop_xCoords(2)-60];
+        % load(pathImportAll+ "crop_xCoords.mat");
+        % crop_yCoords = [1;length(imageRefCrop)];    
+        load(pathImportAll+ "crop_xCoords.mat");
+        DimY = expCTData.(filedataExp.Key(i)).refInit.pca.Image.DimY;  
+        crop_yCoords = [1;DimY]; 
+
+        for k = 1:nn_exp
+            % Collect each image and save it in HDF5 one by one
+
+            % refInit
             % Raw and cropped CT
-            rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
-            concImage = cell(size(rawImage));
+            refInitrawImage = importImages(refInitimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
+            refInitrawImage = normImage(refInitrawImage);
+            refInitcroppedImage = cropImage(refInitrawImage,crop_xCoords, crop_yCoords);
+
+            % refFinal
+            % Raw and cropped CT
+            refFinalrawImage = importImages(refFinalimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
+            refFinalrawImage = normImage(refFinalrawImage);
+            refFinalcroppedImage = cropImage(refFinalrawImage,crop_xCoords, crop_yCoords);
+
+            % exp run k
+            % Raw and cropped CT
+            exprawImage = importImages(expimgFiles,k);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
+            concImage = cell(size(exprawImage));
+            exprawImage = normImage(exprawImage);
+            expcroppedImage = cropImage(exprawImage,crop_xCoords, crop_yCoords);
+            minImage = 
+
             % Norm and cropp CT
             for k = 1:length(rawImage)
-                rawImage{k} = normImage(rawImage{k});
+                
                 croppedImage = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
                 minImage = expCTData.(filedataExp.Key(i)).refInit.croppedCT{k};
                 maxImage = expCTData.(filedataExp.Key(i)).refFinal.croppedCT{k};
@@ -135,8 +152,89 @@ for i = 1:length(filedataExp.Key)
             end
             % expCTData.(filedataExp.Key(i)).exp.(run_name).croppedCT = croppedImage;
             expCTData.(filedataExp.Key(i)).exp.(run_name).concCT = concImage;
+
+        end
+
     end
+
 end
+%%
+% 
+%         % CT images
+%         imgFiles = dir(fullfile(refInitFolderPathCT, '*.tif'));
+%             % Raw and cropped CT
+%             rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
+%             croppedImage = cell(size(rawImage));
+%             % Crop params
+%             imageRefCrop = rawImage{1};
+%             pixDist = 70;
+%             partsScanned = 5; % Parts scanned: from left to middle: air, CH. water,sleeve, core
+%             % crop_xCoords = findcropCore_xAxis(imageRefCrop,pixDist,partsScanned-1);
+%             % crop_xCoords = [crop_xCoords(1)+60;crop_xCoords(2)-60];
+%             load(pathImportAll+ "crop_xCoords.mat");
+%             crop_yCoords = [1;length(imageRefCrop)];          
+%             % Norm and cropp CT
+%             for k = 1:length(rawImage)
+%                 rawImage{k} = normImage(rawImage{k});
+%                 croppedImage{k} = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
+%             end
+%             expCTData.(filedataExp.Key(i)).refInit.croppedCT = croppedImage;
+% 
+%     % CT final ref
+%     refFinalFolderPathCT = fullfile(refFinalFolderContent.folder, refFinalFolderName);
+%         % pca
+%         pcaFiles = dir(fullfile(refFinalFolderPathCT, '*.pca'));
+%         expCTData.(filedataExp.Key(i)).refFinal.pca = importPCA(pcaFiles);
+%         % pcj 
+%         pcjFiles = dir(fullfile(refFinalFolderPathCT, '*.pcj'));
+%         expCTData.(filedataExp.Key(i)).refFinal.pcj = importPCJ(pcjFiles);
+%         % pcp
+%         pcpFiles = dir(fullfile(refFinalFolderPathCT, '*.pcp'));
+%         expCTData.(filedataExp.Key(i)).refFinal.pcp = importPCP(pcpFiles);
+% 
+%         % CT images
+%         imgFiles = dir(fullfile(refFinalFolderPathCT, '*.tif'));
+%             % Raw and cropped CT
+%             rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).refFinal.RawCT = importImages(imgFiles);
+%             croppedImage = cell(size(rawImage));
+%             % Norm and cropp CT
+%             for k = 1:length(rawImage)
+%                 rawImage{k} = normImage(rawImage{k});
+%                 croppedImage{k} = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
+%             end
+%             expCTData.(filedataExp.Key(i)).refFinal.croppedCT = croppedImage;
+% 
+%     % CT exps
+%     for j = 1:length(expFolderName)
+%         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
+%         run_name = "run_" + string(j);
+%             % pca
+%             pcaFiles = dir(fullfile(expFolderPathCT, '*.pca'));
+%             expCTData.(filedataExp.Key(i)).exp.(run_name).pca = importPCA(pcaFiles);
+%             % pcj 
+%             pcjFiles = dir(fullfile(expFolderPathCT, '*.pcj'));
+%             expCTData.(filedataExp.Key(i)).exp.(run_name).pcj = importPCJ(pcjFiles);
+%             % pcp
+%             pcpFiles = dir(fullfile(expFolderPathCT, '*.pcp'));
+%             expCTData.(filedataExp.Key(i)).exp.(run_name).pcp = importPCP(pcpFiles);
+% 
+%             % CT images
+%             imgFiles = dir(fullfile(expFolderPathCT, '*.tif'));
+%             % Raw and cropped CT
+%             rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
+%             concImage = cell(size(rawImage));
+%             % Norm and cropp CT
+%             for k = 1:length(rawImage)
+%                 rawImage{k} = normImage(rawImage{k});
+%                 croppedImage = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
+%                 minImage = expCTData.(filedataExp.Key(i)).refInit.croppedCT{k};
+%                 maxImage = expCTData.(filedataExp.Key(i)).refFinal.croppedCT{k};
+%                 concImage{k} = satImage(croppedImage,minImage,maxImage);
+%             end
+%             % expCTData.(filedataExp.Key(i)).exp.(run_name).croppedCT = croppedImage;
+%             expCTData.(filedataExp.Key(i)).exp.(run_name).concCT = concImage;
+%     end
+% end
 %% Concentration profiles and histograms of normalized images
 BTlinesBefore = table(); 
 BTcore = table();
