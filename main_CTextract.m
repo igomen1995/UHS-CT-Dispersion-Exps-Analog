@@ -45,6 +45,10 @@ expFolderContent = expFolderContent([expFolderContent.isdir] & ~startsWith({expF
 expFolderName = {expFolderContent.name}';
 expFolderPath = {expFolderContent.folder};
 
+% BT extract
+BTlinesBefore = table(); 
+BTcore = table();
+
 for i = 1:length(filedataExp.Key)
 
     % CF params
@@ -81,6 +85,15 @@ for i = 1:length(filedataExp.Key)
 
     nn_refFinal = height(expCTData.(filedataExp.Key(i)).refFinal.pcp);
 
+    % HDF5 file
+    HDF5filename = fullfile(pathExportAll, filedataExp.Key(i) + ".h5");
+    if isfile(HDF5filename)
+        delete(HDF5filename);
+    end
+
+    % BT concvarsAll
+    concVarsAll = table();
+
     for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
@@ -101,7 +114,7 @@ for i = 1:length(filedataExp.Key)
         if nn_refInit ~= nn_refFinal
             error("Mismatch: initial reference (%d) vs final references (%d) projections", nn_refInit, nn_refFinal);
         elseif nn_refInit ~= nn_exp
-            error("Mismatch: initial reference (%d) vs experiment run_%02d (%d) projections"', nn_refInit, j, nn_exp);
+            error("Mismatch: initial reference (%d) vs experiment run_%02d (%d) projections", nn_refInit, j, nn_exp);
         end
 
         % Create function to take parameters to crop!!!
@@ -119,132 +132,45 @@ for i = 1:length(filedataExp.Key)
         DimY = expCTData.(filedataExp.Key(i)).refInit.pca.Image.DimY;  
         crop_yCoords = [1;DimY]; 
 
+        HDF5created = false; % flag
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];  % structured path
+
         for k = 1:nn_exp
             % Collect each image and save it in HDF5 one by one
 
             % refInit
-            % Raw and cropped CT
+            % Raw, normalized and cropped CT images
             refInitrawImage = importImages(refInitimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
             refInitrawImage = normImage(refInitrawImage);
-            refInitcroppedImage = cropImage(refInitrawImage,crop_xCoords, crop_yCoords);
+            refInitcroppedImage = cropImage(refInitrawImage,crop_xCoords, crop_yCoords); % minImage
 
             % refFinal
-            % Raw and cropped CT
+            % Raw, normalized and cropped CT images
             refFinalrawImage = importImages(refFinalimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
             refFinalrawImage = normImage(refFinalrawImage);
-            refFinalcroppedImage = cropImage(refFinalrawImage,crop_xCoords, crop_yCoords);
+            refFinalcroppedImage = cropImage(refFinalrawImage,crop_xCoords, crop_yCoords); % maxImage
 
             % exp run k
-            % Raw and cropped CT
+            % Raw, normalized and cropped CT images
             exprawImage = importImages(expimgFiles,k);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
-            concImage = cell(size(exprawImage));
             exprawImage = normImage(exprawImage);
             expcroppedImage = cropImage(exprawImage,crop_xCoords, crop_yCoords);
-            minImage = 
+            concImage = satImage(expcroppedImage,refInitcroppedImage,refFinalcroppedImage); % arguments (exp, min,max)
 
-            % Norm and cropp CT
-            for k = 1:length(rawImage)
-                
-                croppedImage = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
-                minImage = expCTData.(filedataExp.Key(i)).refInit.croppedCT{k};
-                maxImage = expCTData.(filedataExp.Key(i)).refFinal.croppedCT{k};
-                concImage{k} = satImage(croppedImage,minImage,maxImage);
+            % HDF5 params
+            [nx, ny] = size(concImage);
+
+            if ~HDF5created 
+                h5create(HDF5filename, HDF5dataPath, [nx ny nn_exp], ...
+                    'Datatype', 'single', ...
+                    'ChunkSize', [nx ny 1], ...
+                    'Deflate', 5);
+                HDF5created = true;
             end
-            % expCTData.(filedataExp.Key(i)).exp.(run_name).croppedCT = croppedImage;
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concCT = concImage;
+          
+            h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);
 
-        end
-
-    end
-
-end
-%%
-% 
-%         % CT images
-%         imgFiles = dir(fullfile(refInitFolderPathCT, '*.tif'));
-%             % Raw and cropped CT
-%             rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
-%             croppedImage = cell(size(rawImage));
-%             % Crop params
-%             imageRefCrop = rawImage{1};
-%             pixDist = 70;
-%             partsScanned = 5; % Parts scanned: from left to middle: air, CH. water,sleeve, core
-%             % crop_xCoords = findcropCore_xAxis(imageRefCrop,pixDist,partsScanned-1);
-%             % crop_xCoords = [crop_xCoords(1)+60;crop_xCoords(2)-60];
-%             load(pathImportAll+ "crop_xCoords.mat");
-%             crop_yCoords = [1;length(imageRefCrop)];          
-%             % Norm and cropp CT
-%             for k = 1:length(rawImage)
-%                 rawImage{k} = normImage(rawImage{k});
-%                 croppedImage{k} = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
-%             end
-%             expCTData.(filedataExp.Key(i)).refInit.croppedCT = croppedImage;
-% 
-%     % CT final ref
-%     refFinalFolderPathCT = fullfile(refFinalFolderContent.folder, refFinalFolderName);
-%         % pca
-%         pcaFiles = dir(fullfile(refFinalFolderPathCT, '*.pca'));
-%         expCTData.(filedataExp.Key(i)).refFinal.pca = importPCA(pcaFiles);
-%         % pcj 
-%         pcjFiles = dir(fullfile(refFinalFolderPathCT, '*.pcj'));
-%         expCTData.(filedataExp.Key(i)).refFinal.pcj = importPCJ(pcjFiles);
-%         % pcp
-%         pcpFiles = dir(fullfile(refFinalFolderPathCT, '*.pcp'));
-%         expCTData.(filedataExp.Key(i)).refFinal.pcp = importPCP(pcpFiles);
-% 
-%         % CT images
-%         imgFiles = dir(fullfile(refFinalFolderPathCT, '*.tif'));
-%             % Raw and cropped CT
-%             rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).refFinal.RawCT = importImages(imgFiles);
-%             croppedImage = cell(size(rawImage));
-%             % Norm and cropp CT
-%             for k = 1:length(rawImage)
-%                 rawImage{k} = normImage(rawImage{k});
-%                 croppedImage{k} = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
-%             end
-%             expCTData.(filedataExp.Key(i)).refFinal.croppedCT = croppedImage;
-% 
-%     % CT exps
-%     for j = 1:length(expFolderName)
-%         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
-%         run_name = "run_" + string(j);
-%             % pca
-%             pcaFiles = dir(fullfile(expFolderPathCT, '*.pca'));
-%             expCTData.(filedataExp.Key(i)).exp.(run_name).pca = importPCA(pcaFiles);
-%             % pcj 
-%             pcjFiles = dir(fullfile(expFolderPathCT, '*.pcj'));
-%             expCTData.(filedataExp.Key(i)).exp.(run_name).pcj = importPCJ(pcjFiles);
-%             % pcp
-%             pcpFiles = dir(fullfile(expFolderPathCT, '*.pcp'));
-%             expCTData.(filedataExp.Key(i)).exp.(run_name).pcp = importPCP(pcpFiles);
-% 
-%             % CT images
-%             imgFiles = dir(fullfile(expFolderPathCT, '*.tif'));
-%             % Raw and cropped CT
-%             rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
-%             concImage = cell(size(rawImage));
-%             % Norm and cropp CT
-%             for k = 1:length(rawImage)
-%                 rawImage{k} = normImage(rawImage{k});
-%                 croppedImage = cropImage(rawImage{k},crop_xCoords, crop_yCoords);
-%                 minImage = expCTData.(filedataExp.Key(i)).refInit.croppedCT{k};
-%                 maxImage = expCTData.(filedataExp.Key(i)).refFinal.croppedCT{k};
-%                 concImage{k} = satImage(croppedImage,minImage,maxImage);
-%             end
-%             % expCTData.(filedataExp.Key(i)).exp.(run_name).croppedCT = croppedImage;
-%             expCTData.(filedataExp.Key(i)).exp.(run_name).concCT = concImage;
-%     end
-% end
-%% Concentration profiles and histograms of normalized images
-BTlinesBefore = table(); 
-BTcore = table();
-for i = 1:length(filedataExp.Key)
-    concVarsAll = table();
-    for j = 1:length(expFolderName) % number of runs
-        run_name = "run_" + string(j);
-        concCTImage = expCTData.(filedataExp.Key(i)).exp.(run_name).concCT;
-        concVars = cell(size(concCTImage));
-        for k = 1:length(concCTImage) % numbers of images per run
+            % Concentration profiles and histograms of normalized images
             imgNr = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.ImgNr(k);
             rotPos = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.RotPos(k);
             timeStamp = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.Time(k);
@@ -258,13 +184,13 @@ for i = 1:length(filedataExp.Key)
             resYmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeY; % mm
             % histogram 
             numBins = 100;
-            [counts, edges] = histcounts(concCTImage{k}, numBins);
+            [counts, edges] = histcounts(concImage, numBins);
             % y vars
-            concVert = mean(concCTImage{k}');
+            concVert = mean(concImage');
             pixelVert = 1:1:length(concVert);
             zVertcm = pixelVert*resYmm/10; %cm
             % x vars
-            concHorz = mean(concCTImage{k});
+            concHorz = mean(concImage);
             pixelHorz = 1:1:length(concHorz);
             xHorzcm = pixelHorz*resXmm/10; %cm
             % store in struct
@@ -285,49 +211,33 @@ for i = 1:length(filedataExp.Key)
                 'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1'});
             BTlinesBefore = [BTlinesBefore;BTlinesBefore_temp];
             BTcore = [BTcore;BTcore_temp];
+        
         end
         concVars_temp =  expCTData.(filedataExp.Key(i)).exp.(run_name).concVars;
-        concVars_tempTable = struct2table(concVars_temp);
+        concVars_tempTable = struct2table(concVars_temp,'AsArray',true);
         concVarsAll = [concVarsAll;concVars_tempTable];
     end
     expCTData.(filedataExp.Key(i)).BTlinesBefore = BTlinesBefore;
     expCTData.(filedataExp.Key(i)).BTcore = BTcore;
     expCTData.(filedataExp.Key(i)).concVarsAll = concVarsAll;
-end
-%% save in hdf5
-for i = 1:length(filedataExp.Key)
-    for j = 1%1::length(expFolderName) % number of runs
-        run_name = "run_" + string(j);
-        concCTproj = expCTData.(filedataExp.Key(i)).exp.(run_name).concCT;
-        nn = numel(concCTproj);
-        [nx, ny] = size(concCTproj{1});
-        pathHDF5 = "/exp/" + run_name + "/concCT";
-        h5create('expCTData.h5', pathHDF5, [nx ny nn], ...
-            'Datatype', 'single', ...
-            'ChunkSize', [512 256 1], ...
-            'Deflate', 5);
-        for k = 1:nn
-            h5write('expCTData.h5', pathHDF5, single(concCTproj{k}), ...
-                [1 1 k], [nx ny 1]);
-        end
-    end
+
+    % save expCTData
+    expCT_name = pathExportAll + filedataExp.Key(i);
+    expCTDataSave = expCTData.(filedataExp.Key(i));
+    save(expCT_name + '.mat','expCTDataSave')
 end
 
-
-%% save
-for i = 1:length(filedataExp.Key)
-    expCT_name = pathExportAll + "expCTlight_"+filedataExp.Key(i);
-    expCTDataLight = rmfield(expCTData.(filedataExp.Key(i)), {'refInit','refFinal','exp'});
-    save(expCT_name + '.mat','expCTDataLight')
-end
-save(pathExportAll + "crop_xCoords.mat",'crop_xCoords')
 %% Imaging movie
 
 for i = 1:length(filedataExp.Key)
+    HDF5filename = fullfile(pathExportAll, filedataExp.Key(i) + ".h5");
+
+    fig = figure('Position', [50, 50, 600, 1000]); % [left, bottom, width, height];
+    frame = getframe(fig);
     v = VideoWriter(pathExportAll + "movie_" + filedataExp.Key(i), 'MPEG-4');
     v.FrameRate = 100;   % frames per second
     open(v);
-    fig = figure('Position', [50, 50, 600, 1000]); % [left, bottom, width, height];
+    writeVideo(v, frame);
     % Shared geometry
     imgPos  = [0.12 0.2  0.3 0.5];   % image axes
     cbPos  = [0.45 0.2 0.02 0.5];
@@ -342,9 +252,15 @@ for i = 1:length(filedataExp.Key)
     ax5 = axes('Position',ax5Pos);
 
     for j = 1:length(expFolderName) % number of runs
-        run_name = "run_" + string(j);
+        run_name = "run_" + sprintf('%02d', j);
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+        info = h5info(HDF5filename, HDF5dataPath);
+        dims = info.Dataspace.Size;
+        nx = dims(1);
+        ny = dims(2);
+        nz = dims(3);
 
-        for k = 1:length(concCTImage)
+        for k = 1:nz
             vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k);
 
             % plot concentration in x ax1
@@ -376,9 +292,9 @@ for i = 1:length(filedataExp.Key)
             ylim(ax4,[0 1])
 
             % plot image ax3
-            concCTimages = expCTData.(filedataExp.Key(i)).exp.(run_name).concCT;
+            concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
             cla(ax3)
-            imagesc(ax3, concCTimages{k})
+            imagesc(ax3, concCTimages)
             axis(ax3,'xy','fill')
             set(ax3,'YDir','reverse')
             colormap(ax3,turbo)
