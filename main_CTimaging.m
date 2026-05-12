@@ -162,10 +162,10 @@ expFolderPath = {expFolderContent.folder};
 %% Interactive imaging
 
 figure('Position',[50 50 600 1000])
-imgPos  = [0.12 0.2  0.3 0.5];
-cbPos   = [0.45 0.2 0.02 0.5];
+imgPos  = [0.12 0.23  0.3 0.5];
+cbPos   = [0.45 imgPos(2) 0.02 0.5];
 ax1Pos  = [imgPos(1) 0.78 imgPos(3) 0.14];
-ax4Pos  = [0.62 0.2  0.27 imgPos(4)];
+ax4Pos  = [0.62 imgPos(2)  0.27 imgPos(4)];
 ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)];
 ax5Pos  = [ax1Pos(1) 0.05 0.77 0.12];
 ax1 = axes('Position',ax1Pos);
@@ -232,10 +232,10 @@ hScatter = scatter(ax5, BT.t, BT.C, 20, ...
 tmin = min(BT.t);
 tmax = max(BT.t);
 xlim(ax5,[tmin tmax])
-ylim(ax5,[0 1])
+ylim(ax5,[-0.02 1])
 
 % Selected point marker
-hSelected = scatter(ax5, NaN, NaN, 60, ...
+hSelected = scatter(ax5, NaN, NaN, 40, ...
     'filled', ...
     'MarkerFaceColor','r', ...
     'MarkerEdgeColor','k');
@@ -245,5 +245,3 @@ hScatter.ButtonDownFcn = @(src,event) ...
     onClickCallback(src,event,pathExportAll,hSelected, ...
     BT, expCTData,filedataExp, ...
     ax1,ax2,ax3,ax4,cbPos);
-
-% mark point with a red dot in the BT curve
