@@ -1,5 +1,5 @@
 
-function onClickCallback(~,event,BT,expCTData,filedataExp, ...
+function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
     ax1,ax2,ax3,ax4,cbPos)
 
     % Get clicked coordinates
@@ -16,8 +16,21 @@ function onClickCallback(~,event,BT,expCTData,filedataExp, ...
     j = BT.j(idx);
     k = BT.k(idx);
 
-    run_name = "run_" + string(j);
+    run_name = "run_" + sprintf('%02d', j);
     vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k);
+
+    % load image params
+    HDF5filename = fullfile(path, filedataExp.Key(i) + ".h5");
+    HDF5dataPath = ['/exp/' char(run_name) '/conc'];   
+    info = h5info(HDF5filename, HDF5dataPath);
+    dims = info.Dataspace.Size;   
+    nx = dims(1);
+    ny = dims(2);
+
+    % Update selected point in ax5
+    set(hSelected, ...
+        'XData', BT.t(idx), ...
+        'YData', BT.C(idx));
 
     % plot concentration in x ax1
     xy1 = vars.C1Axial;
@@ -48,9 +61,9 @@ function onClickCallback(~,event,BT,expCTData,filedataExp, ...
     ylim(ax4,[0 1])
 
     % plot image ax3
-    concCTimages = expCTData.(filedataExp.Key(i)).exp.(run_name).concCT;
+    concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
     cla(ax3)
-    imagesc(ax3, concCTimages{k})
+    imagesc(ax3, concCTimages)
     axis(ax3,'xy','fill')
     set(ax3,'YDir','reverse')
     colormap(ax3,turbo)
