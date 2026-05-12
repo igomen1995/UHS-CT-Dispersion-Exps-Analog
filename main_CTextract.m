@@ -45,23 +45,10 @@ expFolderContent = expFolderContent([expFolderContent.isdir] & ~startsWith({expF
 expFolderName = {expFolderContent.name}';
 expFolderPath = {expFolderContent.folder};
 
-% BT extract
-BTlinesBefore = table(); 
-BTcore = table();
-
 for i = 1:length(filedataExp.Key)
-
-    % CF params
-    expCTData.(filedataExp.Key(i)).CFparams = filedataExp(i,:);
 
     % CT init ref
     refInitFolderPathCT = fullfile(refInitFolderContent.folder, refInitFolderName);
-        % pca
-        refInitpcaFiles = dir(fullfile(refInitFolderPathCT, '*.pca'));
-        expCTData.(filedataExp.Key(i)).refInit.pca = importPCA(refInitpcaFiles);
-        % pcj 
-        refInitpcjFiles = dir(fullfile(refInitFolderPathCT, '*.pcj'));
-        expCTData.(filedataExp.Key(i)).refInit.pcj = importPCJ(refInitpcjFiles);
         % pcp
         refInitpcpFiles = dir(fullfile(refInitFolderPathCT, '*.pcp'));
         expCTData.(filedataExp.Key(i)).refInit.pcp = importPCP(refInitpcpFiles);
@@ -72,12 +59,6 @@ for i = 1:length(filedataExp.Key)
 
     % CT final ref
     refFinalFolderPathCT = fullfile(refFinalFolderContent.folder, refFinalFolderName);
-        % pca
-        refFinalpcaFiles = dir(fullfile(refFinalFolderPathCT, '*.pca'));
-        expCTData.(filedataExp.Key(i)).refFinal.pca = importPCA(refFinalpcaFiles);
-        % pcj 
-        refFinalpcjFiles = dir(fullfile(refFinalFolderPathCT, '*.pcj'));
-        expCTData.(filedataExp.Key(i)).refFinal.pcj = importPCJ(refFinalpcjFiles);
         % pcp
         refFinalpcpFiles = dir(fullfile(refFinalFolderPathCT, '*.pcp'));
         expCTData.(filedataExp.Key(i)).refFinal.pcp = importPCP(refFinalpcpFiles);
@@ -90,9 +71,6 @@ for i = 1:length(filedataExp.Key)
     if isfile(HDF5filename)
         delete(HDF5filename);
     end
-
-    % BT concvarsAll
-    concVarsAll = table();
 
     for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
@@ -168,7 +146,98 @@ for i = 1:length(filedataExp.Key)
                 HDF5created = true;
             end
           
-            h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);
+            h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);       
+        end
+    end
+end
+
+%% Extract data from images
+
+filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
+
+% Capture init ref data folder
+refInitFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_init); % Xe
+refInitFolderContent = refInitFolderContent([refInitFolderContent.isdir] & ~startsWith({refInitFolderContent.name},'.'));
+refInitFolderName = refInitFolderContent.name;
+
+% Capture final ref data folder
+refFinalFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_final); % He
+refFinalFolderContent = refFinalFolderContent([refFinalFolderContent.isdir] & ~startsWith({refFinalFolderContent.name},'.'));
+refFinalFolderName = refFinalFolderContent.name;
+
+% Capture exp data folder
+expFolderContent = dir(filedataExp.path+filedataExp.CT_data_exp); % exp
+expFolderContent = expFolderContent([expFolderContent.isdir] & ~startsWith({expFolderContent.name},'.'));
+expFolderName = {expFolderContent.name}';
+expFolderPath = {expFolderContent.folder};
+
+% BT extract
+BTlinesBefore = table(); 
+BTcore = table();
+expCTData = struct();
+
+for i = 1:length(filedataExp.Key)
+
+    % Image
+    HDF5filename = fullfile(pathExportAll, filedataExp.Key(i) + ".h5");
+
+    % CF params
+    expCTData.(filedataExp.Key(i)).CFparams = filedataExp(i,:);
+
+    % CT init ref
+    refInitFolderPathCT = fullfile(refInitFolderContent.folder, refInitFolderName);
+        % pca
+        refInitpcaFiles = dir(fullfile(refInitFolderPathCT, '*.pca'));
+        expCTData.(filedataExp.Key(i)).refInit.pca = importPCA(refInitpcaFiles);
+        % pcj 
+        refInitpcjFiles = dir(fullfile(refInitFolderPathCT, '*.pcj'));
+        expCTData.(filedataExp.Key(i)).refInit.pcj = importPCJ(refInitpcjFiles);
+        % pcp
+        refInitpcpFiles = dir(fullfile(refInitFolderPathCT, '*.pcp'));
+        expCTData.(filedataExp.Key(i)).refInit.pcp = importPCP(refInitpcpFiles);
+        % CTimages folder 
+        
+    nn_refInit = height(expCTData.(filedataExp.Key(i)).refInit.pcp);
+
+    % CT final ref
+    refFinalFolderPathCT = fullfile(refFinalFolderContent.folder, refFinalFolderName);
+        % pca
+        refFinalpcaFiles = dir(fullfile(refFinalFolderPathCT, '*.pca'));
+        expCTData.(filedataExp.Key(i)).refFinal.pca = importPCA(refFinalpcaFiles);
+        % pcj 
+        refFinalpcjFiles = dir(fullfile(refFinalFolderPathCT, '*.pcj'));
+        expCTData.(filedataExp.Key(i)).refFinal.pcj = importPCJ(refFinalpcjFiles);
+        % pcp
+        refFinalpcpFiles = dir(fullfile(refFinalFolderPathCT, '*.pcp'));
+        expCTData.(filedataExp.Key(i)).refFinal.pcp = importPCP(refFinalpcpFiles);
+
+    % BT concvarsAll
+    concVarsAll = table();
+
+    for j = 1:length(expFolderName)
+        expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
+        run_name = "run_" + sprintf('%02d', j);
+            % pca
+            exppcaFiles = dir(fullfile(expFolderPathCT, '*.pca'));
+            expCTData.(filedataExp.Key(i)).exp.(run_name).pca = importPCA(exppcaFiles);
+            % pcj 
+            exppcjFiles = dir(fullfile(expFolderPathCT, '*.pcj'));
+            expCTData.(filedataExp.Key(i)).exp.(run_name).pcj = importPCJ(exppcjFiles);
+            % pcp
+            exppcpFiles = dir(fullfile(expFolderPathCT, '*.pcp'));
+            expCTData.(filedataExp.Key(i)).exp.(run_name).pcp = importPCP(exppcpFiles);
+
+        nn_exp = height(expCTData.(filedataExp.Key(i)).exp.(run_name).pcp); % per run
+
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];  % structured path
+        info = h5info(HDF5filename, HDF5dataPath);
+        dims = info.Dataspace.Size;
+        nx = dims(1);
+        ny = dims(2);
+        nz = dims(3);
+
+        for k = 1:nn_exp
+            concImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
 
             % Concentration profiles and histograms of normalized images
             imgNr = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.ImgNr(k);
@@ -204,11 +273,22 @@ for i = 1:length(filedataExp.Key)
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).histImage = [counts', edges(1:end-1)',edges(2:end)']; % hist
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Profile = [zVertcm',concVert']; % y vars
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Axial = [xHorzcm',concHorz']; % x vars
+            % front velocity
+            
+            idx = (concImage>=0.05 & concImage <= 0.15);
+            [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
+            if ~isempty(rows)
+                z01front = mean(rows) * resYmm / 10;
+            else
+                z01front = NaN;
+            end
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront = z01front; % x front
+
             % BT
             BTlinesBefore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(1),...
                 'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1'});
-            BTcore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(end),...
-                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1'});
+            BTcore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(end),z01front,...
+                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1','zfront'});
             BTlinesBefore = [BTlinesBefore;BTlinesBefore_temp];
             BTcore = [BTcore;BTcore_temp];
         
@@ -220,6 +300,19 @@ for i = 1:length(filedataExp.Key)
     expCTData.(filedataExp.Key(i)).BTlinesBefore = BTlinesBefore;
     expCTData.(filedataExp.Key(i)).BTcore = BTcore;
     expCTData.(filedataExp.Key(i)).concVarsAll = concVarsAll;
+
+    velFront_cms = mean(gradient(expCTData.(filedataExp.Key(i)).concVarsAll.zFront, ...
+        expCTData.(filedataExp.Key(i)).concVarsAll.secondsElapsed),'omitnan');
+    velFront_cmmin = velFront_cms*60;
+    expCTData.(filedataExp.Key(i)).CFparams.velFront_cmmin = velFront_cmmin;
+    expCTData.(filedataExp.Key(i)).concVarsAll.tDcorr = ...
+        velFront_cms*expCTData.(filedataExp.Key(i)).concVarsAll.secondsElapsed/zVertcm(end);
+    for j = 1:length(expFolderName)
+        for k = 1:nn_exp
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).tDcorr = ...
+                velFront_cms*expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).secondsElapsed/zVertcm(end);
+        end
+    end
 
     % save expCTData
     expCT_name = pathExportAll + filedataExp.Key(i);
