@@ -274,21 +274,33 @@ for i = 1:length(filedataExp.Key)
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Profile = [zVertcm',concVert']; % y vars
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Axial = [xHorzcm',concHorz']; % x vars
             % front velocity
-            
+            % C = 0.1
             idx = (concImage>=0.05 & concImage <= 0.15);
             [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
             if ~isempty(rows)
-                z01front = mean(rows) * resYmm / 10;
+                zFront_10 = mean(rows) * resYmm / 10;
             else
-                z01front = NaN;
+                zFront_10 = NaN;
             end
-            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront = z01front; % x front
+                        % C = 0.1
+            idx = (concImage>=0.85 & concImage <= 0.95);
+            [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
+            if ~isempty(rows)
+                zFront_90 = mean(rows) * resYmm / 10;
+            else
+                zFront_90 = NaN;
+            end
+            zWidth = zFront_10 - zFront_90;
+
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront10 = zFront_10; % Z C = 0.1 front
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront90 = zFront_90; % Z C = 0.9 front
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zWidth = zWidth; % Z width front from 0.9 to 0.1
 
             % BT
             BTlinesBefore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(1),...
                 'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1'});
-            BTcore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(end),z01front,...
-                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1','zfront'});
+            BTcore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(end),zFront_10,zFront_90,zWidth,...
+                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1','zFront10','zFront90','zWidth'});
             BTlinesBefore = [BTlinesBefore;BTlinesBefore_temp];
             BTcore = [BTcore;BTcore_temp];
         
@@ -301,7 +313,7 @@ for i = 1:length(filedataExp.Key)
     expCTData.(filedataExp.Key(i)).BTcore = BTcore;
     expCTData.(filedataExp.Key(i)).concVarsAll = concVarsAll;
 
-    velFront_cms = mean(gradient(expCTData.(filedataExp.Key(i)).concVarsAll.zFront, ...
+    velFront_cms = mean(gradient(expCTData.(filedataExp.Key(i)).concVarsAll.zFront10, ...
         expCTData.(filedataExp.Key(i)).concVarsAll.secondsElapsed),'omitnan');
     velFront_cmmin = velFront_cms*60;
     expCTData.(filedataExp.Key(i)).CFparams.velFront_cmmin = velFront_cmmin;
