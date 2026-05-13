@@ -37,13 +37,14 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
     x1 = xy1(:,1);
     y1 = xy1(:,2);
     cla(ax1)
-    plot(ax1, x1, y1)
+    plot(ax1, x1, y1,'LineWidth',2)
     xlim(ax1,[min(x1) max(x1)])
-    ylim(ax1,[0 1])
+    ylim(ax1,[-0.02 1])
     xlabel(ax1,'X [cm]')
     ylabel(ax1,'C_{ave}_1 [-]')
     title(ax1,"timeElapsed: " + vars.secondsElapsed + ...
-              " s, volInjected: " + vars.volInjected + " mL")
+              " s, volInjected: " + sprintf('%.2f', vars.volInjected) + ...
+              " mL, tD: " + sprintf('%.3f', vars.tDcorr))
     grid(ax1,'on')
 
     % hTitle
@@ -56,14 +57,14 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
     x2 = xy2(:,1);
     y2 = xy2(:,2);
     cla(ax4)
-    plot(ax4, x2, y2)
+    plot(ax4, x2, y2,'LineWidth',2)
     xlabel(ax4,'Z [cm]')
     ylabel(ax4,'C_{ave}_1 [-]')
     grid(ax4,'on')          
     axis(ax4,'tight')
     axis(ax4,'manual')
     camroll(ax4,270)
-    ylim(ax4,[0 1])
+    ylim(ax4,[-0.02 1])
     ax4.YAxisLocation = 'right';
 
     % plot image ax3
@@ -89,13 +90,13 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
         'LineWidth',1,'ShowText',true,'LabelFormat',"%0.1f")
     hold(ax3,'off')
 
-    % plot histogram ax3
+    % plot histogram ax2
     histData = vars.histImage;
     freq = histData(:,1);
     binCenters = (histData(:,2)+histData(:,3))/2;
     cla(ax2)
     bar(ax2,binCenters,freq,1)
-    xlim(ax2,[0,1])
+    xlim(ax2,[-0.02,1])
     ylim(ax2,[0,length(x1)*length(x2)])
     xlabel(ax2,'C_1 [-]')
     ylabel(ax2,'Counts')

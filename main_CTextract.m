@@ -49,6 +49,9 @@ for i = 1:length(filedataExp.Key)
 
     % CT init ref
     refInitFolderPathCT = fullfile(refInitFolderContent.folder, refInitFolderName);
+        % pca
+        refInitpcaFiles = dir(fullfile(refInitFolderPathCT, '*.pca'));
+        expCTData.(filedataExp.Key(i)).refInit.pca = importPCA(refInitpcaFiles);
         % pcp
         refInitpcpFiles = dir(fullfile(refInitFolderPathCT, '*.pcp'));
         expCTData.(filedataExp.Key(i)).refInit.pcp = importPCP(refInitpcpFiles);
