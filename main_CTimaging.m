@@ -97,8 +97,6 @@
 %       L = core length
 %
 % - The callback function ONCLICKCALLBACK controls all interactive updates.
-`
-
 
 %% IMPORT input
 
