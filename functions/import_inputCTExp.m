@@ -1,9 +1,46 @@
 function data_out = import_inputCTExp(input_name_xlsx)
 
-%IMPORT_INPUTCAL Summary of this function goes here
-% import fields for importing data of experiments
+%IMPORT_INPUTCTEXP Import CT experiment metadata from a standardized Excel file.
+%
+%   data_out = import_inputCTExp(input_name_xlsx) reads experiment
+%   information from an Excel workbook and returns the contents as a MATLAB
+%   table. The function is designed for the standardized CT experiment
+%   input template and automatically assigns variable names, data types,
+%   and datetime formats.
+%
+%   Inputs:
+%       input_name_xlsx - String or character vector containing the path
+%                         to the Excel input file.
+%
+%   Output:
+%       data_out - Table containing experiment metadata, operating
+%                  conditions, file locations, and CT scan references.
+%
+%   Imported Fields Include:
+%       - Experiment identifiers and dates
+%       - Fluid information
+%       - Temperature, pressure, and flow rate
+%       - Core properties (diameter, length, porosity, permeability)
+%       - Experimental setup configuration
+%       - Pump assignments
+%       - Start and end timestamps
+%       - Raw data file names and paths
+%       - CT scan references
+%
+%   Notes:
+%       - This function assumes the Excel workbook follows the standard
+%         CT experiment template.
+%       - The worksheet name and column structure must remain unchanged.
+%       - Update the import options only if the template format changes.
+%
+%   Example:
+%       expData = import_inputCTExp('inputs_CTExperiments.xlsx');
+%
+%   See also:
+%       readtable, spreadsheetImportOptions, datetime
 
-% Do not change unless input excel format changed
+% Do not modify unless the input Excel format changes
+
 
 opts = spreadsheetImportOptions("NumVariables", 38);
 % Specify sheet and range

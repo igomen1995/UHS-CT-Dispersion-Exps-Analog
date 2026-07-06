@@ -1,14 +1,104 @@
-% Code description
-% 
+
+%% Interactive CT Concentration Visualization
+%
+% This script provides an interactive visualization environment for
+% exploring processed CT concentration datasets generated from porous media
+% flow experiments.
+%
+% The workflow loads processed experiment data, breakthrough information,
+% and concentration image stacks stored in HDF5 files. Users can interact
+% with a breakthrough curve to display the corresponding CT image and
+% associated concentration statistics.
 %
 % Workflow
-% Loop over one single full scan
-% 1 - extract data, take time and angle, and all fileDataExp
-% 2 - crop
-% 3 - normalize Measured - Xe / He - Xe or run estimated density based on
-% calibration, different gray image average or distribution correspond to a
-% certain density
-% 4 - save data
+% --------
+% 1. Import experiment configuration and metadata.
+% 2. Load processed experiment results (.mat files).
+% 3. Load concentration images stored in HDF5 format.
+% 4. Construct breakthrough-curve data from all scans.
+% 5. Display an interactive breakthrough plot.
+% 6. Select any breakthrough point to visualize:
+%       - Axial concentration profile
+%       - Radial/end-point concentration profile
+%       - 2-D concentration map
+%       - Concentration histogram
+%       - Experimental metadata
+%
+% Interactive Features
+% --------------------
+% Clicking a point on the breakthrough curve automatically:
+%
+%   - Identifies the corresponding experiment, run, and scan number.
+%   - Loads the associated concentration image from HDF5 storage.
+%   - Displays concentration distributions within the core.
+%   - Updates concentration profiles and histograms.
+%   - Updates figure titles and annotations.
+%
+% Figure Layout
+% -------------
+% ax1 : Axial concentration profile
+% ax2 : Concentration histogram
+% ax3 : 2-D concentration image
+% ax4 : Outlet/radial concentration profile
+% ax5 : Breakthrough curve
+% ax5b: Dimensionless time (t_D) axis
+%
+% Inputs
+% ------
+% inputCTExpConfig.xlsx
+%     Configuration file containing:
+%         - Input metadata file
+%         - Import path
+%         - Export path
+%
+% Generated HDF5 files:
+%     <ExperimentKey>.h5
+%
+% Generated MAT files:
+%     <ExperimentKey>.mat
+%
+% Outputs
+% -------
+% Interactive MATLAB figure for exploring CT concentration data.
+%
+% Optional Output
+% ---------------
+% The script contains a commented section allowing generation of
+% time-resolved MP4 movies showing the evolution of concentration fields
+% during experiments.
+%
+% Dependencies
+% ------------
+% Required custom functions:
+%
+%     import_inputCTExp
+%     onClickCallback
+%
+% Required MATLAB functionality:
+%
+%     HDF5 support
+%     Image Processing Toolbox
+%
+% Notes
+% -----
+% - Concentration images are expected to be stored in:
+%
+%       /exp/run_xx/conc
+%
+%   within each HDF5 file.
+%
+% - Dimensionless breakthrough time is computed using:
+%
+%       t_D = v * t / L
+%
+%   where:
+%       v = front velocity
+%       t = elapsed time
+%       L = core length
+%
+% - The callback function ONCLICKCALLBACK controls all interactive updates.
+`
+
 
 %% IMPORT input
 

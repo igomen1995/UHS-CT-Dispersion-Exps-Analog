@@ -1,6 +1,64 @@
-
 function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
     ax1,ax2,ax3,ax4,cbPos,hTitle)
+
+
+%ONCLICKCALLBACK Update visualization panels after selecting a breakthrough point.
+%
+%   This callback function is executed when the user clicks a point on the
+%   breakthrough (BT) curve. The selected point is used to identify the
+%   corresponding CT image and associated experimental variables. Several
+%   axes are then updated to display:
+%
+%       1. Axial concentration profile
+%       2. Concentration histogram
+%       3. 2-D concentration map with contour lines
+%       4. Radial/vertical concentration profile
+%
+%   The function retrieves the required data from the experiment structure
+%   and associated HDF5 files, allowing interactive exploration of CT scan
+%   results throughout the experiment.
+%
+%   Inputs:
+%       event        - MATLAB event data containing the clicked location.
+%       path         - Directory containing HDF5 experiment files.
+%       hSelected    - Graphics handle for the selected BT point marker.
+%       BT           - Structure containing breakthrough curve data and
+%                      image indices.
+%       expCTData    - Structure containing processed CT experiment data.
+%       filedataExp  - Experiment metadata table.
+%       ax1          - Axes for axial concentration profile.
+%       ax2          - Axes for concentration histogram.
+%       ax3          - Axes for concentration image visualization.
+%       ax4          - Axes for vertical concentration profile.
+%       cbPos        - Position vector for the colorbar.
+%       hTitle       - Handle to the figure title.
+%
+%   Function Actions:
+%       - Identifies the nearest breakthrough point to the click location.
+%       - Retrieves the associated image and concentration variables.
+%       - Updates the selected-point marker.
+%       - Displays axial and vertical concentration profiles.
+%       - Loads the corresponding concentration image from HDF5 storage.
+%       - Overlays concentration contour lines.
+%       - Updates the concentration histogram.
+%       - Refreshes figure titles and annotations.
+%
+%   Notes:
+%       - Concentration images are read from:
+%
+%             /exp/run_xx/conc
+%
+%         within the experiment HDF5 file.
+%
+%       - Concentration values are assumed to be normalized to the range
+%         [0, 1].
+%
+%       - A Gaussian filter is applied before contour generation to
+%         produce smoother contour lines.
+%
+%   See also:
+%       h5read, h5info, imagesc, contour, imgaussfilt
+
 
     % Get clicked coordinates
     cp = event.IntersectionPoint;

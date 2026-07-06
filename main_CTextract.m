@@ -1,14 +1,96 @@
-% Code description
-% 
+
+%% CT Image Processing and Concentration Map Generation
+%
+% This script processes raw CT scan data from tracer/core-flooding
+% experiments and generates normalized concentration maps for each scan.
+%
+% The workflow imports reference scans and experimental scans, applies
+% image normalization and cropping, computes concentration fields using
+% reference states, and stores the resulting image stacks in HDF5 format
+% for efficient downstream analysis.
 %
 % Workflow
-% Loop over one single full scan
-% 1 - extract data, take time and angle, and all fileDataExp
-% 2 - crop
-% 3 - normalize Measured - Xe / He - Xe or run estimated density based on
-% calibration, different gray image average or distribution correspond to a
-% certain density
-% 4 - save data
+% --------
+% 1. Read experiment configuration and metadata from Excel files.
+% 2. Load initial and final reference CT scans.
+% 3. Load experimental CT scan runs.
+% 4. Import scanner metadata and acquisition logs (.pca, .pcp, .pcj).
+% 5. Normalize raw CT images to the range [0,1].
+% 6. Crop images to the region containing the core sample.
+% 7. Compute normalized concentration images using:
+%
+%        C = (Iexp - Iref_init) ./ (Iref_final - Iref_init)
+%
+% 8. Save concentration image stacks to HDF5 files.
+%
+% Input Files
+% -----------
+% inputCTExpConfig.xlsx
+%     Repository configuration file containing:
+%       - Input metadata filename
+%       - Import directory
+%       - Export directory
+%
+% Experiment input spreadsheet
+%     Imported through IMPORT_INPUTCTEXP and contains:
+%       - Experiment identifiers
+%       - Scan paths
+%       - Reference scan locations
+%       - Experimental run locations
+%
+% CT scan folders
+%     Each folder may contain:
+%       - *.tif : Projection or reconstructed images
+%       - *.pca : Scanner/reconstruction settings
+%       - *.pcp : Acquisition log data
+%       - *.pcj : Reconstruction output data
+%
+% Outputs
+% -------
+% One HDF5 file is generated for each experiment:
+%
+%     <ExperimentKey>.h5
+%
+% containing:
+%
+%     /exp/run_xx/conc
+%
+% where run_xx is the experimental run number and conc is a 3-D image
+% stack with dimensions:
+%
+%     [Nx Ny Nimages]
+%
+% corresponding to normalized concentration maps.
+%
+% Dependencies
+% ------------
+% Required custom functions:
+%
+%     import_inputCTExp
+%     importPCA
+%     importPCP
+%     importPCJ
+%     importImages
+%     normImage
+%     cropImage
+%     satImage
+%
+% Required MATLAB Toolboxes:
+%
+%     Image Processing Toolbox
+%
+% Notes
+% -----
+% - Reference and experimental scans must contain the same number of
+%   projections/images.
+% - Crop coordinates are imported from:
+%
+%       crop_xCoords.mat
+%
+% - Existing HDF5 output files are automatically overwritten.
+% - Concentration values may exceed the physical range [0,1] due to image
+%   noise or reference-image uncertainty.
+
 
 %% IMPORT input
 

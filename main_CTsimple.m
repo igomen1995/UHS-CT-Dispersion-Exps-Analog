@@ -1,14 +1,75 @@
-% Code description
-% 
+%% End-to-End CT Concentration Processing Workflow
+%
+% This script performs the complete processing workflow for CT-based
+% concentration analysis of core-flood experiments.
+%
+% Raw CT images, reference scans, experimental scans, and scanner metadata
+% are imported, processed, analyzed, and visualized within a single script.
+%
+% The workflow converts reconstructed CT images into concentration maps,
+% extracts concentration profiles and breakthrough curves, and generates
+% both video animations and interactive visualizations.
 %
 % Workflow
-% Loop over one single full scan
-% 1 - extract data, take time and angle, and all fileDataExp
-% 2 - crop
-% 3 - normalize Measured - Xe / He - Xe or run estimated density based on
-% calibration, different gray image average or distribution correspond to a
-% certain density
-% 4 - save data
+% --------
+% 1. Import experiment metadata and configuration.
+% 2. Load initial and final reference scans.
+% 3. Load experimental scan runs.
+% 4. Import scanner metadata files:
+%       - PCA (scanner/reconstruction parameters)
+%       - PCP (acquisition timestamps)
+%       - PCJ (reconstruction information)
+% 5. Normalize all CT images.
+% 6. Crop images to the core region of interest.
+% 7. Calculate concentration maps using:
+%
+%       C = (Iexp - Iref_init)
+%           ------------------
+%       (Iref_final - Iref_init)
+%
+% 8. Extract quantitative transport variables:
+%       - Axial concentration profiles
+%       - Vertical concentration profiles
+%       - Concentration histograms
+%       - Breakthrough curves
+%       - Injected volumes and dimensionless time
+%
+% 9. Save reduced experimental datasets.
+% 10. Generate MP4 animations.
+% 11. Launch an interactive breakthrough visualization interface.
+%
+% Outputs
+% -------
+% expCTlight_<ExperimentKey>.mat
+%     Lightweight dataset containing processed concentration statistics.
+%
+% crop_xCoords.mat
+%     Cropping coordinates used for image processing.
+%
+% movie_<ExperimentKey>.mp4
+%     Time-resolved visualization of concentration evolution.
+%
+% Interactive GUI
+%     Linked breakthrough and image visualization interface.
+%
+% Dependencies
+% ------------
+%     import_inputCTExp
+%     importPCA
+%     importPCJ
+%     importPCP
+%     importImages
+%     cropImage
+%     findcropCore_xAxis
+%     normImage
+%     satImage
+%     onClickCallback
+%
+% Notes
+% -----
+% This script stores complete image datasets in memory. For large
+% experiments, the newer HDF5-based workflow is recommended because it
+% significantly reduces memory usage and improves scalability.
 
 %% IMPORT input
 
