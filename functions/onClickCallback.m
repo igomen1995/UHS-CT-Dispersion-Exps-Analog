@@ -76,10 +76,12 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
     set(ax3,'YDir','reverse')
     xlabel(ax3,'Pixel Number')
     ylabel(ax3,'Pixel Number')
+    cmap = turbo;
+    colormap(ax3,cmap)
     % nLevels = 10;
     % cmap = turbo(nLevels);
     % colormap(ax3,cmap)
-    colormap(ax3,turbo)
+    % colormap(ax3,gray)
     clim(ax3,[0 1]);
     cb = colorbar(ax3,'Position',cbPos);
     cb.Label.String = 'C_1 [-]';

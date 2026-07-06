@@ -170,6 +170,29 @@ for i = 1:length(filedataExp.Key)
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront90 = zFront_90; % Z C = 0.9 front
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zWidth = zWidth; % Z width front from 0.9 to 0.1
 
+            % 2D velocity field from iso-concentration contours
+            concLevels = 0.1:0.1:0.9;   % contour levels to track
+            nLevels    = length(concLevels);
+            [nRows, nCols] = size(concImage);        
+            zFrontMap = NaN(nLevels, nCols);   % z position (cm) per level per column
+            xFrontMap = NaN(nLevels, nCols);   % x position (cm) — column coordinate  
+            halfBand = 0.05;   % half-width of concentration band around each level
+            for lv = 1:nLevels
+                cLow  = concLevels(lv) - halfBand;
+                cHigh = concLevels(lv) + halfBand;
+                for col = 1:nCols
+                    colData = concImage(:, col);   % concentration vs z for this column
+                    idx = find(colData >= cLow & colData <= cHigh);
+                    if ~isempty(idx)
+                        zFrontMap(lv, col) = mean(idx) * resYmm / 10;   % cm
+                    end
+                    xFrontMap(lv, col) = col * resXmm / 10;             % cm
+                end
+            end
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFrontMap = zFrontMap;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).xFrontMap = xFrontMap;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).concLevels = concLevels;
+
             % BT
             BTlinesBefore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(1),...
                 'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','C1'});
@@ -179,9 +202,37 @@ for i = 1:length(filedataExp.Key)
             BTcore = [BTcore;BTcore_temp];
         
         end
+
+        % Velocity field from contour displacement between frames
+        nFrames = nn_exp;
+        concVarsRun = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars;
+        % Preallocate velocity arrays: [nLevels x nCols x nFrames]
+        Vz_field = NaN(nLevels, nCols, nFrames);
+        Vx_field = NaN(nLevels, nCols, nFrames);
+
+        for k = 2:nFrames
+            dt = concVarsRun(k).secondsElapsed - concVarsRun(k-1).secondsElapsed;
+            if dt == 0, continue; end
+        
+            zCurr = concVarsRun(k).zFrontMap;    % [nLevels x nCols]
+            zPrev = concVarsRun(k-1).zFrontMap;
+            xCurr = concVarsRun(k).xFrontMap;
+            xPrev = concVarsRun(k-1).xFrontMap;
+        
+            Vz_field(:,:,k) = (zCurr - zPrev) / dt;   % cm/s  — vertical (downward = positive)
+            Vx_field(:,:,k) = (xCurr - xPrev) / dt;   % cm/s  — lateral drift
+        end
+
+        expCTData.(filedataExp.Key(i)).exp.(run_name).Vz_field = Vz_field;
+        expCTData.(filedataExp.Key(i)).exp.(run_name).Vx_field = Vx_field;
+        expCTData.(filedataExp.Key(i)).exp.(run_name).xFrontMap_ref = concVarsRun(end).xFrontMap;
+        expCTData.(filedataExp.Key(i)).exp.(run_name).zFrontMap_ref = concVarsRun(end).zFrontMap;
+
         concVars_temp =  expCTData.(filedataExp.Key(i)).exp.(run_name).concVars;
         concVars_tempTable = struct2table(concVars_temp,'AsArray',true);
         concVarsAll = [concVarsAll;concVars_tempTable];
+
+
     end
     expCTData.(filedataExp.Key(i)).BTlinesBefore = BTlinesBefore;
     expCTData.(filedataExp.Key(i)).BTcore = BTcore;
@@ -193,7 +244,7 @@ for i = 1:length(filedataExp.Key)
     expCTData.(filedataExp.Key(i)).CFparams.velFront_cmmin = velFront_cmmin;
     expCTData.(filedataExp.Key(i)).concVarsAll.tDcorr = ...
         velFront_cms*expCTData.(filedataExp.Key(i)).concVarsAll.secondsElapsed/zVertcm(end);
-    for j = 1:length(expFolderName)
+    for j = 1%:length(expFolderName)
         run_name = "run_" + sprintf('%02d', j);
         for k = 1:nn_exp
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).tDcorr = ...
