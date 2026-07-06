@@ -387,7 +387,7 @@ for i = 1:length(filedataExp.Key)
     expCTData.(filedataExp.Key(i)).CFparams.velFront_cmmin = velFront_cmmin;
     expCTData.(filedataExp.Key(i)).concVarsAll.tDcorr = ...
         velFront_cms*expCTData.(filedataExp.Key(i)).concVarsAll.secondsElapsed/zVertcm(end);
-    for j = 1%:length(expFolderName)
+    for j = 1:length(expFolderName)
         run_name = "run_" + sprintf('%02d', j);
         for k = 1:nn_exp
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).tDcorr = ...
