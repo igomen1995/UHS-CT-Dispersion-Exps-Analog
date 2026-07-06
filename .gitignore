@@ -1,0 +1,13 @@
+# Local results & input data
+results/
+input/
+data/
+
+% desktop init
+desktop.ini
+
+% Local temporary changes
+*.asv
+
+% input excel
+inputCTExpConfig.xlsx
