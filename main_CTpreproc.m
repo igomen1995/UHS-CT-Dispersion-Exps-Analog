@@ -268,6 +268,7 @@ for i = 1:length(filedataExp.Key)
         volInjected = secondsElapsed*filedataExp.Q(i)/60;
         tDtotal = volInjected/filedataExp.Vtotal(i);
         concImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+        concImage = double(concImage);
         % ct prop
         resXmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeX; % mm
         resYmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeY; % mm
@@ -296,29 +297,59 @@ for i = 1:length(filedataExp.Key)
         expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Profile = table(zVertcm',zDimLess',concVert','VariableNames',{'zVertcm','zDimLess','rhoNormVert'}); % y vars
         expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Axial = table(xHorzcm',concHorz','VariableNames',{'xHorzcm','rhoNormHorz'}); % x vars
         % front velocity
-        % C = 0.1
-        idx = (concImage>=0.08 & concImage <= 0.12);
-        [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
-        if ~isempty(rows)
-            zFront_10 = mean(rows) * resYmm / 10;
-        else
+        % C = 0.1 contour
+        C10 = contourc(concImage,[0.1 0.1]);
+        x10 = [];
+        y10 = [];
+        idx = 1;
+        while idx < size(C10,2)
+            nPts = C10(2,idx);
+            x10 = [x10 C10(1,idx+1:idx+nPts)]; % row 1 col 1 level, row 1 rest of columns, x pixel position of each point found with same coutour
+            y10 = [y10 C10(2,idx+1:idx+nPts)]; % row 2 col 1 N points, row 2 rest of columns, y pixel position of each point found with same coutour
+            idx = idx + nPts + 1;
+        end
+        x10cm = x10*resXmm/10;
+        z10cm = y10*resYmm/10;
+        if isempty(z10cm)
             zFront_10 = NaN;
-        end
-        % C = 0.5
-        idx = (concImage>=0.48 & concImage <= 0.52);
-        [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
-        if ~isempty(rows)
-            zFront_50 = mean(rows) * resYmm / 10;
         else
+            zFront_10 = mean(z10cm);
+        end
+        % C = 0.5 contour
+        C50 = contourc(concImage,[0.5 0.5]);
+        x50 = [];
+        y50 = [];
+        idx = 1;
+        while idx < size(C50,2)
+            nPts = C50(2,idx);
+            x50 = [x50 C50(1,idx+1:idx+nPts)];
+            y50 = [y50 C50(2,idx+1:idx+nPts)];
+            idx = idx + nPts + 1;
+        end
+        x50cm = x50*resXmm/10;
+        z50cm = y50*resYmm/10;
+        if isempty(z50cm)
             zFront_50 = NaN;
-        end
-        % C = 0.9
-        idx = (concImage>=0.88 & concImage <= 0.92);
-        [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
-        if ~isempty(rows)
-            zFront_90 = mean(rows) * resYmm / 10;
         else
+            zFront_50 = mean(z10cm);
+        end
+        % C = 0.9 contour
+        C90 = contourc(concImage,[0.9 0.9]);
+        x90 = [];
+        y90 = [];
+        idx = 1;
+        while idx < size(C90,2)
+            nPts = C90(2,idx);
+            x90 = [x90 C90(1,idx+1:idx+nPts)];
+            y90 = [y90 C90(2,idx+1:idx+nPts)];
+            idx = idx + nPts + 1;
+        end
+        x90cm = x90*resXmm/10;
+        z90cm = y90*resYmm/10;
+        if isempty(z90cm)
             zFront_90 = NaN;
+        else
+            zFront_90 = mean(z10cm);
         end
         zWidth = zFront_10 - zFront_90;
         % z front velocity
@@ -333,6 +364,12 @@ for i = 1:length(filedataExp.Key)
         expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront10 = zFront_10; % Z C = 0.1 front
         expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront50 = zFront_50; % Z C = 0.5 front
         expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront90 = zFront_90; % Z C = 0.9 front
+        expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour10_xcm = x10cm;
+        expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour10_zcm = z10cm;
+        expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour50_xcm = x50cm;
+        expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour50_zcm = z50cm;
+        expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour90_xcm = x90cm;
+        expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour90_zcm = z90cm;
         expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zWidth = zWidth; % Z width front from 0.9 to 0.1
         expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).dt = dt; % d time elapsed
         expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).uz_50_cms = uz_50_cms; % z front velocity of C = 0.5 (cm/s)
@@ -351,7 +388,7 @@ for i = 1:length(filedataExp.Key)
         BTcore = [BTcore;BTcore_temp];
 
         for k = 2:nn_exp
-            concImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            concImage = double(h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]));
 
             % Concentration profiles and histograms of normalized images
             imgNr = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.ImgNr(k);
@@ -389,31 +426,60 @@ for i = 1:length(filedataExp.Key)
                 table(counts', edges(1:end-1)',edges(2:end)','VariableNames',{'counts','minEdge','maxEdge'}); % hist
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Profile = table(zVertcm',zDimLess',concVert','VariableNames',{'zVertcm','zDimLess','rhoNormVert'}); % y vars
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).C1Axial = table(xHorzcm',concHorz','VariableNames',{'xHorzcm','rhoNormHorz'}); % x vars
-            
-            % z front (cm)
-            % C = 0.1
-            idx = (concImage>=0.05 & concImage <= 0.15);
-            [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
-            if ~isempty(rows)
-                zFront_10 = mean(rows) * resYmm / 10;
-            else
+            % front velocity
+            % C = 0.1 contour
+            C10 = contourc(concImage,[0.1 0.1]);
+            x10 = [];
+            y10 = [];
+            idx = 1;
+            while idx < size(C10,2)
+                nPts = C10(2,idx);
+                x10 = [x10 C10(1,idx+1:idx+nPts)]; % row 1 col 1 level, row 1 rest of columns, x pixel position of each point found with same coutour
+                y10 = [y10 C10(2,idx+1:idx+nPts)]; % row 2 col 1 N points, row 2 rest of columns, y pixel position of each point found with same coutour
+                idx = idx + nPts + 1;
+            end
+            x10cm = x10*resXmm/10;
+            z10cm = y10*resYmm/10;
+            if isempty(z10cm)
                 zFront_10 = NaN;
-            end
-            % C = 0.5
-            idx = (concImage>=0.45 & concImage <= 0.55);
-            [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
-            if ~isempty(rows)
-                zFront_50 = mean(rows) * resYmm / 10;
             else
+                zFront_10 = mean(z10cm);
+            end
+            % C = 0.5 contour
+            C50 = contourc(concImage,[0.5 0.5]);
+            x50 = [];
+            y50 = [];
+            idx = 1;
+            while idx < size(C50,2)
+                nPts = C50(2,idx);
+                x50 = [x50 C50(1,idx+1:idx+nPts)];
+                y50 = [y50 C50(2,idx+1:idx+nPts)];
+                idx = idx + nPts + 1;
+            end
+            x50cm = x50*resXmm/10;
+            z50cm = y50*resYmm/10;
+            if isempty(z50cm)
                 zFront_50 = NaN;
-            end
-            % C = 0.9
-            idx = (concImage>=0.85 & concImage <= 0.95);
-            [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
-            if ~isempty(rows)
-                zFront_90 = mean(rows) * resYmm / 10;
             else
+                zFront_50 = mean(z10cm);
+            end
+            % C = 0.9 contour
+            C90 = contourc(concImage,[0.9 0.9]);
+            x90 = [];
+            y90 = [];
+            idx = 1;
+            while idx < size(C90,2)
+                nPts = C90(2,idx);
+                x90 = [x90 C90(1,idx+1:idx+nPts)];
+                y90 = [y90 C90(2,idx+1:idx+nPts)];
+                idx = idx + nPts + 1;
+            end
+            x90cm = x90*resXmm/10;
+            z90cm = y90*resYmm/10;
+            if isempty(z90cm)
                 zFront_90 = NaN;
+            else
+                zFront_90 = mean(z10cm);
             end
             zWidth = zFront_10 - zFront_90;
             % z (cm)
@@ -434,6 +500,12 @@ for i = 1:length(filedataExp.Key)
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront10 = zFront_10; % Z C = 0.1 front
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront50 = zFront_50; % Z C = 0.5 front
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zFront90 = zFront_90; % Z C = 0.9 front
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour10_xcm = x10cm;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour10_zcm = z10cm;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour50_xcm = x50cm;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour50_zcm = z50cm;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour90_xcm = x90cm;
+            expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).contour90_zcm = z90cm;
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).zWidth = zWidth; % Z width front from 0.9 to 0.1
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).dt = dt; % d time elapsed
             expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k).uz_50_cms = uz_50_cms; % z front velocity of C = 0.5 (cm/s)
