@@ -404,16 +404,13 @@ for i = 1:length(filedataExp.Key)
         'FontWeight','bold', ...
         'Interpreter','none');
 
-    cmap = winter(256);
+    cmap = flipud(winter(256));
     varsAll = expCTData.(filedataExp.Key(i)).concVarsAll;
     varsAll = varsAll(varsAll.tDtotal < 1,:);
 
     tDAll = varsAll.tDtotal;
     tDmin = min(tDAll);
     tDmax = max(tDAll);
-
-    hLeg = [];
-    legTxt = {};
 
     for j = 1:length(expFolderName) % number of runs
         run_name = "run_" + sprintf('%02d', j);
@@ -453,11 +450,23 @@ for i = 1:length(filedataExp.Key)
             cidx = round(1 + 255*(tD-tDmin)/(tDmax-tDmin));
             cidx = max(1,min(256,cidx));
             hold on
-            contour(xcm,zcm,imgSmooth,levels, ...
+            [C, h] = contour(xcm,zcm,imgSmooth,levels, ...
                 'LineColor',cmap(cidx,:),...
-                'LineWidth',3,'ShowText',true,'LabelFormat',"%0.1f");
-            hLeg(end+1) = plot(NaN,NaN,'Color',cmap(cidx,:),'LineWidth',1.5);
-            legTxt{end+1} = sprintf('\\theta = %.0f°',vars.rotPos);
+                'LineWidth',3);
+            if isempty(C)
+                continue
+            end
+            npts = C(2,1);
+            if npts > 5
+                mid = round(npts/2);
+                xLab = C(1,mid+1);
+                zLab = C(2,mid+1);
+                text(xLab,zLab,sprintf('t_D = %.1f\n\\theta = %.0f °', ...
+                    tD,vars.rotPos),'Color',cmap(cidx,:),...
+                    'FontSize',12,'FontWeight','bold',...
+                    'HorizontalAlignment','center',...
+                    'BackgroundColor','w','Margin',1);
+            end
 
         end
     end
@@ -472,7 +481,7 @@ for i = 1:length(filedataExp.Key)
     cb = colorbar;
     cb.Label.String = 't_D [-]';
     cb.Direction = 'reverse';
-    legend(hLeg,legTxt,'Location','southeastoutside');
+    % legend(hLeg,legTxt,'Location','southeastoutside');
     title({'Evolution of C ~ 0.5 Front', char(filedataExp.Key)}, ...
     'Interpreter','none')
 end
