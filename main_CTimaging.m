@@ -409,8 +409,8 @@ for i = 1:length(filedataExp.Key)
     varsAll = varsAll(varsAll.tDtotal < 1,:);
 
     tDAll = varsAll.tDtotal;
-    tDmin = min(tDAll);
-    tDmax = max(tDAll);
+    tDmin = 0;
+    tDmax = 1;
 
     for j = 1:length(expFolderName) % number of runs
         run_name = "run_" + sprintf('%02d', j);
@@ -477,7 +477,7 @@ for i = 1:length(filedataExp.Key)
     xlabel('X [cm]')
     ylabel('Z [cm]')
     colormap(cmap)
-    clim([0 1])
+    clim([tDmin tDmax])
     cb = colorbar;
     cb.Label.String = 't_D [-]';
     cb.Direction = 'reverse';
