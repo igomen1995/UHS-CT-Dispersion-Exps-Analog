@@ -312,8 +312,8 @@ for i = 1:length(filedataExp.Key)
             zFront_50_cm = rows*resYmm/10;
             zFront_50_cm_mean = mean(rows) * resYmm / 10;
         else
-            xFront_50_cm = NaN;
-            zFront_50_cm = NaN;
+            xFront_50_cm = [];
+            zFront_50_cm = [];
             zFront_50_cm_mean = NaN;
         end
         % C = 0.9
@@ -413,8 +413,8 @@ for i = 1:length(filedataExp.Key)
                 zFront_50_cm = rows*resYmm/10;
                 zFront_50_cm_mean = mean(rows) * resYmm / 10;
             else
-                xFront_50_cm = NaN;
-                zFront_50_cm = NaN;
+                xFront_50_cm = [];
+                zFront_50_cm = [];
                 zFront_50_cm_mean = NaN;
             end
             % C = 0.9
@@ -500,23 +500,28 @@ for i = 1:length(filedataExp.Key)
     % save expCTData
     expCT_name = pathExportAll + filedataExp.Key(i);
     expCTDataSave = expCTData.(filedataExp.Key(i));
-    save(expCT_name + '.mat','expCTDataSave')
+    save(expCT_name + '.mat','expCTDataSave','-v7.3')
 end
 
 %% plot front evolution
 i=1;
 vars = expCTData.(filedataExp.Key(i)).concVarsAll;
-vars = vars(vars.tDtotal <1,:);
+tDtotalMax = 1 ;
+vars = vars(vars.tDtotal <tDtotalMax,:);
 figure
 hold on
 
-stride = 50;        % plot every strideth scan
+tDstep = 0.05;
+tDtargets = 0:tDstep:tDtotalMax;
+
 t = vars.secondsElapsed;
 tmin = min(t);
 tmax = max(t);
 cmap = winter(256);
 
-for k = 1:stride:height(vars)
+for m = 1:length(tDtargets)
+
+    [~,k] = min(abs(vars.tDtotal - tDtargets(m)));
 
     x = vars.front50_xcm{k};
     z = vars.front50_zcm{k};
@@ -537,7 +542,7 @@ end
 
 axis equal
 set(gca,'YDir','reverse')
-xlim([min(x),max(x)])
+xlim([xHorzcm(1),xHorzcm(end)])
 ylim([zVertcm(1),zVertcm(end)])
 xlabel('X [cm]')
 ylabel('Z [cm]')

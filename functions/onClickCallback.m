@@ -91,9 +91,8 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
         'YData', BT.C(idx));
 
     % plot concentration in x ax1
-    xy1 = vars.C1Axial;
-    x1 = xy1(:,1);
-    y1 = xy1(:,2);
+    x1 = vars.C1Axial.xHorzcm;
+    y1 = vars.C1Axial.rhoNormHorz;
     cla(ax1)
     plot(ax1, x1, y1,'LineWidth',2)
     xlim(ax1,[min(x1) max(x1)])
@@ -102,7 +101,7 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
     ylabel(ax1,'C_{ave}_1 [-]')
     title(ax1,"timeElapsed: " + vars.secondsElapsed + ...
               " s, volInjected: " + sprintf('%.2f', vars.volInjected) + ...
-              " mL, tD: " + sprintf('%.3f', vars.tDcorr))
+              " mL, tD: " + sprintf('%.3f', vars.tDtotal))
     grid(ax1,'on')
 
     % hTitle
@@ -111,9 +110,8 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
         " ImgNumber_" + sprintf('%03d', k));
 
     % plot concentration in z ax4
-    xy2 = vars.C1Profile;
-    x2 = xy2(:,1);
-    y2 = xy2(:,2);
+    x2 = vars.C1Profile.zVertcm;
+    y2 = vars.C1Profile.rhoNormVert;
     cla(ax4)
     plot(ax4, x2, y2,'LineWidth',2)
     xlabel(ax4,'Z [cm]')
@@ -139,7 +137,7 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
     % nLevels = 10;
     % cmap = turbo(nLevels);
     % colormap(ax3,cmap)
-    % colormap(ax3,gray)
+    % % colormap(ax3,gray)
     clim(ax3,[0 1]);
     cb = colorbar(ax3,'Position',cbPos);
     cb.Label.String = 'C_1 [-]';
@@ -151,9 +149,8 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
     hold(ax3,'off')
 
     % plot histogram ax2
-    histData = vars.histImage;
-    freq = histData(:,1);
-    binCenters = (histData(:,2)+histData(:,3))/2;
+    freq = vars.histImage.counts;
+    binCenters = (vars.histImage.minEdge+vars.histImage.maxEdge)/2;
     cla(ax2)
     bar(ax2,binCenters,freq,1)
     xlim(ax2,[-0.02,1])

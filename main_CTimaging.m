@@ -192,9 +192,8 @@ expFolderPath = {expFolderContent.folder};
 %                 " ImgNumber_" + sprintf('%03d', k));
 % 
 %             % plot concentration in x ax1
-%             xy1 = vars.C1Axial;
-%             x1 = xy1(:,1);
-%             y1 = xy1(:,2);
+%             x1 = vars.C1Axial.xHorzcm;
+%             y1 = vars.C1Axial.rhoNormHorz;
 %             cla(ax1)
 %             plot(ax1, x1, y1,'LineWidth',2)
 %             xlim(ax1,[min(x1) max(x1)])
@@ -203,13 +202,12 @@ expFolderPath = {expFolderContent.folder};
 %             ylabel(ax1,'C_{ave}_1 [-]')
 %             title(ax1,"timeElapsed: " + vars.secondsElapsed + ...
 %                       " s, volInjected: " + sprintf('%.2f', vars.volInjected) + ...
-%                       " mL, tD: " + sprintf('%.3f', vars.tDcorr))
+%                       " mL, tD: " + sprintf('%.3f', vars.tDtotal))
 %             grid(ax1,'on')
 % 
 %             % plot concentration in z ax4
-%             xy2 = vars.C1Profile;
-%             x2 = xy2(:,1);
-%             y2 = xy2(:,2);
+%             x2 = vars.C1Profile.zVertcm;
+%             y2 = vars.C1Profile.rhoNormVert;
 %             cla(ax4)
 %             plot(ax4, x2, y2,'LineWidth',2)
 %             xlabel(ax4,'Z [cm]')
@@ -245,10 +243,9 @@ expFolderPath = {expFolderContent.folder};
 %             % hold(ax3,'off')
 % 
 %             % plot histogram ax2
-%             histData = vars.histImage;
-%             freq = histData(:,1);
-%             binCenters = (histData(:,2)+histData(:,3))/2;
-%             binWidth = abs(histData(:,3)-histData(:,2));
+%             freq = vars.histImage.counts;
+%             binCenters = (vars.histImage.minEdge + vars.histImage.maxEdge)/2;
+%             binWidth = abs(vars.histImage.maxEdge-vars.histImage.minEdge);
 %             cla(ax2)
 %             bar(ax2,binCenters,freq,1)
 %             xlim(ax2,[-0.02,1])
@@ -267,11 +264,6 @@ expFolderPath = {expFolderContent.folder};
 %             hold(ax5,'on')
 %             ylim(ax5,[-0.02 1])
 %             xlim(ax5,[tmin,tmax])
-%             ticks = get(ax5,'XTick'); % seconds
-%             L = x2(end); % cm
-%             vel = expCTData.(filedataExp.Key(i)).CFparams.velFront_cmmin; % cm/min
-%             tD_ticks = vel * (ticks/60) / L; 
-%             set(ax5b,'XTick', ticks, 'XTickLabel', compose('%.2f', tD_ticks)); % update top axis
 %             xlabel(ax5,'secondsElapsed')
 %             ylabel(ax5,'C_{ave}_1 [-]')
 %             xlabel(ax5b,'t_D [-]')
@@ -341,9 +333,8 @@ for i = 1:length(filedataExp.Key)
 
             % breakthrough point
             t = vars.secondsElapsed;
-            tD = vars.tDcorr;
-            xy2 = vars.C1Profile;
-            y2 = xy2(:,2);
+            tD = vars.tDtotal;
+            y2 = vars.C1Profile.rhoNormVert;
             C = y2(end);
 
             % store
@@ -356,9 +347,6 @@ for i = 1:length(filedataExp.Key)
 
         end
     end
-    L = expCTData.(filedataExp.Key(i)).concVarsAll.C1Profile{1,1}(end,1);
-    vel = expCTData.(filedataExp.Key(i)).CFparams.velFront_cmmin;
-
         % plot BT
     hScatter = scatter(ax5, BT.t, BT.C, 20, ...
         'filled', ...
@@ -368,11 +356,12 @@ for i = 1:length(filedataExp.Key)
     tmax = max(BT.t);
     xlim(ax5,[tmin tmax])
     ylim(ax5,[-0.02 1])
-    ticks = get(ax5,'XTick'); % seconds
-    tD_ticks = vel * (ticks/60) / L; 
-    set(ax5b,'XTick', ticks, 'XTickLabel', compose('%.2f', tD_ticks)); % update top axis
     xlabel(ax5,'secondsElapsed')
     ylabel(ax5,'C_{ave}_1 [-]')
+    xt = ax5.XTick;
+    tDtick = xt*(max(BT.tD)/max(BT.t));
+    ax5b.XTick = xt;
+    ax5b.XTickLabel = compose('%.2f',tDtick);
     xlabel(ax5b,'t_D [-]')
     grid(ax5,'on')
     
@@ -395,6 +384,143 @@ for i = 1:length(filedataExp.Key)
         onClickCallback(src,event,pathExportAll,hSelected, ...
         BT, expCTData,filedataExp, ...
         ax1,ax2,ax3,ax4,cbPos,hTitle);
+end
+
+%% Countour map
+
+for i = 1:length(filedataExp.Key)
+    HDF5filename = fullfile(pathExportAll, filedataExp.Key(i) + ".h5");
+    expCTDataname = fullfile(pathExportAll, filedataExp.Key(i) + ".mat");
+    expCTDataTemp = load(expCTDataname);
+    expCTData.(filedataExp.Key(i)) = expCTDataTemp.expCTDataSave;
+
+    fig = figure('Position', [50, 50, 600, 1000]); % [left, bottom, width, height];
+    % Shared geometry
+    imgPos  = [0.12 0.24  0.3 0.5]; % image axes
+    cbPos   = [0.45 imgPos(2) 0.02 0.5];
+    ax1Pos  = [imgPos(1) 0.79 imgPos(3) 0.14];  % same WIDTH as image
+    ax4Pos  = [0.62 imgPos(2)  0.27 imgPos(4)];  % same HEIGHT as image  
+    ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)];
+    ax5Pos  = [ax1Pos(1) 0.05 0.77 0.12]; 
+    ax1 = axes('Position',ax1Pos);
+    ax2 = axes('Position',ax2Pos);
+    ax3 = axes('Position',imgPos);
+    ax4 = axes('Position',ax4Pos);
+    ax5 = axes('Position',ax5Pos);
+    ax5b = axes('Position', ax5.Position, ...
+        'XAxisLocation','top', ...
+        'YAxisLocation','right', ...
+        'Color','none', ...
+        'YColor','none');   % hide Y axis
+    linkaxes([ax5 ax5b],'x')
+    ax5b.HitTest = 'off';
+    ax5b.PickableParts = 'none';
+    hold(ax5,'on')
+
+    % hTitle
+    hTitle = annotation('textbox', [0 0.93 1 0.05], ...
+        'String', '', ...
+        'EdgeColor','none', ...
+        'HorizontalAlignment','center', ...
+        'FontWeight','bold', ...
+        'Interpreter','none');
+
+    for j = 1:length(expFolderName) % number of runs
+        run_name = "run_" + sprintf('%02d', j);
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+        info = h5info(HDF5filename, HDF5dataPath);
+        dims = info.Dataspace.Size;
+        nx = dims(1);
+        ny = dims(2);
+        nz = dims(3);
+
+        for k = 10%1:nz
+            vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k);
+
+            % hTitle
+            set(hTitle, 'String', ...
+                filedataExp.Key(i) + ": CT " + run_name + ...
+                " ImgNumber_" + sprintf('%03d', k));
+
+            % plot concentration in x ax1
+            x1 = vars.C1Axial.xHorzcm;
+            y1 = vars.C1Axial.rhoNormHorz;
+            cla(ax1)
+            plot(ax1, x1, y1,'LineWidth',2)
+            xlim(ax1,[min(x1) max(x1)])
+            ylim(ax1,[-0.02 1])
+            xlabel(ax1,'X [cm]')
+            ylabel(ax1,'C_{ave}_1 [-]')
+            title(ax1,"timeElapsed: " + vars.secondsElapsed + ...
+                      " s, volInjected: " + sprintf('%.2f', vars.volInjected) + ...
+                      " mL, tD: " + sprintf('%.3f', vars.tDtotal))
+            grid(ax1,'on')
+
+            % plot concentration in z ax4
+            x2 = vars.C1Profile.zVertcm;
+            y2 = vars.C1Profile.rhoNormVert;
+            cla(ax4)
+            plot(ax4, x2, y2,'LineWidth',2)
+            xlabel(ax4,'Z [cm]')
+            ylabel(ax4,'C_{ave}_1 [-]')
+            grid(ax4,'on')          
+            axis(ax4,'tight')
+            axis(ax4,'manual')
+            camroll(ax4,270)
+            ylim(ax4,[-0.02 1])
+            ax4.YAxisLocation = 'right';
+
+            % plot image ax3
+            concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            imgSmooth = imgaussfilt(concCTimages, 20);
+            cla(ax3)
+            imagesc(ax3, concCTimages)
+            axis(ax3,'xy','fill')
+            set(ax3,'YDir','reverse')
+            xlabel(ax3,'Pixel Number')
+            ylabel(ax3,'Pixel Number')
+            % nLevels = 10;
+            % cmap = turbo(nLevels);
+            % colormap(ax3,cmap)
+            colormap(ax3,turbo)
+            clim(ax3,[0 1]);
+            cb = colorbar(ax3,'Position',cbPos);
+            cb.Label.String = 'C_1 [-]';
+            levels = 0:0.1:1;
+            hold(ax3,'on')
+            contour(ax3, imgSmooth, levels, ...
+                'LineColor','k', ...
+                'LineWidth',1,'ShowText',true,'LabelFormat',"%0.1f")
+            hold(ax3,'off')
+
+            % plot histogram ax2
+            freq = vars.histImage.counts;
+            binCenters = (vars.histImage.minEdge + vars.histImage.maxEdge)/2;
+            binWidth = abs(vars.histImage.maxEdge-vars.histImage.minEdge);
+            cla(ax2)
+            bar(ax2,binCenters,freq,1)
+            xlim(ax2,[-0.02,1])
+            ylim(ax2,[0,length(x1)*length(x2)])
+            xlabel(ax2,'C_1 [-]')
+            ylabel(ax2,'Counts')
+            title(ax2,"run: " +string(j)+" , angle: " + vars.rotPos + "°")
+            grid(ax2, 'on')
+
+            % plot BTcore ax5
+            t = vars.secondsElapsed;
+            C = y2(end);
+            tmin = expCTData.(filedataExp.Key(i)).BTcore.secondsElapsed(1);
+            tmax = expCTData.(filedataExp.Key(i)).BTcore.secondsElapsed(end);
+            scatter(ax5,t,C,15,'filled','MarkerFaceColor',[0, 0.4470, 0.7410],'MarkerEdgeColor','none')
+            hold(ax5,'on')
+            ylim(ax5,[-0.02 1])
+            xlim(ax5,[tmin,tmax])
+            xlabel(ax5,'secondsElapsed')
+            ylabel(ax5,'C_{ave}_1 [-]')
+            xlabel(ax5b,'t_D [-]')
+            grid(ax5, 'on')
+        end
+    end
 end
 
 
