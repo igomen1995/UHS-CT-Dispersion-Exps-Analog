@@ -389,12 +389,24 @@ end
 %% Countour map
 
 for i = 1:length(filedataExp.Key)
-    HDF5filename = fullfile(pathExportAll, filedataExp.Key(i) + ".h5");
-    expCTDataname = fullfile(pathExportAll, filedataExp.Key(i) + ".mat");
-    expCTDataTemp = load(expCTDataname);
-    expCTData.(filedataExp.Key(i)) = expCTDataTemp.expCTDataSave;
-
-    fig = figure('Position', [50, 50, 600, 1000]); % [left, bottom, width, height];
+    
+    fig = figure('Position', [50, 50, 600, 800]); % [left, bottom, width, height];
+    % figure config
+    imgPos  = [0.1 0.1  0.8 0.8]; % xleft ybottom W H
+    hGap = 0.07;
+    vGap = 0.07;   
+    colsW = (imgPos(3) - 2*hGap)/3;
+    row1H = imgPos(4)*3/4 - vGap;
+    row2H = imgPos(4)/4;
+    ax1Pos  = [imgPos(1) imgPos(2)+row2H+vGap colsW row1H];
+    ax2Pos  = [imgPos(1)+colsW+hGap ax1Pos(2) ax1Pos(3) ax1Pos(4)];
+    ax3Pos  = [imgPos(1)+2*(colsW+hGap) ax1Pos(2) ax1Pos(3) ax1Pos(4)];
+    ax4Pos  = [imgPos(1) imgPos(2) imgPos(3) row2H];
+    % axes
+    ax1 = axes('Position',ax1Pos);
+    ax2 = axes('Position',ax2Pos);
+    ax3 = axes('Position',ax3Pos);
+    ax4 = axes('Position',ax4Pos);
 
     % hTitle
     hTitle = annotation('textbox', [0 0.93 1 0.05], ...
@@ -403,6 +415,11 @@ for i = 1:length(filedataExp.Key)
         'HorizontalAlignment','center', ...
         'FontWeight','bold', ...
         'Interpreter','none');
+
+    HDF5filename = fullfile(pathExportAll, filedataExp.Key(i) + ".h5");
+    expCTDataname = fullfile(pathExportAll, filedataExp.Key(i) + ".mat");
+    expCTDataTemp = load(expCTDataname);
+    expCTData.(filedataExp.Key(i)) = expCTDataTemp.expCTDataSave;
 
     cmap = flipud(winter(256));
     varsAll = expCTData.(filedataExp.Key(i)).concVarsAll;
@@ -439,18 +456,20 @@ for i = 1:length(filedataExp.Key)
             vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k);
             tD = vars.tDtotal;
 
-            % plot image ax3
+            % plot image ax1
             concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
             imgSmooth = imgaussfilt(concCTimages, 20);
             resXmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeX;
             resYmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeY;
             xcm = (1:ny)*resXmm/10;
             zcm = (1:nx)*resYmm/10;
+            xD = xcm/max(xcm);
+            zD = zcm/max(zcm);
             levels = [0.5 0.5];
             cidx = round(1 + 255*(tD-tDmin)/(tDmax-tDmin));
             cidx = max(1,min(256,cidx));
-            hold on
-            [C, h] = contour(xcm,zcm,imgSmooth,levels, ...
+            hold(ax1,'on')
+            [C, h] = contour(ax1,xD,zD,imgSmooth,levels, ...
                 'LineColor',cmap(cidx,:),...
                 'LineWidth',3);
             if isempty(C)
@@ -461,29 +480,80 @@ for i = 1:length(filedataExp.Key)
                 mid = round(npts/2);
                 xLab = C(1,mid+1);
                 zLab = C(2,mid+1);
-                text(xLab,zLab,sprintf('t_D = %.1f\n\\theta = %.0f °', ...
+                text(ax1,xLab,zLab,sprintf('t_D = %.1f\n\\theta = %.0f °', ...
                     tD,vars.rotPos),'Color',cmap(cidx,:),...
-                    'FontSize',12,'FontWeight','bold',...
+                    'FontSize',8,'FontWeight','bold',...
                     'HorizontalAlignment','center',...
                     'BackgroundColor','w','Margin',1);
             end
 
         end
-    end
 
-    set(gca,'YDir','reverse')
-    axis equal
-    grid on
-    xlabel('X [cm]')
-    ylabel('Z [cm]')
-    colormap(cmap)
-    clim([tDmin tDmax])
-    cb = colorbar;
-    cb.Label.String = 't_D [-]';
+        kshow = k;
+        varsShow = vars;
+        imgShow = concCTimages;
+    end
+    
+    % ax1
+    set(ax1,'YDir','reverse','FontSize',10)
+    % axis(ax1,'equal')
+    grid(ax1,'on')
+    xlabel(ax1,'x_D [-]','FontSize',10)
+    ylabel(ax1,'z_D [-]','FontSize',10)
+    colormap(ax1,cmap)
+    clim(ax1,[tDmin tDmax])
+    cb = colorbar(ax1);
+    cb.Label.String = 't_D_{total} [-]';
+    cb.FontSize = 10;
     cb.Direction = 'reverse';
     % legend(hLeg,legTxt,'Location','southeastoutside');
-    title({'Evolution of C ~ 0.5 Front', char(filedataExp.Key)}, ...
-    'Interpreter','none')
+    title(ax1,{'Evolution of C ~ 0.5 Front', char(filedataExp.Key)}, ...
+        'Interpreter','none','FontSize',10)
+
+    % ax2
+    concCTimages = h5read(HDF5filename,HDF5dataPath,...
+    [1 1 k],[nx ny 1]);
+    cla(ax2)
+    imagesc(ax2,concCTimages)
+    axis(ax2,'xy')
+    set(ax2,'YDir','reverse')
+    xlabel(ax2,'Pixel Number')
+    ylabel(ax2,'Pixel Number')
+    colormap(ax2,turbo)
+    clim(ax2,[0 1])
+    cb2 = colorbar(ax2);
+    cb2.Label.String = 'C_1 [-]';
+
+    % ax3
+    x2 = vars.C1Profile.zVertcm;
+    y2 = vars.C1Profile.rhoNormVert;
+    cla(ax3)
+    plot(ax3,x2,y2,'LineWidth',2)
+    camroll(ax3,270)
+    xlabel(ax3,'Z [cm]')
+    ylabel(ax3,'C_{ave,1} [-]')
+    grid(ax3,'on')
+    ylim(ax3,[-0.02 1])
+    ax3.YAxisLocation = 'right';
+    title(ax3,...
+        sprintf('t_D = %.2f',vars.tDtotal))
+
+    % ax4 Breakthrough curve 
+    BT = expCTData.(filedataExp.Key(i)).BTcore;
+    scatter(ax4, BT.secondsElapsed, BT.rhoNorm,2,'filled',...
+        'MarkerFaceColor','k')
+    hold(ax4,'on')
+    tCurrent = varsShow.secondsElapsed;
+    CCurrent = varsShow.C1Profile.rhoNormVert(end);
+    scatter(ax4,tCurrent,CCurrent,50,...
+        'r','filled')
+    grid(ax4,'on')
+    xlabel(ax4,'secondsElapsed')
+    ylabel(ax4,'C_{ave,1} [-]')
+    ylim(ax4,[-0.02 1])
+    xlim(ax4,...
+        [BT.secondsElapsed(1) ...
+         BT.secondsElapsed(end)])
 end
 saveas(gcf,pathExportAll + filedataExp.Key + "_ContourfrontAdvance",'png')
 saveas(gcf,pathExportAll + filedataExp.Key + "_ContourfrontAdvance")
