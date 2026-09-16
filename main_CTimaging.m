@@ -390,23 +390,33 @@ end
 
 for i = 1:length(filedataExp.Key)
     
-    fig = figure('Position', [50, 50, 600, 800]); % [left, bottom, width, height];
+    fig = figure('Position', [50, 50, 800, 1000]); % [left, bottom, width, height];
     % figure config
     imgPos  = [0.1 0.1  0.8 0.8]; % xleft ybottom W H
     hGap = 0.07;
     vGap = 0.07;   
-    colsW = (imgPos(3) - 2*hGap)/3;
+    % colorbar alignment settings
+    cbGapL     = 0.012;   % gap between axes and colorbar when colorbar is on the LEFT
+    cbGapR     = 0.012;   % gap between axes and colorbar when colorbar is on the RIGHT
+    cbWidth    = 0.018;   % fixed colorbar width
+    cbLabelPad = 0.008;    % extra room reserved for the colorbar's title/label text
+    cbReserve = cbGapR + cbWidth + cbLabelPad; % reserve room for one colorbar + its label per column
+    % plotting window
+    colsW = (imgPos(3) - 2*hGap)/3 - cbReserve;
     row1H = imgPos(4)*3/4 - vGap;
     row2H = imgPos(4)/4;
     ax1Pos  = [imgPos(1) imgPos(2)+row2H+vGap colsW row1H];
-    ax2Pos  = [imgPos(1)+colsW+hGap ax1Pos(2) ax1Pos(3) ax1Pos(4)];
-    ax3Pos  = [imgPos(1)+2*(colsW+hGap) ax1Pos(2) ax1Pos(3) ax1Pos(4)];
+    ax2Pos  = [imgPos(1)+(colsW+cbReserve)+hGap ax1Pos(2) ax1Pos(3) ax1Pos(4)];
+    ax3Pos  = [imgPos(1)+2*(colsW+cbReserve+hGap) ax1Pos(2) ax1Pos(3) ax1Pos(4)];
     ax4Pos  = [imgPos(1) imgPos(2) imgPos(3) row2H];
     % axes
     ax1 = axes('Position',ax1Pos);
     ax2 = axes('Position',ax2Pos);
     ax3 = axes('Position',ax3Pos);
     ax4 = axes('Position',ax4Pos);
+    % colorbar spacing
+    cbGap   = 0.02;   % fixed horizontal gap between axes and its colorbar
+    cbWidth = 0.018;   % fixed colorbar width
 
     % hTitle
     hTitle = annotation('textbox', [0 0.93 1 0.05], ...
@@ -429,6 +439,8 @@ for i = 1:length(filedataExp.Key)
     tDmin = 0;
     tDmax = 1;
 
+    tDtargetsAll = [];
+
     for j = 1:length(expFolderName) % number of runs
         run_name = "run_" + sprintf('%02d', j);
         HDF5dataPath = ['/exp/' char(run_name) '/conc'];
@@ -443,6 +455,7 @@ for i = 1:length(filedataExp.Key)
         varsRun = varsRun(tDRun < 1);
         tDstep = 0.1;
         tDtargets = min([varsRun.tDtotal]):tDstep:max([varsRun.tDtotal]);
+        tDtargetsAll = [tDtargetsAll, tDtargets];
         kPlot = zeros(length(tDtargets),1);
         
         for m = 1:length(tDtargets)
@@ -456,7 +469,7 @@ for i = 1:length(filedataExp.Key)
             vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k);
             tD = vars.tDtotal;
 
-            % plot image ax1
+            % ax1
             concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
             imgSmooth = imgaussfilt(concCTimages, 20);
             resXmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeX;
@@ -472,6 +485,14 @@ for i = 1:length(filedataExp.Key)
             [C, h] = contour(ax1,xD,zD,imgSmooth,levels, ...
                 'LineColor',cmap(cidx,:),...
                 'LineWidth',3);
+
+            % ax3
+            x2 = vars.C1Profile.zVertcm;
+            xD2 = x2/max(x2);
+            y2 = vars.C1Profile.rhoNormVert;
+            scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor',cmap(cidx,:))
+            hold(ax3,'on')
+
             if isempty(C)
                 continue
             end
@@ -479,14 +500,22 @@ for i = 1:length(filedataExp.Key)
             if npts > 5
                 mid = round(npts/2);
                 xLab = C(1,mid+1);
-                zLab = C(2,mid+1);
+                zLab = C(2,mid+1)+0.06;
+                % ax1
                 text(ax1,xLab,zLab,sprintf('t_D = %.1f\n\\theta = %.0f °', ...
                     tD,vars.rotPos),'Color',cmap(cidx,:),...
                     'FontSize',8,'FontWeight','bold',...
                     'HorizontalAlignment','center',...
-                    'BackgroundColor','w','Margin',1);
-            end
+                    'BackgroundColor','none','Margin',1);
+                % ax3
+                text(ax3,zLab,0.3, ...
+                sprintf('t_D = %.1f\n\\theta = %.0f °', ...
+                    tD,vars.rotPos),'Color',cmap(cidx,:), ...
+                'FontSize',8,'FontWeight','bold', ...
+                'BackgroundColor','w','Margin',1);
 
+            end        
+            
         end
 
         kshow = k;
@@ -495,20 +524,20 @@ for i = 1:length(filedataExp.Key)
     end
     
     % ax1
-    set(ax1,'YDir','reverse','FontSize',10)
+    set(ax1,'YDir','reverse','FontSize',8)
     % axis(ax1,'equal')
     grid(ax1,'on')
-    xlabel(ax1,'x_D [-]','FontSize',10)
-    ylabel(ax1,'z_D [-]','FontSize',10)
+    xlabel(ax1,'x_D [-]','FontSize',8)
+    ylabel(ax1,'z_D [-]','FontSize',8)
     colormap(ax1,cmap)
     clim(ax1,[tDmin tDmax])
-    cb = colorbar(ax1);
-    cb.Label.String = 't_D_{total} [-]';
-    cb.FontSize = 10;
-    cb.Direction = 'reverse';
+    cb1 = colorbar(ax1);
+    cb1.Label.String = 't_D_{total} [-]';
+    cb1.FontSize = 8;
+    cb1.Direction = 'reverse';
     % legend(hLeg,legTxt,'Location','southeastoutside');
-    title(ax1,{'Evolution of C ~ 0.5 Front', char(filedataExp.Key)}, ...
-        'Interpreter','none','FontSize',10)
+    % title(ax1,{'Evolution of C ~ 0.5 Front', char(filedataExp.Key)}, ...
+    %     'Interpreter','none','FontSize',8)
 
     % ax2
     concCTimages = h5read(HDF5filename,HDF5dataPath,...
@@ -518,44 +547,69 @@ for i = 1:length(filedataExp.Key)
     axis(ax2,'xy')
     set(ax2,'YDir','reverse')
     xlabel(ax2,'Pixel Number')
-    ylabel(ax2,'Pixel Number')
+    % ylabel(ax2,'Pixel Number')
+    set(ax2,'YTick',[],'YTickLabel',[])
     colormap(ax2,turbo)
     clim(ax2,[0 1])
     cb2 = colorbar(ax2);
     cb2.Label.String = 'C_1 [-]';
-
+    
     % ax3
-    x2 = vars.C1Profile.zVertcm;
-    y2 = vars.C1Profile.rhoNormVert;
-    cla(ax3)
-    plot(ax3,x2,y2,'LineWidth',2)
     camroll(ax3,270)
-    xlabel(ax3,'Z [cm]')
+    % xlabel(ax3,'z_D [-]')
+    set(ax3,'XTick',[],'XTickLabel',[])
     ylabel(ax3,'C_{ave,1} [-]')
+    colormap(ax3,cmap)
+    clim(ax3,[tDmin tDmax])
+    cb3 = colorbar(ax3);
+    cb3.Label.String = 't_D_{total} [-]';
+    cb3.FontSize = 8;
+    cb3.Direction = 'reverse';
     grid(ax3,'on')
     ylim(ax3,[-0.02 1])
     ax3.YAxisLocation = 'right';
-    title(ax3,...
-        sprintf('t_D = %.2f',vars.tDtotal))
 
     % ax4 Breakthrough curve 
     BT = expCTData.(filedataExp.Key(i)).BTcore;
-    scatter(ax4, BT.secondsElapsed, BT.rhoNorm,2,'filled',...
+    scatter(ax4, BT.tDtotal, BT.rhoNorm,3,'filled',...
         'MarkerFaceColor','k')
     hold(ax4,'on')
-    tCurrent = varsShow.secondsElapsed;
+    tCurrent = varsShow.tDtotal;
     CCurrent = varsShow.C1Profile.rhoNormVert(end);
     scatter(ax4,tCurrent,CCurrent,50,...
         'r','filled')
     grid(ax4,'on')
-    xlabel(ax4,'secondsElapsed')
+    xlabel(ax4,'t_D [-]')
     ylabel(ax4,'C_{ave,1} [-]')
     ylim(ax4,[-0.02 1])
-    xlim(ax4,...
-        [BT.secondsElapsed(1) ...
-         BT.secondsElapsed(end)])
+    xlim(ax4,[BT.tDtotal(1),BT.tDtotal(end)])
+
+    % ---- force identical plot boxes + identically-offset colorbars ----
+    drawnow
+    alignAxesColorbar(ax1, cb1, ax1Pos, cbGapR, cbWidth, 'right');
+    alignAxesColorbar(ax2, cb2, ax2Pos, cbGapR, cbWidth, 'right');
+    alignAxesColorbar(ax3, cb3, ax3Pos, cbGapR, cbWidth, 'right');
 end
 saveas(gcf,pathExportAll + filedataExp.Key + "_ContourfrontAdvance",'png')
 saveas(gcf,pathExportAll + filedataExp.Key + "_ContourfrontAdvance")
 
+% ---- local function (put at the bottom of the script file) ----
+function alignAxesColorbar(ax, cb, axPos, cbGap, cbWidth, side)
+    if nargin < 6
+        side = 'right';
+    end
+    ax.Units = 'normalized';
+    cb.Units = 'normalized';
+    ax.Position = axPos;   % restore exact plot box
 
+    switch side
+        case 'right'
+            cbLeft = axPos(1) + axPos(3) + cbGap;
+        case 'left'
+            cbLeft = axPos(1) - cbGap - cbWidth;
+        otherwise
+            error('side must be ''left'' or ''right''');
+    end
+
+    cb.Position = [cbLeft, axPos(2), cbWidth, axPos(4)];
+end
