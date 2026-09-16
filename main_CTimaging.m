@@ -388,19 +388,23 @@ end
 
 %% Countour map
 
+figHandles = gobjects(length(filedataExp.Key),1);
+
 for i = 1:length(filedataExp.Key)
     
     fig = figure('Position', [50, 50, 800, 1000]); % [left, bottom, width, height];
+    figHandles(i) = fig;
+
     % figure config
     imgPos  = [0.1 0.1  0.8 0.8]; % xleft ybottom W H
     hGap = 0.07;
     vGap = 0.07;   
     % colorbar alignment settings
-    cbGapL     = 0.012;   % gap between axes and colorbar when colorbar is on the LEFT
-    cbGapR     = 0.012;   % gap between axes and colorbar when colorbar is on the RIGHT
-    cbWidth    = 0.018;   % fixed colorbar width
-    cbLabelPad = 0.008;    % extra room reserved for the colorbar's title/label text
-    cbReserve = cbGapR + cbWidth + cbLabelPad; % reserve room for one colorbar + its label per column
+    cbGapL     = 0.012;   
+    cbGapR     = 0.012;   
+    cbWidth    = 0.018;   
+    cbLabelPad = 0.008;   
+    cbReserve = cbGapR + cbWidth + cbLabelPad;
     % plotting window
     colsW = (imgPos(3) - 2*hGap)/3 - cbReserve;
     row1H = imgPos(4)*3/4 - vGap;
@@ -414,9 +418,6 @@ for i = 1:length(filedataExp.Key)
     ax2 = axes('Position',ax2Pos);
     ax3 = axes('Position',ax3Pos);
     ax4 = axes('Position',ax4Pos);
-    % colorbar spacing
-    cbGap   = 0.02;   % fixed horizontal gap between axes and its colorbar
-    cbWidth = 0.018;   % fixed colorbar width
 
     % hTitle
     hTitle = annotation('textbox', [0 0.93 1 0.05], ...
@@ -438,8 +439,12 @@ for i = 1:length(filedataExp.Key)
     tDAll = varsAll.tDtotal;
     tDmin = 0;
     tDmax = 1;
+    levels = [0.5 0.5];   % contour level, reused for both ax1 and ax2
 
-    tDtargetsAll = [];
+    % struct array holding one entry per plotted frame
+    frames = struct('tD',{},'run_name',{},'k',{},'rotPos',{}, ...
+        'color',{},'xD',{},'zD',{},'C',{}, ...
+        'xD2',{},'rhoNormVert',{},'hContour',{},'hScatter',{});
 
     for j = 1:length(expFolderName) % number of runs
         run_name = "run_" + sprintf('%02d', j);
@@ -455,7 +460,6 @@ for i = 1:length(filedataExp.Key)
         varsRun = varsRun(tDRun < 1);
         tDstep = 0.1;
         tDtargets = min([varsRun.tDtotal]):tDstep:max([varsRun.tDtotal]);
-        tDtargetsAll = [tDtargetsAll, tDtargets];
         kPlot = zeros(length(tDtargets),1);
         
         for m = 1:length(tDtargets)
@@ -478,20 +482,28 @@ for i = 1:length(filedataExp.Key)
             zcm = (1:nx)*resYmm/10;
             xD = xcm/max(xcm);
             zD = zcm/max(zcm);
-            levels = [0.5 0.5];
             cidx = round(1 + 255*(tD-tDmin)/(tDmax-tDmin));
             cidx = max(1,min(256,cidx));
             hold(ax1,'on')
             [C, h] = contour(ax1,xD,zD,imgSmooth,levels, ...
                 'LineColor',cmap(cidx,:),...
                 'LineWidth',3);
+            set(h,'HitTest','off','PickableParts','none');
 
             % ax3
             x2 = vars.C1Profile.zVertcm;
             xD2 = x2/max(x2);
             y2 = vars.C1Profile.rhoNormVert;
-            scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor',cmap(cidx,:))
+            s = scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor',cmap(cidx,:));
+            set(s,'HitTest','off','PickableParts','none');
             hold(ax3,'on')
+
+            % store this frame (image + BT point NOT plotted yet)
+            frames(end+1) = struct( ...
+                'tD',tD,'run_name',run_name,'k',k,'rotPos',vars.rotPos, ...
+                'color',cmap(cidx,:),'xD',xD,'zD',zD,'C',C, ...
+                'xD2',xD2,'rhoNormVert',y2, ...
+                'hContour',h,'hScatter',s); %#ok<SAGROW>
 
             if isempty(C)
                 continue
@@ -506,57 +518,49 @@ for i = 1:length(filedataExp.Key)
                     tD,vars.rotPos),'Color',cmap(cidx,:),...
                     'FontSize',8,'FontWeight','bold',...
                     'HorizontalAlignment','center',...
-                    'BackgroundColor','none','Margin',1);
+                    'BackgroundColor','none','Margin',1,...
+                    'HitTest','off','PickableParts','none');
                 % ax3
                 text(ax3,zLab,0.3, ...
                 sprintf('t_D = %.1f\n\\theta = %.0f °', ...
                     tD,vars.rotPos),'Color',cmap(cidx,:), ...
                 'FontSize',8,'FontWeight','bold', ...
-                'BackgroundColor','w','Margin',1);
+                'BackgroundColor','w','Margin',1,...
+                'HitTest','off','PickableParts','none');
 
             end        
             
         end
-
-        kshow = k;
-        varsShow = vars;
-        imgShow = concCTimages;
     end
     
     % ax1
     set(ax1,'YDir','reverse','FontSize',8)
-    % axis(ax1,'equal')
     grid(ax1,'on')
     xlabel(ax1,'x_D [-]','FontSize',8)
     ylabel(ax1,'z_D [-]','FontSize',8)
     colormap(ax1,cmap)
     clim(ax1,[tDmin tDmax])
+    xlim(ax1,[0 1])            % <-- pin the box so it matches ax2 exactly
+    ylim(ax1,[0 1])            % <-- pin the box so it matches ax2 exactly
     cb1 = colorbar(ax1);
     cb1.Label.String = 't_D_{total} [-]';
     cb1.FontSize = 8;
     cb1.Direction = 'reverse';
-    % legend(hLeg,legTxt,'Location','southeastoutside');
-    % title(ax1,{'Evolution of C ~ 0.5 Front', char(filedataExp.Key)}, ...
-    %     'Interpreter','none','FontSize',8)
 
-    % ax2
-    concCTimages = h5read(HDF5filename,HDF5dataPath,...
-    [1 1 k],[nx ny 1]);
-    cla(ax2)
-    imagesc(ax2,xD,zD,concCTimages)
+    % ax2 - format only, NO image plotted yet (created on first selection)
     axis(ax2,'xy')
     set(ax2,'YDir','reverse')
-    xlabel(ax2,'Pixel Number')
-    % ylabel(ax2,'Pixel Number')
+    xlabel(ax2,'x_D [-]')
     set(ax2,'YTick',[],'YTickLabel',[])
     colormap(ax2,turbo)
     clim(ax2,[0 1])
+    xlim(ax2,[0 1])            % <-- must come AFTER axis(ax2,'xy'); locks XLimMode/YLimMode
+    ylim(ax2,[0 1])            %     to 'manual' so future imagesc calls don't rescale the box
     cb2 = colorbar(ax2);
     cb2.Label.String = 'C_1 [-]';
     
     % ax3
     camroll(ax3,270)
-    % xlabel(ax3,'z_D [-]')
     set(ax3,'XTick',[],'XTickLabel',[])
     ylabel(ax3,'C_{ave,1} [-]')
     colormap(ax3,cmap)
@@ -569,38 +573,50 @@ for i = 1:length(filedataExp.Key)
     ylim(ax3,[-0.02 1])
     ax3.YAxisLocation = 'right';
 
-    % ax4 Breakthrough curve 
+    % ax4 Breakthrough curve (base black data only; red current point deferred)
     BT = expCTData.(filedataExp.Key(i)).BTcore;
     scatter(ax4, BT.tDtotal, BT.rhoNorm,3,'filled',...
-        'MarkerFaceColor','k')
+        'MarkerFaceColor','k','HitTest','off','PickableParts','none')
     hold(ax4,'on')
-    tCurrent = varsShow.tDtotal;
-    CCurrent = varsShow.C1Profile.rhoNormVert(end);
-    scatter(ax4,tCurrent,CCurrent,50,...
-        'r','filled')
     grid(ax4,'on')
     xlabel(ax4,'t_D [-]')
     ylabel(ax4,'C_{ave,1} [-]')
     ylim(ax4,[-0.02 1])
     xlim(ax4,[BT.tDtotal(1),BT.tDtotal(end)])
 
-    % ---- force identical plot boxes + identically-offset colorbars ----
+    % force identical plot boxes + identically-offset colorbars
     drawnow
     alignAxesColorbar(ax1, cb1, ax1Pos, cbGapR, cbWidth, 'right');
     alignAxesColorbar(ax2, cb2, ax2Pos, cbGapR, cbWidth, 'right');
     alignAxesColorbar(ax3, cb3, ax3Pos, cbGapR, cbWidth, 'right');
-end
-saveas(gcf,pathExportAll + filedataExp.Key + "_ContourfrontAdvance",'png')
-saveas(gcf,pathExportAll + filedataExp.Key + "_ContourfrontAdvance")
 
-% ---- local function (put at the bottom of the script file) ----
+    % wire up interactivity
+    setappdata(fig,'frames',frames);
+    setappdata(fig,'HDF5filename',HDF5filename);
+    setappdata(fig,'ax2',ax2);
+    setappdata(fig,'ax4',ax4);
+    setappdata(fig,'levels',levels);
+    setappdata(fig,'hImgAx2',gobjects(0));
+    setappdata(fig,'hContourAx2',gobjects(0));   % <-- new: overlay contour on ax2
+    setappdata(fig,'hCurrentAx4',gobjects(0));  
+    setappdata(fig,'hTitle',hTitle);
+    setappdata(fig,'keyName',filedataExp.Key(i));
+    setappdata(fig,'pathExportAll',pathExportAll);
+    setappdata(fig,'selectedIdx',[]);
+
+    ax1.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax1, 'ax1');
+    ax4.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax4, 'ax4');
+end
+
+% local functions
+
 function alignAxesColorbar(ax, cb, axPos, cbGap, cbWidth, side)
     if nargin < 6
         side = 'right';
     end
     ax.Units = 'normalized';
     cb.Units = 'normalized';
-    ax.Position = axPos;   % restore exact plot box
+    ax.Position = axPos;
 
     switch side
         case 'right'
@@ -612,4 +628,144 @@ function alignAxesColorbar(ax, cb, axPos, cbGap, cbWidth, side)
     end
 
     cb.Position = [cbLeft, axPos(2), cbWidth, axPos(4)];
+end
+
+function [xs, ys] = contourMatrixPoints(C)
+    xs = [];
+    ys = [];
+    idx = 1;
+    n = size(C,2);
+    while idx <= n
+        npts = C(2,idx);
+        segX = C(1, idx+1 : idx+npts);
+        segY = C(2, idx+1 : idx+npts);
+        xs = [xs, segX]; 
+        ys = [ys, segY]; 
+        idx = idx + npts + 1;
+    end
+end
+
+function axesClickCallback(fig, ax, axName)
+    cp = get(ax,'CurrentPoint');
+    xClick = cp(1,1);
+    zClick = cp(1,2);
+
+    frames = getappdata(fig,'frames');
+    if isempty(frames)
+        return
+    end
+
+    bestIdx = [];
+    switch axName
+        case 'ax1'
+            bestDist = Inf;
+            for idx = 1:numel(frames)
+                [xs, ys] = contourMatrixPoints(frames(idx).C);
+                if isempty(xs)
+                    continue
+                end
+                d = (xs - xClick).^2 + (ys - zClick).^2;
+                dm = min(d);
+                if dm < bestDist
+                    bestDist = dm;
+                    bestIdx = idx;
+                end
+            end
+        case 'ax4'
+            allTD = [frames.tD];
+            [~,bestIdx] = min(abs(allTD - xClick));
+    end
+
+    if ~isempty(bestIdx)
+        updateSelection(fig, bestIdx);
+    end
+end
+
+function updateSelection(fig, idx)
+    frames        = getappdata(fig,'frames');
+    prevIdx       = getappdata(fig,'selectedIdx');
+    HDF5filename  = getappdata(fig,'HDF5filename');
+    ax2           = getappdata(fig,'ax2');
+    ax4           = getappdata(fig,'ax4');
+    levels        = getappdata(fig,'levels');
+    hImgAx2       = getappdata(fig,'hImgAx2');
+    hContourAx2   = getappdata(fig,'hContourAx2');
+    hCurrentAx4   = getappdata(fig,'hCurrentAx4');
+    hTitle        = getappdata(fig,'hTitle');
+    keyName       = getappdata(fig,'keyName');
+    pathExportAll = getappdata(fig,'pathExportAll');
+
+    % restore previous highlight
+    if ~isempty(prevIdx) && prevIdx <= numel(frames)
+        set(frames(prevIdx).hContour,'LineColor',frames(prevIdx).color,'LineWidth',3);
+        set(frames(prevIdx).hScatter,'MarkerFaceColor',frames(prevIdx).color,'SizeData',3);
+    end
+
+    % apply new highlight
+    set(frames(idx).hContour,'LineColor','r','LineWidth',3);
+    set(frames(idx).hScatter,'MarkerFaceColor','r','SizeData',30);
+
+    % re-read raw frame and recompute the smoothed field (cheap, done once per click)
+    HDF5dataPath = ['/exp/' char(frames(idx).run_name) '/conc'];
+    info = h5info(HDF5filename, HDF5dataPath);
+    dims = info.Dataspace.Size;
+    nx = dims(1); ny = dims(2);
+    concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 frames(idx).k], [nx ny 1]);
+    imgSmooth = imgaussfilt(concCTimages, 20);
+
+    % ---- ax2 image: create on first use, otherwise just update it ----
+    if isempty(hImgAx2) || ~isvalid(hImgAx2)
+        hold(ax2,'on')
+        hImgAx2 = imagesc(ax2, frames(idx).xD, frames(idx).zD, concCTimages);
+        uistack(hImgAx2,'bottom');   % keep it under the contour/overlays
+    else
+        set(hImgAx2,'CData',concCTimages,'XData',frames(idx).xD,'YData',frames(idx).zD);
+    end
+    setappdata(fig,'hImgAx2',hImgAx2);
+
+    % ---- ax2 contour overlay: delete + redraw each time (matrix size may change) ----
+    if ~isempty(hContourAx2) && isvalid(hContourAx2)
+        delete(hContourAx2);
+    end
+    [~, hContourAx2] = contour(ax2, frames(idx).xD, frames(idx).zD, imgSmooth, levels, ...
+        'LineColor','w','LineWidth',2);
+    set(hContourAx2,'HitTest','off','PickableParts','none');
+    setappdata(fig,'hContourAx2',hContourAx2);
+
+    % keep ax2's box pinned regardless of what imagesc/contour touched
+    xlim(ax2,[0 1]);
+    ylim(ax2,[0 1]);
+
+    % ---- ax4: create the red current-point marker on first use ----
+    if isempty(hCurrentAx4) || ~isvalid(hCurrentAx4)
+        hCurrentAx4 = scatter(ax4, frames(idx).tD, frames(idx).rhoNormVert(end), ...
+            30, 'r', 'filled');
+    else
+        set(hCurrentAx4,'XData',frames(idx).tD,'YData',frames(idx).rhoNormVert(end));
+    end
+    setappdata(fig,'hCurrentAx4',hCurrentAx4);
+
+    % update title
+    if ~isempty(hTitle) && isvalid(hTitle)
+        hTitle.String = sprintf('%s - CT %s, t_D = %.2f, \\theta = %.0f°', ...
+            char(keyName), frames(idx).run_name, frames(idx).tD, frames(idx).rotPos);
+    end
+
+    setappdata(fig,'selectedIdx',idx);
+
+    % save the completed figure for this selection
+    fname = sprintf('%s_tD%.2f_%s', char(keyName), frames(idx).tD, frames(idx).run_name);
+    saveas(fig, fullfile(pathExportAll, fname), 'png');
+    saveas(fig, fullfile(pathExportAll, fname));
+end
+
+function selectFrameByTD(fig, tDQuery)
+    frames = getappdata(fig,'frames');
+    if isempty(frames)
+        warning('No frame data available for this figure.');
+        return
+    end
+    allTD = [frames.tD];
+    [~,idx] = min(abs(allTD - tDQuery));
+    updateSelection(fig, idx);
 end
