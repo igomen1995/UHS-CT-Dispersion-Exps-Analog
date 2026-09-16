@@ -440,6 +440,7 @@ for i = 1:length(filedataExp.Key)
     tDmin = 0;
     tDmax = 1;
     levels = [0.5 0.5];   % contour level, reused for both ax1 and ax2
+    levelsFull = 0:0.1:1;  
 
     % struct array holding one entry per plotted frame
     frames = struct('tD',{},'run_name',{},'k',{},'rotPos',{}, ...
@@ -503,7 +504,7 @@ for i = 1:length(filedataExp.Key)
                 'tD',tD,'run_name',run_name,'k',k,'rotPos',vars.rotPos, ...
                 'color',cmap(cidx,:),'xD',xD,'zD',zD,'C',C, ...
                 'xD2',xD2,'rhoNormVert',y2, ...
-                'hContour',h,'hScatter',s); %#ok<SAGROW>
+                'hContour',h,'hScatter',s);
 
             if isempty(C)
                 continue
@@ -540,8 +541,8 @@ for i = 1:length(filedataExp.Key)
     ylabel(ax1,'z_D [-]','FontSize',8)
     colormap(ax1,cmap)
     clim(ax1,[tDmin tDmax])
-    xlim(ax1,[0 1])            % <-- pin the box so it matches ax2 exactly
-    ylim(ax1,[0 1])            % <-- pin the box so it matches ax2 exactly
+    xlim(ax1,[0 1])            
+    ylim(ax1,[0 1])            
     cb1 = colorbar(ax1);
     cb1.Label.String = 't_D_{total} [-]';
     cb1.FontSize = 8;
@@ -554,8 +555,8 @@ for i = 1:length(filedataExp.Key)
     set(ax2,'YTick',[],'YTickLabel',[])
     colormap(ax2,turbo)
     clim(ax2,[0 1])
-    xlim(ax2,[0 1])            % <-- must come AFTER axis(ax2,'xy'); locks XLimMode/YLimMode
-    ylim(ax2,[0 1])            %     to 'manual' so future imagesc calls don't rescale the box
+    xlim(ax2,[0 1])           
+    ylim(ax2,[0 1])           
     cb2 = colorbar(ax2);
     cb2.Label.String = 'C_1 [-]';
     
@@ -596,8 +597,9 @@ for i = 1:length(filedataExp.Key)
     setappdata(fig,'ax2',ax2);
     setappdata(fig,'ax4',ax4);
     setappdata(fig,'levels',levels);
+    setappdata(fig,'levelsFull',levelsFull);
     setappdata(fig,'hImgAx2',gobjects(0));
-    setappdata(fig,'hContourAx2',gobjects(0));   % <-- new: overlay contour on ax2
+    setappdata(fig,'hContourAx2',gobjects(0));   
     setappdata(fig,'hCurrentAx4',gobjects(0));  
     setappdata(fig,'hTitle',hTitle);
     setappdata(fig,'keyName',filedataExp.Key(i));
@@ -688,8 +690,10 @@ function updateSelection(fig, idx)
     ax2           = getappdata(fig,'ax2');
     ax4           = getappdata(fig,'ax4');
     levels        = getappdata(fig,'levels');
+    levelsFull    = getappdata(fig,'levelsFull');
     hImgAx2       = getappdata(fig,'hImgAx2');
     hContourAx2   = getappdata(fig,'hContourAx2');
+    hContourAx2Hi = getappdata(fig,'hContourAx2Hi');
     hCurrentAx4   = getappdata(fig,'hCurrentAx4');
     hTitle        = getappdata(fig,'hTitle');
     keyName       = getappdata(fig,'keyName');
@@ -713,30 +717,40 @@ function updateSelection(fig, idx)
     concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 frames(idx).k], [nx ny 1]);
     imgSmooth = imgaussfilt(concCTimages, 20);
 
-    % ---- ax2 image: create on first use, otherwise just update it ----
+    % ax2 image: create on first use, otherwise just update it
     if isempty(hImgAx2) || ~isvalid(hImgAx2)
         hold(ax2,'on')
         hImgAx2 = imagesc(ax2, frames(idx).xD, frames(idx).zD, concCTimages);
-        uistack(hImgAx2,'bottom');   % keep it under the contour/overlays
+        uistack(hImgAx2,'bottom');   % keep it under the contours
     else
         set(hImgAx2,'CData',concCTimages,'XData',frames(idx).xD,'YData',frames(idx).zD);
     end
     setappdata(fig,'hImgAx2',hImgAx2);
 
-    % ---- ax2 contour overlay: delete + redraw each time (matrix size may change) ----
+    % ax2 full contour set 0:0.1:1 (thin, white, labeled)
     if ~isempty(hContourAx2) && isvalid(hContourAx2)
         delete(hContourAx2);
     end
-    [~, hContourAx2] = contour(ax2, frames(idx).xD, frames(idx).zD, imgSmooth, levels, ...
-        'LineColor','w','LineWidth',2);
+    [~, hContourAx2] = contour(ax2, frames(idx).xD, frames(idx).zD, imgSmooth, levelsFull, ...
+        'LineColor','k','LineWidth',1,'ShowText',true,'LabelFormat',"%0.1f");
     set(hContourAx2,'HitTest','off','PickableParts','none');
     setappdata(fig,'hContourAx2',hContourAx2);
+
+    % ax2 highlighted C = 0.5 contour (thicker, drawn on top)
+    if ~isempty(hContourAx2Hi) && isvalid(hContourAx2Hi)
+        delete(hContourAx2Hi);
+    end
+    [~, hContourAx2Hi] = contour(ax2, frames(idx).xD, frames(idx).zD, imgSmooth, levels, ...
+        'LineColor','k','LineWidth',3);
+    set(hContourAx2Hi,'HitTest','off','PickableParts','none');
+    uistack(hContourAx2Hi,'top');
+    setappdata(fig,'hContourAx2Hi',hContourAx2Hi);
 
     % keep ax2's box pinned regardless of what imagesc/contour touched
     xlim(ax2,[0 1]);
     ylim(ax2,[0 1]);
 
-    % ---- ax4: create the red current-point marker on first use ----
+    % ax4: create the red current-point marker on first use
     if isempty(hCurrentAx4) || ~isvalid(hCurrentAx4)
         hCurrentAx4 = scatter(ax4, frames(idx).tD, frames(idx).rhoNormVert(end), ...
             80, 'r', 'filled');
