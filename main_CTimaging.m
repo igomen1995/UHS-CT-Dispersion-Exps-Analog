@@ -543,7 +543,7 @@ for i = 1:length(filedataExp.Key)
     concCTimages = h5read(HDF5filename,HDF5dataPath,...
     [1 1 k],[nx ny 1]);
     cla(ax2)
-    imagesc(ax2,concCTimages)
+    imagesc(ax2,xD,zD,concCTimages)
     axis(ax2,'xy')
     set(ax2,'YDir','reverse')
     xlabel(ax2,'Pixel Number')
