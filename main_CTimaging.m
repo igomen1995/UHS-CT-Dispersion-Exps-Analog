@@ -420,11 +420,11 @@ for i = 1:length(filedataExp.Key)
     ax4 = axes('Position',ax4Pos);
 
     % hTitle
-    hTitle = annotation('textbox', [0 0.93 1 0.05], ...
+    hTitle = annotation('textbox', [0 0.9 1 0.05], ...
         'String', '', ...
         'EdgeColor','none', ...
         'HorizontalAlignment','center', ...
-        'FontWeight','bold', ...
+        'FontSize', 12,'FontWeight','bold', ...
         'Interpreter','none');
 
     HDF5filename = fullfile(pathExportAll, filedataExp.Key(i) + ".h5");
@@ -494,7 +494,7 @@ for i = 1:length(filedataExp.Key)
             x2 = vars.C1Profile.zVertcm;
             xD2 = x2/max(x2);
             y2 = vars.C1Profile.rhoNormVert;
-            s = scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor',cmap(cidx,:));
+            s = scatter(ax3,xD2,y2,8,'filled','MarkerFaceColor',cmap(cidx,:));
             set(s,'HitTest','off','PickableParts','none');
             hold(ax3,'on')
 
@@ -575,7 +575,7 @@ for i = 1:length(filedataExp.Key)
 
     % ax4 Breakthrough curve (base black data only; red current point deferred)
     BT = expCTData.(filedataExp.Key(i)).BTcore;
-    scatter(ax4, BT.tDtotal, BT.rhoNorm,3,'filled',...
+    scatter(ax4, BT.tDtotal, BT.rhoNorm,8,'filled',...
         'MarkerFaceColor','k','HitTest','off','PickableParts','none')
     hold(ax4,'on')
     grid(ax4,'on')
@@ -698,12 +698,12 @@ function updateSelection(fig, idx)
     % restore previous highlight
     if ~isempty(prevIdx) && prevIdx <= numel(frames)
         set(frames(prevIdx).hContour,'LineColor',frames(prevIdx).color,'LineWidth',3);
-        set(frames(prevIdx).hScatter,'MarkerFaceColor',frames(prevIdx).color,'SizeData',3);
+        set(frames(prevIdx).hScatter,'MarkerFaceColor',frames(prevIdx).color,'SizeData',8);
     end
 
     % apply new highlight
     set(frames(idx).hContour,'LineColor','r','LineWidth',3);
-    set(frames(idx).hScatter,'MarkerFaceColor','r','SizeData',30);
+    set(frames(idx).hScatter,'MarkerFaceColor','r','SizeData',8);
 
     % re-read raw frame and recompute the smoothed field (cheap, done once per click)
     HDF5dataPath = ['/exp/' char(frames(idx).run_name) '/conc'];
@@ -739,7 +739,7 @@ function updateSelection(fig, idx)
     % ---- ax4: create the red current-point marker on first use ----
     if isempty(hCurrentAx4) || ~isvalid(hCurrentAx4)
         hCurrentAx4 = scatter(ax4, frames(idx).tD, frames(idx).rhoNormVert(end), ...
-            30, 'r', 'filled');
+            80, 'r', 'filled');
     else
         set(hCurrentAx4,'XData',frames(idx).tD,'YData',frames(idx).rhoNormVert(end));
     end
@@ -747,16 +747,17 @@ function updateSelection(fig, idx)
 
     % update title
     if ~isempty(hTitle) && isvalid(hTitle)
-        hTitle.String = sprintf('%s - CT %s, t_D = %.2f, \\theta = %.0f°', ...
-            char(keyName), frames(idx).run_name, frames(idx).tD, frames(idx).rotPos);
+        hTitle.String = sprintf('%s - CT %s, t_D = %.2f, theta = %.0f°', ...
+                char(keyName), frames(idx).run_name, frames(idx).tD, frames(idx).rotPos);
     end
 
     setappdata(fig,'selectedIdx',idx);
 
     % save the completed figure for this selection
-    fname = sprintf('%s_tD%.2f_%s', char(keyName), frames(idx).tD, frames(idx).run_name);
+    tDStr = strrep(sprintf('%.2f', frames(idx).tD), '.', 'p');  % e.g. 0.50 -> 0p50
+    fname = sprintf('%s_tD%s_%s', char(keyName), tDStr, frames(idx).run_name);
     saveas(fig, fullfile(pathExportAll, fname), 'png');
-    saveas(fig, fullfile(pathExportAll, fname));
+    saveas(fig, fullfile(pathExportAll, fname), 'fig');
 end
 
 function selectFrameByTD(fig, tDQuery)
