@@ -399,19 +399,18 @@ for i = 1:length(filedataExp.Key)
     imgPos  = [0.1 0.1  0.8 0.8]; % xleft ybottom W H
     hGap = 0.07;
     vGap = 0.07;   
-    % colorbar alignment settings
-    cbGapL     = 0.012;   
-    cbGapR     = 0.012;   
-    cbWidth    = 0.018;   
-    cbLabelPad = 0.008;   
-    cbReserve = cbGapR + cbWidth + cbLabelPad;
-    % plotting window
-    colsW = (imgPos(3) - 2*hGap)/3 - cbReserve;
+    % colorbar reservation — only needed for ax2's column
+    cbGap      = 0.012;
+    cbWidth    = 0.018;
+    cbLabelPad = 0.03;              % room for "C_1 [-]" label text
+    cbReserve  = cbGap + cbWidth + cbLabelPad;
+    % plotting window — 3 equal plot-box widths; extra cbReserve inserted after ax2 only
+    colsW = (imgPos(3) - 2*hGap - cbReserve)/3;
     row1H = imgPos(4)*3/4 - vGap;
     row2H = imgPos(4)/4;
     ax1Pos  = [imgPos(1) imgPos(2)+row2H+vGap colsW row1H];
-    ax2Pos  = [imgPos(1)+(colsW+cbReserve)+hGap ax1Pos(2) ax1Pos(3) ax1Pos(4)];
-    ax3Pos  = [imgPos(1)+2*(colsW+cbReserve+hGap) ax1Pos(2) ax1Pos(3) ax1Pos(4)];
+    ax2Pos  = [imgPos(1)+colsW+hGap ax1Pos(2) colsW ax1Pos(4)];
+    ax3Pos  = [imgPos(1)+2*colsW+hGap+cbReserve+hGap ax1Pos(2) colsW ax1Pos(4)];
     ax4Pos  = [imgPos(1) imgPos(2) imgPos(3) row2H];
     % axes
     ax1 = axes('Position',ax1Pos);
@@ -483,26 +482,26 @@ for i = 1:length(filedataExp.Key)
             zcm = (1:nx)*resYmm/10;
             xD = xcm/max(xcm);
             zD = zcm/max(zcm);
-            cidx = round(1 + 255*(tD-tDmin)/(tDmax-tDmin));
-            cidx = max(1,min(256,cidx));
+            % cidx = round(1 + 255*(tD-tDmin)/(tDmax-tDmin));
+            % cidx = max(1,min(256,cidx));
             hold(ax1,'on')
             [C, h] = contour(ax1,xD,zD,imgSmooth,levels, ...
-                'LineColor',cmap(cidx,:),...
-                'LineWidth',3);
+                'LineColor','k',...
+                'LineWidth',2.2);
             set(h,'HitTest','off','PickableParts','none');
 
             % ax3
             x2 = vars.C1Profile.zVertcm;
             xD2 = x2/max(x2);
             y2 = vars.C1Profile.rhoNormVert;
-            s = scatter(ax3,xD2,y2,8,'filled','MarkerFaceColor',cmap(cidx,:));
+            s = scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor','k');
             set(s,'HitTest','off','PickableParts','none');
             hold(ax3,'on')
 
             % store this frame (image + BT point NOT plotted yet)
             frames(end+1) = struct( ...
                 'tD',tD,'run_name',run_name,'k',k,'rotPos',vars.rotPos, ...
-                'color',cmap(cidx,:),'xD',xD,'zD',zD,'C',C, ...
+                'color','k','xD',xD,'zD',zD,'C',C, ...
                 'xD2',xD2,'rhoNormVert',y2, ...
                 'hContour',h,'hScatter',s);
 
@@ -516,7 +515,7 @@ for i = 1:length(filedataExp.Key)
                 zLab = C(2,mid+1)+0.06;
                 % ax1
                 text(ax1,xLab,zLab,sprintf('t_D = %.1f\n\\theta = %.0f °', ...
-                    tD,vars.rotPos),'Color',cmap(cidx,:),...
+                    tD,vars.rotPos),'Color','k',...
                     'FontSize',8,'FontWeight','bold',...
                     'HorizontalAlignment','center',...
                     'BackgroundColor','none','Margin',1,...
@@ -524,7 +523,7 @@ for i = 1:length(filedataExp.Key)
                 % ax3
                 text(ax3,zLab,0.3, ...
                 sprintf('t_D = %.1f\n\\theta = %.0f °', ...
-                    tD,vars.rotPos),'Color',cmap(cidx,:), ...
+                    tD,vars.rotPos),'Color','k', ...
                 'FontSize',8,'FontWeight','bold', ...
                 'BackgroundColor','w','Margin',1,...
                 'HitTest','off','PickableParts','none');
@@ -542,41 +541,37 @@ for i = 1:length(filedataExp.Key)
     colormap(ax1,cmap)
     clim(ax1,[tDmin tDmax])
     xlim(ax1,[0 1])            
-    ylim(ax1,[0 1])            
-    cb1 = colorbar(ax1);
-    cb1.Label.String = 't_D_{total} [-]';
-    cb1.FontSize = 8;
-    cb1.Direction = 'reverse';
+    ylim(ax1,[0 1])
+    title(ax1,'Front advance @ C_D = 0.5','FontSize',9)
 
     % ax2 - format only, NO image plotted yet (created on first selection)
     axis(ax2,'xy')
     set(ax2,'YDir','reverse')
     xlabel(ax2,'x_D [-]')
-    set(ax2,'YTick',[],'YTickLabel',[])
+    set(ax2,'YTickLabel',[])
     colormap(ax2,turbo)
     clim(ax2,[0 1])
     xlim(ax2,[0 1])           
     ylim(ax2,[0 1])           
     cb2 = colorbar(ax2);
     cb2.Label.String = 'C_1 [-]';
+    drawnow
+    alignAxesColorbar(ax2, cb2, ax2Pos, cbGap, cbWidth, 'right');
     
     % ax3
     camroll(ax3,270)
-    set(ax3,'XTick',[],'XTickLabel',[])
+    set(ax3,'XTickLabel',[])
     ylabel(ax3,'C_{ave,1} [-]')
     colormap(ax3,cmap)
     clim(ax3,[tDmin tDmax])
-    cb3 = colorbar(ax3);
-    cb3.Label.String = 't_D_{total} [-]';
-    cb3.FontSize = 8;
-    cb3.Direction = 'reverse';
     grid(ax3,'on')
     ylim(ax3,[-0.02 1])
     ax3.YAxisLocation = 'right';
+    title(ax3,'Vert. conc. profile @ t_D','FontSize',9)
 
     % ax4 Breakthrough curve (base black data only; red current point deferred)
     BT = expCTData.(filedataExp.Key(i)).BTcore;
-    scatter(ax4, BT.tDtotal, BT.rhoNorm,8,'filled',...
+    scatter(ax4, BT.tDtotal, BT.rhoNorm,5,'filled',...
         'MarkerFaceColor','k','HitTest','off','PickableParts','none')
     hold(ax4,'on')
     grid(ax4,'on')
@@ -584,12 +579,7 @@ for i = 1:length(filedataExp.Key)
     ylabel(ax4,'C_{ave,1} [-]')
     ylim(ax4,[-0.02 1])
     xlim(ax4,[BT.tDtotal(1),BT.tDtotal(end)])
-
-    % force identical plot boxes + identically-offset colorbars
-    drawnow
-    alignAxesColorbar(ax1, cb1, ax1Pos, cbGapR, cbWidth, 'right');
-    alignAxesColorbar(ax2, cb2, ax2Pos, cbGapR, cbWidth, 'right');
-    alignAxesColorbar(ax3, cb3, ax3Pos, cbGapR, cbWidth, 'right');
+    title(ax4,'Breakthrough curve @ z_D = 1','FontSize',9)
 
     % wire up interactivity
     setappdata(fig,'frames',frames);
@@ -761,8 +751,9 @@ function updateSelection(fig, idx)
 
     % update title
     if ~isempty(hTitle) && isvalid(hTitle)
-        hTitle.String = sprintf('%s - CT %s, t_D = %.2f, theta = %.0f°', ...
+        hTitle.String = sprintf('%s - CT %s, tD = %.2f, theta = %.0f°', ...
                 char(keyName), frames(idx).run_name, frames(idx).tD, frames(idx).rotPos);
+        title(ax2, sprintf('Concentration map @ t_D = %.2f', frames(idx).tD), 'FontSize', 9)
     end
 
     setappdata(fig,'selectedIdx',idx);
