@@ -580,7 +580,7 @@ for i = 1:length(filedataExp.Key)
         'MarkerFaceColor','k','HitTest','off','PickableParts','none')
     hold(ax4,'on')
     grid(ax4,'on')
-    xlabel(ax4,'t_D [-]')
+    xlabel(ax4,'t_D_{total} [-]')
     ylabel(ax4,'C_{ave,1} [-]')
     ylim(ax4,[-0.02 1])
     xlim(ax4,[BT.tDtotal(1),BT.tDtotal(end)])
@@ -727,6 +727,16 @@ function updateSelection(fig, idx)
     end
     setappdata(fig,'hImgAx2',hImgAx2);
 
+    % ax2 highlighted C = 0.5 contour (thicker, drawn on top)
+    if ~isempty(hContourAx2Hi) && isvalid(hContourAx2Hi)
+        delete(hContourAx2Hi);
+    end
+    [~, hContourAx2Hi] = contour(ax2, frames(idx).xD, frames(idx).zD, imgSmooth, levels, ...
+        'LineColor','k','LineWidth',3, 'ShowText',true);
+    set(hContourAx2Hi,'HitTest','off','PickableParts','none');
+    uistack(hContourAx2Hi,'top');
+    setappdata(fig,'hContourAx2Hi',hContourAx2Hi);
+
     % ax2 full contour set 0:0.1:1 (thin, white, labeled)
     if ~isempty(hContourAx2) && isvalid(hContourAx2)
         delete(hContourAx2);
@@ -735,16 +745,6 @@ function updateSelection(fig, idx)
         'LineColor','k','LineWidth',1,'ShowText',true,'LabelFormat',"%0.1f");
     set(hContourAx2,'HitTest','off','PickableParts','none');
     setappdata(fig,'hContourAx2',hContourAx2);
-
-    % ax2 highlighted C = 0.5 contour (thicker, drawn on top)
-    if ~isempty(hContourAx2Hi) && isvalid(hContourAx2Hi)
-        delete(hContourAx2Hi);
-    end
-    [~, hContourAx2Hi] = contour(ax2, frames(idx).xD, frames(idx).zD, imgSmooth, levels, ...
-        'LineColor','k','LineWidth',3);
-    set(hContourAx2Hi,'HitTest','off','PickableParts','none');
-    uistack(hContourAx2Hi,'top');
-    setappdata(fig,'hContourAx2Hi',hContourAx2Hi);
 
     % keep ax2's box pinned regardless of what imagesc/contour touched
     xlim(ax2,[0 1]);
