@@ -10,4 +10,4 @@ desktop.ini
 *.asv
 
 % input excel
-inputCTExpConfig.xlsx
+*.xlsx
