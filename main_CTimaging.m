@@ -751,15 +751,15 @@ function updateSelection(fig, idx)
 
     % update title
     if ~isempty(hTitle) && isvalid(hTitle)
-        hTitle.String = sprintf('%s - CT %s, tD = %.2f, theta = %.0f°', ...
+        hTitle.String = sprintf('%s - CT %s, tD = %.1f, theta = %.0f°', ...
                 char(keyName), frames(idx).run_name, frames(idx).tD, frames(idx).rotPos);
-        title(ax2, sprintf('Concentration map @ t_D = %.2f', frames(idx).tD), 'FontSize', 9)
+        title(ax2, sprintf('Concentration map @ t_D = %.1f', frames(idx).tD), 'FontSize', 9)
     end
 
     setappdata(fig,'selectedIdx',idx);
 
     % save the completed figure for this selection
-    tDStr = strrep(sprintf('%.2f', frames(idx).tD), '.', 'p');  % e.g. 0.50 -> 0p50
+    tDStr = strrep(sprintf('%.1f', frames(idx).tD), '.', 'p');  % e.g. 0.50 -> 0p50
     fname = sprintf('%s_tD%s_%s', char(keyName), tDStr, frames(idx).run_name);
     saveas(fig, fullfile(pathExportAll, fname), 'png');
     saveas(fig, fullfile(pathExportAll, fname), 'fig');
