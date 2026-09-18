@@ -100,7 +100,7 @@
 
 %% IMPORT input
 
-addpath('functions/');
+CT_setupPaths;
 
 % Introduce name of input and desired output folder name
 

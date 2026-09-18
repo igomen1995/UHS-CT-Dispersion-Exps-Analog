@@ -1,4 +1,4 @@
-function setupPaths()
+function CT_setupPaths()
 % Adds this repo's functions and the BTC repo's functions to the MATLAB path.
     repoRoot = fileparts(mfilename('fullpath'));
     btcFuncs = fullfile(repoRoot, '..', 'UHS-CF-Dispersion-Exps2', 'functions');
