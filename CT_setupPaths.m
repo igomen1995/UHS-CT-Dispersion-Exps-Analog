@@ -1,7 +1,9 @@
-function CT_setupPaths()
+function btcRoot = CT_setupPaths()
 % Adds this repo's functions and the BTC repo's functions to the MATLAB path.
+% Returns the absolute path to the BTC repo root.
     repoRoot = fileparts(mfilename('fullpath'));
-    btcFuncs = fullfile(repoRoot, '..', 'UHS-CF-Dispersion-Exps2', 'functions');
+    btcRoot  = fullfile(repoRoot, '..', 'UHS-CF-Dispersion-Exps2');
+    btcFuncs = fullfile(btcRoot, 'functions');
 
     if ~isfolder(btcFuncs)
         error(['BTC repo not found at %s.\n' ...

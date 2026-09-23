@@ -1,4 +1,4 @@
-function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
+function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filedataExp, ...
     ax1,ax2,ax3,ax4,cbPos,hTitle)
 
 
@@ -89,12 +89,13 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
     set(hSelected, ...
         'XData', BT.t(idx), ...
         'YData', BT.C(idx));
+    hSelectedLine.Value = BT.t(idx);
 
     % plot concentration in x ax1
     x1 = vars.C1Axial.xHorzcm;
     y1 = vars.C1Axial.rhoNormHorz;
     cla(ax1)
-    plot(ax1, x1, y1,'LineWidth',2)
+    plot(ax1, x1, y1,'LineWidth',2,'Color','k')
     xlim(ax1,[min(x1) max(x1)])
     ylim(ax1,[-0.02 1])
     xlabel(ax1,'X [cm]')
@@ -113,7 +114,7 @@ function onClickCallback(~,event,path,hSelected,BT,expCTData,filedataExp, ...
     x2 = vars.C1Profile.zVertcm;
     y2 = vars.C1Profile.rhoNormVert;
     cla(ax4)
-    plot(ax4, x2, y2,'LineWidth',2)
+    plot(ax4, x2, y2,'LineWidth',2,'Color','k')
     xlabel(ax4,'Z [cm]')
     ylabel(ax4,'C_{ave}_1 [-]')
     grid(ax4,'on')          

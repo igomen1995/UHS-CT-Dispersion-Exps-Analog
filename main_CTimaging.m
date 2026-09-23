@@ -100,7 +100,7 @@
 
 %% IMPORT input
 
-CT_setupPaths;
+Root = CT_setupPaths;   % absolute path to the BTC repo, from your existing setup
 
 % Introduce name of input and desired output folder name
 
@@ -112,6 +112,21 @@ filenameExp = inputFileConfig.inputFileName{:};
 pathImportAll = inputFileConfig.importPath{:}; % Path for OUTPUT
 pathExportAll = inputFileConfig.exportPath{:}; % Path for OUTPUT
 mkdir(pathExportAll); % Create directory for output
+
+pathImport_MFM_CT = inputFileConfig.MFM_BTC_CT_Path{:};   % "../results/exp_He-Xe-T20-V_REFPROP/"
+pathImport_MFM_UHS = inputFileConfig.MFM_BTC_UHS_Path{:};   % "../results/exp_H2-CG-T40-P1160-V_REFPROP/"
+MFM_CT_name = inputFileConfig.MFM_BTC_CT_Key{:};
+MFM_UHS_name = inputFileConfig.MFM_BTC_UHS_Key{:};
+
+% main_Processing in other should have been executed first
+MFM_CT_file = fullfile(Root, pathImport_MFM_CT, 'expProcFullData.mat');
+MFM_UHS_file = fullfile(Root, pathImport_MFM_UHS, 'expProcFullData.mat');
+% load processed MFM data
+MFM_CT_Data = load(MFM_CT_file);
+MFM_UHS_Data = load(MFM_UHS_file);
+% store UHS and CT MFM data
+expProcFullData_MFM_CT = MFM_CT_Data.expProcFullData.(MFM_CT_name);
+expProcFullData_MFM_UHS = MFM_UHS_Data.expProcFullData.(MFM_UHS_name);
 
 %% Import params and data
 
@@ -356,11 +371,22 @@ for i = 1:length(filedataExp.Key)
 
         end
     end
-        % plot BT
+    
+    % plot BT
+    colors = get(groot,'defaultAxesColorOrder');
     hScatter = scatter(ax5, BT.t, BT.C, 20, ...
         'filled', ...
-        'MarkerFaceColor',[0 0.4470 0.7410], ...
-        'MarkerEdgeColor','none');
+        'MarkerFaceColor','k', ...
+        'MarkerEdgeColor','none','DisplayName','CT_analog_BTC');
+    hold(ax5,'on')
+    scatter(ax5, expProcFullData_MFM_CT.BT.SecondsElapsed, expProcFullData_MFM_CT.BT.CDi, 20, ...
+        'filled', ...
+        'MarkerFaceColor',colors(1,:), ...
+        'MarkerEdgeColor','none','DisplayName','MFM_analog_BTC');
+    scatter(ax5, expProcFullData_MFM_UHS.BT.SecondsElapsed, expProcFullData_MFM_UHS.BT.CDi, 20, ...
+        'filled', ...
+        'MarkerFaceColor',colors(2,:), ...
+        'MarkerEdgeColor','none','DisplayName','MFM_UHS_BTC');
     tmin = min(BT.t);
     tmax = max(BT.t);
     xlim(ax5,[tmin tmax])
@@ -372,13 +398,15 @@ for i = 1:length(filedataExp.Key)
     ax5b.XTick = xt;
     ax5b.XTickLabel = compose('%.2f',tDtick);
     xlabel(ax5b,'t_D [-]')
+    legend(ax5, 'Location','best','Interpreter','none')
     grid(ax5,'on')
     
     % Selected point marker
     hSelected = scatter(ax5, NaN, NaN, 40, ...
-        'filled', ...
-        'MarkerFaceColor','r', ...
-        'MarkerEdgeColor','k');
+        'filled', 'MarkerFaceColor','r', 'MarkerEdgeColor','k', ...
+        'Visible','off','HandleVisibility','off');
+    
+    hSelectedLine = xline(ax5, NaN, '--r', 'LineWidth', 2, 'HandleVisibility','off');
     
     hTitle = annotation('textbox', [0 0.93 1 0.05], ...
         'String', '', ...
@@ -390,7 +418,7 @@ for i = 1:length(filedataExp.Key)
     
     % callback part
     hScatter.ButtonDownFcn = @(src,event) ...
-        onClickCallback(src,event,pathExportAll,hSelected, ...
+        onClickCallback(src,event,pathExportAll,hSelected, hSelectedLine, ...
         BT, expCTData,filedataExp, ...
         ax1,ax2,ax3,ax4,cbPos,hTitle);
 end
@@ -585,14 +613,23 @@ for i = 1:length(filedataExp.Key)
 
     % ax4 Breakthrough curve (base black data only; red current point deferred)
     BT = expCTData.(filedataExp.Key(i)).BTcore;
-    scatter(ax4, BT.tDtotal, BT.rhoNorm,5,'filled',...
-        'MarkerFaceColor','k','HitTest','off','PickableParts','none')
+    colors = get(groot,'defaultAxesColorOrder');
+    hBT_CT = scatter(ax4, BT.tDtotal, BT.rhoNorm, 5, 'filled', ...
+        'MarkerFaceColor','k', 'HitTest','off','PickableParts','none', ...
+        'DisplayName','CT analog BTC'); %rho_norm is C now
     hold(ax4,'on')
+    hBT_MFM_CT = scatter(ax4, expProcFullData_MFM_CT.BT.tDtotal, expProcFullData_MFM_CT.BT.CDi, ...
+        5, 'filled', 'MarkerFaceColor',colors(1,:), ...
+        'HitTest','off','PickableParts','none', 'DisplayName','MFM analog BTC');
+    hBT_MFM_UHS = scatter(ax4, expProcFullData_MFM_UHS.BT.tDtotal, expProcFullData_MFM_UHS.BT.CDi, ...
+        5, 'filled', 'MarkerFaceColor',colors(2,:), ...
+        'HitTest','off','PickableParts','none', 'DisplayName','MFM UHS BTC');
     grid(ax4,'on')
     xlabel(ax4,'t_D_{total} [-]')
     ylabel(ax4,'C_{ave,1} [-]')
     ylim(ax4,[-0.02 1])
     xlim(ax4,[BT.tDtotal(1),BT.tDtotal(end)])
+    legend(ax4, 'Location','best','Interpreter','none')
     title(ax4,'Breakthrough curve @ z_D = 1','FontSize',9)
 
     % wire up interactivity
@@ -759,10 +796,11 @@ function updateSelection(fig, idx)
 
     % ax4: create the red current-point marker on first use
     if isempty(hCurrentAx4) || ~isvalid(hCurrentAx4)
-        hCurrentAx4 = scatter(ax4, frames(idx).tD, frames(idx).rhoNormVert(end), ...
-            80, 'r', 'filled');
+        hCurrentAx4 = xline(ax4, frames(idx).tD, '--r', 'LineWidth', 2, ...
+            'DisplayName', sprintf('t_D = %.1f selected', frames(idx).tD));
     else
-        set(hCurrentAx4,'XData',frames(idx).tD,'YData',frames(idx).rhoNormVert(end));
+        hCurrentAx4.Value = frames(idx).tD;
+        hCurrentAx4.DisplayName = sprintf('t_D = %.2f selected', frames(idx).tD);
     end
     setappdata(fig,'hCurrentAx4',hCurrentAx4);
 
