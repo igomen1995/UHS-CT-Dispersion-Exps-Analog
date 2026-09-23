@@ -234,6 +234,10 @@ for i = 1:length(filedataExp.Key)
     % u interstitial theoretical
     uint = filedataExp.Q(i)/(filedataExp.phi(i)*pi*((filedataExp.D(i)*2.54/2)^2));
 
+    % interpolant for composition form array 0 to 1 (binary mixture)
+    interpFcn = buildInterpolant(filedataExp.Fluid1(i), ...
+        filedataExp.Fluid2(i), filedataExp.T(i), filedataExp.P(i));
+
     for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
@@ -267,7 +271,8 @@ for i = 1:length(filedataExp.Key)
         secondsElapsed = seconds(timeElapsed);
         volInjected = secondsElapsed*filedataExp.Q(i)/60;
         tDtotal = volInjected/filedataExp.Vtotal(i);
-        concImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+        CNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+        concImage = interpFcn(CNormImage);
         % ct prop
         resXmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeX; % mm
         resYmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeY; % mm
@@ -357,7 +362,8 @@ for i = 1:length(filedataExp.Key)
         BTcore = [BTcore;BTcore_temp];
 
         for k = 2:nn_exp
-            concImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            CNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            concImage = interpFcn(CNormImage);
 
             % Concentration profiles and histograms of normalized images
             imgNr = expCTData.(filedataExp.Key(i)).exp.(run_name).pcp.ImgNr(k);
