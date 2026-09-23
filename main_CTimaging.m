@@ -385,7 +385,7 @@ for i = 1:length(filedataExp.Key)
         'MarkerEdgeColor','none','DisplayName','MFM_analog_BTC');
     scatter(ax5, expProcFullData_MFM_UHS.BT.SecondsElapsed, expProcFullData_MFM_UHS.BT.CDi, 20, ...
         'filled', ...
-        'MarkerFaceColor',colors(2,:), ...
+        'MarkerFaceColor',colors(3,:), ...
         'MarkerEdgeColor','none','DisplayName','MFM_UHS_BTC');
     tmin = min(BT.t);
     tmax = max(BT.t);
@@ -622,7 +622,7 @@ for i = 1:length(filedataExp.Key)
         5, 'filled', 'MarkerFaceColor',colors(1,:), ...
         'HitTest','off','PickableParts','none', 'DisplayName','MFM analog BTC');
     hBT_MFM_UHS = scatter(ax4, expProcFullData_MFM_UHS.BT.tDtotal, expProcFullData_MFM_UHS.BT.CDi, ...
-        5, 'filled', 'MarkerFaceColor',colors(2,:), ...
+        5, 'filled', 'MarkerFaceColor',colors(3,:), ...
         'HitTest','off','PickableParts','none', 'DisplayName','MFM UHS BTC');
     grid(ax4,'on')
     xlabel(ax4,'t_D_{total} [-]')
@@ -797,10 +797,10 @@ function updateSelection(fig, idx)
     % ax4: create the red current-point marker on first use
     if isempty(hCurrentAx4) || ~isvalid(hCurrentAx4)
         hCurrentAx4 = xline(ax4, frames(idx).tD, '--r', 'LineWidth', 2, ...
-            'DisplayName', sprintf('t_D = %.1f selected', frames(idx).tD));
+            'DisplayName', sprintf('t_D = %.1f', frames(idx).tD));
     else
         hCurrentAx4.Value = frames(idx).tD;
-        hCurrentAx4.DisplayName = sprintf('t_D = %.2f selected', frames(idx).tD);
+        hCurrentAx4.DisplayName = sprintf('t_D = %.1f', frames(idx).tD);
     end
     setappdata(fig,'hCurrentAx4',hCurrentAx4);
 
