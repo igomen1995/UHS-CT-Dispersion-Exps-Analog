@@ -173,6 +173,9 @@ expFolderPath = {expFolderContent.folder};
 %         'HorizontalAlignment','center', ...
 %         'FontWeight','bold', ...
 %         'Interpreter','none');
+%     % interpolant for composition form array 0 to 1 (binary mixture)
+%       interpFcn = buildInterpolant(filedataExp.Fluid1(i), ...
+%           filedataExp.Fluid2(i), filedataExp.T(i), filedataExp.P(i));
 % 
 %     for j = 1:length(expFolderName) % number of runs
 %         run_name = "run_" + sprintf('%02d', j);
@@ -220,7 +223,8 @@ expFolderPath = {expFolderContent.folder};
 %             ax4.YAxisLocation = 'right';
 % 
 %             % plot image ax3
-%             concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+%             CNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+%             concCTimages = interpFcn(CNormImage);
 %             % imgSmooth = imgaussfilt(concCTimages, 20);
 %             cla(ax3)
 %             imagesc(ax3, concCTimages)
@@ -315,6 +319,10 @@ for i = 1:length(filedataExp.Key)
     expCTDataname = fullfile(pathExportAll, filedataExp.Key(i) + ".mat");
     expCTDataTemp = load(expCTDataname);
     expCTData.(filedataExp.Key(i)) = expCTDataTemp.expCTDataSave;
+        
+    % interpolant for composition form array 0 to 1 (binary mixture)
+    interpFcn = buildInterpolant(filedataExp.Fluid1(i), ...
+        filedataExp.Fluid2(i), filedataExp.T(i), filedataExp.P(i));
 
     for j = 1:length(expFolderName)
 
@@ -328,7 +336,8 @@ for i = 1:length(filedataExp.Key)
 
         for k = 1:nz
 
-            % concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            % CNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            % concCTimages = interpFcn(CNormImage);
             vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(:,k);
 
             % breakthrough point
@@ -446,6 +455,10 @@ for i = 1:length(filedataExp.Key)
         'color',{},'xD',{},'zD',{},'C',{}, ...
         'xD2',{},'rhoNormVert',{},'hContour',{},'hScatter',{});
 
+    % interpolant for composition form array 0 to 1 (binary mixture)
+    interpFcn = buildInterpolant(filedataExp.Fluid1(i), ...
+        filedataExp.Fluid2(i), filedataExp.T(i), filedataExp.P(i));
+
     for j = 1:length(expFolderName) % number of runs
         run_name = "run_" + sprintf('%02d', j);
         HDF5dataPath = ['/exp/' char(run_name) '/conc'];
@@ -474,7 +487,8 @@ for i = 1:length(filedataExp.Key)
             tD = vars.tDtotal;
 
             % ax1
-            concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            CNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            concCTimages = interpFcn(CNormImage);
             imgSmooth = imgaussfilt(concCTimages, 20);
             resXmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeX;
             resYmm = expCTData.(filedataExp.Key(i)).exp.(run_name).pca.Geometry.VoxelSizeY;
@@ -584,6 +598,7 @@ for i = 1:length(filedataExp.Key)
     % wire up interactivity
     setappdata(fig,'frames',frames);
     setappdata(fig,'HDF5filename',HDF5filename);
+    setappdata(fig,'interpFcn',interpFcn);
     setappdata(fig,'ax2',ax2);
     setappdata(fig,'ax4',ax4);
     setappdata(fig,'levels',levels);
@@ -677,6 +692,7 @@ function updateSelection(fig, idx)
     frames        = getappdata(fig,'frames');
     prevIdx       = getappdata(fig,'selectedIdx');
     HDF5filename  = getappdata(fig,'HDF5filename');
+    interpFcn     = getappdata(fig,'interpFcn'); 
     ax2           = getappdata(fig,'ax2');
     ax4           = getappdata(fig,'ax4');
     levels        = getappdata(fig,'levels');
@@ -704,7 +720,8 @@ function updateSelection(fig, idx)
     info = h5info(HDF5filename, HDF5dataPath);
     dims = info.Dataspace.Size;
     nx = dims(1); ny = dims(2);
-    concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 frames(idx).k], [nx ny 1]);
+    CNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 frames(idx).k], [nx ny 1]);
+    concCTimages = interpFcn(CNormImage);
     imgSmooth = imgaussfilt(concCTimages, 20);
 
     % ax2 image: create on first use, otherwise just update it
