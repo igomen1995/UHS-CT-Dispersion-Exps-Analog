@@ -229,7 +229,7 @@ for m=1:length(tD_target)
 end
 
 
-%% plot BT dimension time
+%% to do plot BT dimension time
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
 
 figure
@@ -259,3 +259,11 @@ for i = 1:height(inputFileConfig)
 
 end
 legend(legendEntries, 'Interpreter','none','FontSize',9.8,'Location','southeast')
+
+%% MFM analog and UHS and CT together BTC
+
+%% width with time and theoretical ---
+% add theoretical to main_CTpreproc
+% add rhonorm and Cnorm (both) to be able to compare when Z is not
+% corrected
+% add uncertainty He/Xe mixture to estimation
