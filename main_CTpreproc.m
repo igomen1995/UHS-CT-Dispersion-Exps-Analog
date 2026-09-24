@@ -318,6 +318,7 @@ for i = 1:length(filedataExp.Key)
             zFront_90_cm_mean = NaN;
         end
         zWidth = zFront_10_cm_mean - zFront_90_cm_mean;
+        
         % C = 0.5
         idx = (concImage>=0.48 & concImage <= 0.52);
         [rows, cols] = find(idx);   % rows = Z positions (pixel indices)

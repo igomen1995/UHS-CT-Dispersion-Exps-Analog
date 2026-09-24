@@ -93,17 +93,18 @@ CT_setupPaths;
 
 inputFileConfigName = 'inputCTExpConfig.xlsx';
 inputFileConfig = readtable(inputFileConfigName);
+exportPath = 'results/';
 
 %% Find where to plot profile
-% Plot Z Profile
+% Plot Z Profile at fixed zD
 
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
 
-Z_target = 4;
-C_target = 0.5;
+ZD_target = 0.5;
+CD_target = 0.5;
 
-Z_found = [];
-C_found = [];
+ZD_found = [];
+CD_found = [];
 idx_found = [];
 l_found = [];
 
@@ -122,8 +123,8 @@ for i = 1:height(inputFileConfig)
     vars = expCTData.(filedataExp.Key).concVarsAll;
 
     best_dist = inf;
-    best_Z = NaN;
-    best_C = NaN;
+    best_ZD = NaN;
+    best_CD = NaN;
     best_idx = NaN;
     best_l = NaN;
 
@@ -131,44 +132,102 @@ for i = 1:height(inputFileConfig)
 
         C1Profile = vars.C1Profile{l};
 
-        Z = C1Profile(:,1);
-        C = C1Profile(:,2);
+        ZD = C1Profile.zDimLess;
+        CD = C1Profile.rhoNormVert;
 
-        dist = (Z - Z_target).^2 + (C - C_target).^2;
+        dist = (ZD - ZD_target).^2 + (CD - CD_target).^2;
 
         [min_dist, idx] = min(dist);
 
         if min_dist < best_dist
             best_dist = min_dist;
-            best_Z = Z(idx);
-            best_C = C(idx);
+            best_ZD = ZD(idx);
+            best_CD = CD(idx);
             best_idx = idx;
             best_l = l;
         end
     end
 
-    Z_found(i) = best_Z;
-    C_found(i) = best_C;
+    ZD_found(i) = best_ZD;
+    CD_found(i) = best_CD;
     idx_found(i) = best_idx;
     l_found(i) = best_l;
 
     % what profile to plot
     C1Profile_plot = vars.C1Profile{l_found(i)};
-    tD = vars.tDcorr(l_found(i));
+    tD = vars.tDtotal(l_found(i));
     legendEntries{i} = filedataExp.Key;
 
     % plot
-    plot(C1Profile_plot(:,1), C1Profile_plot(:,2),'LineWidth',3,'Color',colours{:,i})
-    xlabel('Z Distance [cm]','FontSize',14)
-    % plot(C1Profile_plot(:,1)/C1Profile_plot(end,1), C1Profile_plot(:,2),'LineWidth',3)
-    % xlabel('Z_D [-]','FontSize',14)
-    ylabel('C_1 average [-]','FontSize',14)
+    plot(C1Profile_plot.zDimLess, C1Profile_plot.rhoNormVert,'LineWidth',3,'Color',colours{:,i})
+    xlabel('Z_D [-]','FontSize',14)
+    ylabel('C_1 [-]','FontSize',14)
     set(gca, 'FontSize', 14)
     grid on
     hold on
 
 end
 legend(legendEntries, 'Interpreter','none','FontSize',9.8)
+
+%% Find where to plot profile
+% Plot Z Profile at fixed tD
+
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
+tD_target = 0.5;
+% tD_target = 0.5:0.1:1;
+
+for m=1:length(tD_target)
+    tD_found = nan(height(inputFileConfig),1);
+    l_found  = nan(height(inputFileConfig),1);
+    
+    fig = figure;
+    legendEntries = cell(1, height(inputFileConfig));
+    
+    for i = 1:height(inputFileConfig)
+        filenameExp = inputFileConfig.inputFileName{i};
+        pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
+        filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
+    
+        expCTDataname = fullfile(pathExportAll, filedataExp.Key + ".mat");
+        expCTDataTemp = load(expCTDataname);
+        expCTData.(filedataExp.Key) = expCTDataTemp.expCTDataSave;
+    
+        vars = expCTData.(filedataExp.Key).concVarsAll;
+    
+        % find the scan (row) whose tDtotal is closest to target
+        [minDist, l] = min(abs(vars.tDtotal - tD_target(m)));
+        if minDist > 0.05   % flag if the nearest available scan is far from target
+            warning('%s: nearest scan is tD=%.3f (target %.3f, off by %.3f)', ...
+                filedataExp.Key, vars.tDtotal(l), tD_target(m), minDist);
+        end
+    
+        tD_found(i) = vars.tDtotal(l);
+        l_found(i)  = l;
+    
+        % plot that scan's spatial profile
+        C1Profile_plot = vars.C1Profile{l};
+        legendEntries{i} = char(filedataExp.Key) + sprintf(" (t_D=%.2f)", tD_found(i));
+    
+        % plot
+        plot(C1Profile_plot.zDimLess, C1Profile_plot.rhoNormVert,'LineWidth',3,'Color',colours{:,i})
+        xlabel('Z_D [-]','FontSize',14)
+        ylabel('C_1 [-]','FontSize',14)
+        xlim([0,1])
+        ylim([0,1])
+        set(gca, 'FontSize', 14)
+        grid on
+        hold on
+    
+    end
+    legend(legendEntries, 'Interpreter','none','FontSize',9.8)
+    title(sprintf('Z profiles @ t_D = %.1f', tD_target(m)),'Interpreter','none')
+    % save the completed figure for this selection
+    tDStr = strrep(sprintf('%.1f', tD_target(m)), '.', 'p');  % e.g. 0.50 -> 0p50
+    fname = sprintf('Zprofiles_tD%s', tDStr);
+    saveas(fig, fullfile(exportPath, fname), 'png');
+    saveas(fig, fullfile(exportPath, fname), 'fig');
+end
+
 
 %% plot BT dimension time
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
