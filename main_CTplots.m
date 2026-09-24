@@ -173,8 +173,8 @@ legend(legendEntries, 'Interpreter','none','FontSize',9.8)
 % Plot Z Profile at fixed tD
 
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
-tD_target = 0.5;
-% tD_target = 0.5:0.1:1;
+% tD_target = 0.5;
+tD_target = 0.5:0.1:1;
 
 for m=1:length(tD_target)
     tD_found = nan(height(inputFileConfig),1);
