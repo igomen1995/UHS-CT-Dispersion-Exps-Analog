@@ -253,8 +253,6 @@ for i = 1:height(inputFileConfig)
     interpFcn = buildInterpolant(filedataExp.Fluid1, ...
         filedataExp.Fluid2, filedataExp.T, filedataExp.P);
 
-
-
     for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
@@ -295,11 +293,11 @@ for i = 1:height(inputFileConfig)
 
             rhoNormVars_k = populate_CTframeVars(rhoNormImage, resXmm, resYmm, ...
                 imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal,D);
-            expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k) = rhoNormVars_k;
+            expCTData.(filedataExp.Key).exp.(run_name).vars.rhoNorm(k) = rhoNormVars_k;
             
             concVars_k = populate_CTframeVars(concImage, resXmm, resYmm, ...
                 imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal,D);
-            expCTData.(filedataExp.Key).exp.(run_name).concVars(k) = concVars_k;
+            expCTData.(filedataExp.Key).exp.(run_name).vars.conc(k) = concVars_k;
 
             % BT rhoNorm case
             rhoNormBTlinesBefore_temp = table(timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, rhoNormVars_k.CD1inlet, ...
@@ -321,22 +319,22 @@ for i = 1:height(inputFileConfig)
             
         end
 
-        rhoNormVars_temp = expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars;
+        rhoNormVars_temp = expCTData.(filedataExp.Key).exp.(run_name).vars.rhoNorm;
         rhoNormVars_tempTable = struct2table(rhoNormVars_temp,'AsArray',true);
         rhoNormVarsAll = [rhoNormVarsAll;rhoNormVars_tempTable];
 
-        concVars_temp = expCTData.(filedataExp.Key).exp.(run_name).concVars;
+        concVars_temp = expCTData.(filedataExp.Key).exp.(run_name).vars.conc;
         concVars_tempTable = struct2table(concVars_temp,'AsArray',true);
         concVarsAll = [concVarsAll;concVars_tempTable];
 
     end
     expCTData.(filedataExp.Key).BTlinesBefore.rhoNorm = rhoNormBTlinesBefore;
     expCTData.(filedataExp.Key).BTcore.rhoNorm = rhoNormBTcore;
-    expCTData.(filedataExp.Key).VarsAll.rhoNorm = rhoNormVarsAll;
+    expCTData.(filedataExp.Key).varsAll.rhoNorm = rhoNormVarsAll;
 
     expCTData.(filedataExp.Key).BTlinesBefore.conc = concBTlinesBefore;
     expCTData.(filedataExp.Key).BTcore.conc = concBTcore;
-    expCTData.(filedataExp.Key).VarsAll.conc = concVarsAll;
+    expCTData.(filedataExp.Key).varsAll.conc = concVarsAll;
 
     % save expCTData
     expCT_name = pathExportAll + filedataExp.Key;
