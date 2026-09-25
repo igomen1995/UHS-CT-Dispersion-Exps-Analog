@@ -87,13 +87,47 @@
 
 %% IMPORT input
 
-CT_setupPaths;
+Root = CT_setupPaths;
 
 % Introduce name of input and desired output folder name
 
 inputFileConfigName = 'inputCTExpConfig.xlsx';
 inputFileConfig = readtable(inputFileConfigName);
 exportPath = 'results/';
+
+%% Load data
+nExp = height(inputFileConfig);
+filedataExpAll = cell(nExp,1);
+expCTDataAll   = cell(nExp,1);
+MFM_CT_DataAll     = cell(nExp,1);
+MFM_UHS_DataAll    = cell(nExp,1);
+
+for i = 1:nExp
+    filenameExp   = inputFileConfig.inputFileName{i};
+    pathExportAll = inputFileConfig.exportPath{i};
+
+    filedataExpAll{i} = import_inputCTExp(filenameExp);
+    
+    % CT
+    expCTDataname = fullfile(pathExportAll, filedataExpAll{i}.Key + ".mat");
+    temp = load(expCTDataname);
+    expCTDataAll{i} = temp.expCTDataSave;
+
+    % MFM analog (CT) and MFM UHS data
+    pathImport_MFM_CT  = inputFileConfig.MFM_BTC_CT_Path{i};
+    pathImport_MFM_UHS = inputFileConfig.MFM_BTC_UHS_Path{i};
+    MFM_CT_name  = inputFileConfig.MFM_BTC_CT_Key{i};
+    MFM_UHS_name = inputFileConfig.MFM_BTC_UHS_Key{i};
+
+    MFM_CT_file  = fullfile(Root, pathImport_MFM_CT,  'expProcFullData.mat');
+    MFM_UHS_file = fullfile(Root, pathImport_MFM_UHS, 'expProcFullData.mat');
+
+    MFM_CT_Data  = load(MFM_CT_file);
+    MFM_UHS_Data = load(MFM_UHS_file);
+
+    MFM_CT_DataAll{i}  = MFM_CT_Data.expProcFullData.(MFM_CT_name);
+    MFM_UHS_DataAll{i} = MFM_UHS_Data.expProcFullData.(MFM_UHS_name);
+end
 
 %% Find where to plot profile
 % Plot Z Profile at fixed zD
@@ -111,16 +145,9 @@ l_found = [];
 figure
 legendEntries = cell(1, height(inputFileConfig));
 
-for i = 1:height(inputFileConfig)
-    filenameExp = inputFileConfig.inputFileName{i};
-    pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
-    filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
-
-    expCTDataname = fullfile(pathExportAll, filedataExp.Key + ".mat");
-    expCTDataTemp = load(expCTDataname);
-    expCTData.(filedataExp.Key) = expCTDataTemp.expCTDataSave;
-
-    vars = expCTData.(filedataExp.Key).concVarsAll;
+for i = 1:nExp
+    filedataExp = filedataExpAll{i};
+    vars = expCTDataAll{i}.concVarsAll;
 
     best_dist = inf;
     best_ZD = NaN;
@@ -174,7 +201,7 @@ legend(legendEntries, 'Interpreter','none','FontSize',9.8)
 
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
 % tD_target = 0.5;
-tD_target = 0.5:0.1:1;
+tD_target = 0.5:0.1:1.2;
 
 for m=1:length(tD_target)
     tD_found = nan(height(inputFileConfig),1);
@@ -184,15 +211,8 @@ for m=1:length(tD_target)
     legendEntries = cell(1, height(inputFileConfig));
     
     for i = 1:height(inputFileConfig)
-        filenameExp = inputFileConfig.inputFileName{i};
-        pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
-        filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
-    
-        expCTDataname = fullfile(pathExportAll, filedataExp.Key + ".mat");
-        expCTDataTemp = load(expCTDataname);
-        expCTData.(filedataExp.Key) = expCTDataTemp.expCTDataSave;
-    
-        vars = expCTData.(filedataExp.Key).concVarsAll;
+        filedataExp = filedataExpAll{i};   
+        vars = expCTDataAll{i}.concVarsAll;
     
         % find the scan (row) whose tDtotal is closest to target
         [minDist, l] = min(abs(vars.tDtotal - tD_target(m)));
@@ -219,8 +239,12 @@ for m=1:length(tD_target)
         hold on
     
     end
-    legend(legendEntries, 'Interpreter','none','FontSize',9.8)
-    title(sprintf('Z profiles @ t_D = %.1f', tD_target(m)),'Interpreter','none')
+    if tD_target(m) < 0.8
+        legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northeast')
+    else
+        legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southwest')
+    end
+    title(sprintf('Z profiles @ tD = %.1f', tD_target(m)),'Interpreter','none')
     % save the completed figure for this selection
     tDStr = strrep(sprintf('%.1f', tD_target(m)), '.', 'p');  % e.g. 0.50 -> 0p50
     fname = sprintf('Zprofiles_tD%s', tDStr);
@@ -229,38 +253,146 @@ for m=1:length(tD_target)
 end
 
 
-%% to do plot BT dimension time
+%% BTC dimension time
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
 
-figure
+fig = figure;
 legendEntries = cell(1, height(inputFileConfig));
 
 for i = 1:height(inputFileConfig)
-    filenameExp = inputFileConfig.inputFileName{i};
-    pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
-    filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
+    filedataExp = filedataExpAll{i}; 
+    vars = expCTDataAll{i}.BTcore;
 
-    expCTDataname = fullfile(pathExportAll, filedataExp.Key + ".mat");
-    expCTDataTemp = load(expCTDataname);
-    expCTData.(filedataExp.Key) = expCTDataTemp.expCTDataSave;
-
-    vars = expCTData.(filedataExp.Key).BTcore;
-
-    legendEntries{i} = filedataExp.Key;
+    legendEntries{i} = "CT"+filedataExp.Key;
 
     % plot
-    plot(vars.timeElapsed, vars.C1,'LineWidth',3,'Color',colours{:,i})
+    plot(vars.timeElapsed, vars.rhoNorm,'LineWidth',2,'Color',colours{:,i})
     xlabel('time elapsed [hh:mm:ss]','FontSize',14)
-    ylabel('C_1 average [-]','FontSize',14)
+    ylabel('C_1 [-]','FontSize',14)
     set(gca, 'FontSize', 14)
     ylim([-0.02 1])
     grid on
     hold on
-
 end
-legend(legendEntries, 'Interpreter','none','FontSize',9.8,'Location','southeast')
+legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southeast')
+title(sprintf('BT curves from CT'),'Interpreter','none')
+fname = sprintf('BT_CT_time');
+saveas(fig, fullfile(exportPath, fname), 'png');
+saveas(fig, fullfile(exportPath, fname), 'fig');
+
+%% BTC dimensionless time
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
+
+fig = figure;
+legendEntries = cell(1, height(inputFileConfig));
+
+for i = 1:height(inputFileConfig)
+    filedataExp = filedataExpAll{i}; 
+    vars = expCTDataAll{i}.BTcore;
+
+    legendEntries{i} = "CT"+filedataExp.Key;
+
+    % plot
+    plot(vars.tDtotal, vars.rhoNorm,'LineWidth',2,'Color',colours{:,i})
+    xlabel('t_D [-]','FontSize',14)
+    ylabel('C_1 [-]','FontSize',14)
+    set(gca, 'FontSize', 14)
+    ylim([-0.02 1])
+    xlim([0,1.2])
+    grid on
+    hold on
+end
+legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
+title(sprintf('BT curves from CT'),'Interpreter','none')
+fname = sprintf('BT_CT_tD');
+saveas(fig, fullfile(exportPath, fname), 'png');
+saveas(fig, fullfile(exportPath, fname), 'fig');
+
+%% MFM analog BTC
+
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
+
+fig = figure;
+legendEntries = cell(1, height(inputFileConfig));
+
+for i = 1:height(inputFileConfig)
+    vars_MFM_CT  = MFM_CT_DataAll{i}.BT;
+
+    legendEntries{i} = inputFileConfig.MFM_BTC_CT_Key{i};
+
+    % plot BT MFM CT
+    plot(vars_MFM_CT.tD, vars_MFM_CT.CDi,'LineWidth',2,'Color',colours{:,i})
+    xlabel('t_D [-]','FontSize',14)
+    ylabel('C_1 [-]','FontSize',14)
+    set(gca, 'FontSize', 14)
+    ylim([-0.02 1])
+    % xlim([0,1.2])
+    grid on
+    hold on
+end
+legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southeast')
+title(sprintf('BT curves from MFM analog CT-CF'),'Interpreter','none')
+fname = sprintf('BT_CT_MFM_tD');
+saveas(fig, fullfile(exportPath, fname), 'png');
+saveas(fig, fullfile(exportPath, fname), 'fig');
+
+%% MFM UHS BTC
+
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
+
+fig = figure;
+legendEntries = cell(1, height(inputFileConfig));
+
+for i = 1:height(inputFileConfig)
+    vars_MFM_UHS  = MFM_UHS_DataAll{i}.BT;
+
+    legendEntries{i} = inputFileConfig.MFM_BTC_UHS_Key{i};
+
+    % plot BT MFM UHS
+    plot(vars_MFM_UHS.tD, vars_MFM_UHS.CDi,'LineWidth',2,'Color',colours{:,i})
+    xlabel('t_D [-]','FontSize',14)
+    ylabel('C_1 [-]','FontSize',14)
+    set(gca, 'FontSize', 14)
+    ylim([-0.02 1])
+    % xlim([0,1.2])
+    grid on
+    hold on
+end
+legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southeast')
+title(sprintf('BT curves from MFM UHS'),'Interpreter','none')
+fname = sprintf('BT_UHS_MFM_tD');
+saveas(fig, fullfile(exportPath, fname), 'png');
+saveas(fig, fullfile(exportPath, fname), 'fig');
 
 %% MFM analog and UHS and CT together BTC
+
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
+
+fig = figure;
+
+for i = 1:height(inputFileConfig)
+    vars_MFM_CT  = MFM_CT_DataAll{i}.BT;
+    vars_MFM_UHS  = MFM_UHS_DataAll{i}.BT;
+
+    % plot BT MFM CT and MFM UHS
+    plot(vars_MFM_CT.tD, vars_MFM_CT.CDi,'--', ...
+        'LineWidth',2,'Color',colours{:,i},'DisplayName',inputFileConfig.MFM_BTC_CT_Key{i})
+    hold on
+    plot(vars_MFM_UHS.tD, vars_MFM_UHS.CDi,':', ...
+        'LineWidth',2,'Color',colours{:,i},'DisplayName',inputFileConfig.MFM_BTC_UHS_Key{i})
+    xlabel('t_D [-]','FontSize',14)
+    ylabel('C_1 [-]','FontSize',14)
+    set(gca, 'FontSize', 14)
+    ylim([-0.02 1])
+    % xlim([0,1.2])
+    grid on
+    
+end
+legend('Interpreter','none','FontSize',8,'Location','southeast')
+title(sprintf('BT curves from MFM analog CT-CF'),'Interpreter','none')
+fname = sprintf('BT_UHS_MFM_tD');
+saveas(fig, fullfile(exportPath, fname), 'png');
+saveas(fig, fullfile(exportPath, fname), 'fig');
 
 %% width with time and theoretical ---
 % add theoretical to main_CTpreproc
