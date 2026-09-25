@@ -173,153 +173,148 @@ expCTData.(filedataExp.Key) = expCTDataTemp.expCTDataSave;
 interpFcn = buildInterpolant(filedataExp.Fluid1, ...
     filedataExp.Fluid2, filedataExp.T, filedataExp.P);
 
-% %% Imaging movie
-% 
-% for i = 1:length(filedataExp.Key)
-% 
-%     fig = figure('Position', [50, 50, 600, 1000]); % [left, bottom, width, height];
-%     frame = getframe(fig);
-%     v = VideoWriter(pathExportAll + "movie_" + filedataExp.Key, 'MPEG-4');
-%     v.FrameRate = 100;   % frames per second
-%     open(v);
-%     writeVideo(v, frame);
-%     % Shared geometry
-%     imgPos  = [0.12 0.24  0.3 0.5]; % image axes
-%     cbPos   = [0.45 imgPos(2) 0.02 0.5];
-%     ax1Pos  = [imgPos(1) 0.79 imgPos(3) 0.14];  % same WIDTH as image
-%     ax4Pos  = [0.62 imgPos(2)  0.27 imgPos(4)];  % same HEIGHT as image  
-%     ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)];
-%     ax5Pos  = [ax1Pos(1) 0.05 0.77 0.12]; 
-%     ax1 = axes('Position',ax1Pos);
-%     ax2 = axes('Position',ax2Pos);
-%     ax3 = axes('Position',imgPos);
-%     ax4 = axes('Position',ax4Pos);
-%     ax5 = axes('Position',ax5Pos);
-%     ax5b = axes('Position', ax5.Position, ...
-%         'XAxisLocation','top', ...
-%         'YAxisLocation','right', ...
-%         'Color','none', ...
-%         'YColor','none');   % hide Y axis
-%     linkaxes([ax5 ax5b],'x')
-% 
-%     % hTitle
-%     hTitle = annotation('textbox', [0 0.93 1 0.05], ...
-%         'String', '', ...
-%         'EdgeColor','none', ...
-%         'HorizontalAlignment','center', ...
-%         'FontWeight','bold', ...
-%         'Interpreter','none');
-%     % interpolant for composition form array 0 to 1 (binary mixture)
-%       interpFcn = buildInterpolant(filedataExp.Fluid1, ...
-%           filedataExp.Fluid2, filedataExp.T, filedataExp.P);
-% 
-%     for j = 1:length(expFolderName) % number of runs
-%         run_name = "run_" + sprintf('%02d', j);
-%         HDF5dataPath = ['/exp/' char(run_name) '/conc'];
-%         info = h5info(HDF5filename, HDF5dataPath);
-%         dims = info.Dataspace.Size;
-%         nx = dims(1);
-%         ny = dims(2);
-%         nz = dims(3);
-% 
-%         for k = 1:nz
-%             vars = expCTData.(filedataExp.Key).exp.(run_name).vars.conc(k);
-% 
-%             % hTitle
-%             set(hTitle, 'String', ...
-%                 filedataExp.Key + ": CT " + run_name + ...
-%                 " ImgNumber_" + sprintf('%03d', k));
-% 
-%             % plot concentration in x ax1
-%             x1 = vars.C1Axial.xHorzcm;
-%             y1 = vars.C1Axial.CHorz;
-%             cla(ax1)
-%             plot(ax1, x1, y1,'LineWidth',2)
-%             xlim(ax1,[min(x1) max(x1)])
-%             ylim(ax1,[-0.02 1])
-%             xlabel(ax1,'X [cm]')
-%             ylabel(ax1,'C_{ave}_1 [-]')
-%             title(ax1,"timeElapsed: " + vars.secondsElapsed + ...
-%                       " s, volInjected: " + sprintf('%.2f', vars.volInjected) + ...
-%                       " mL, tD: " + sprintf('%.3f', vars.tDtotal))
-%             grid(ax1,'on')
-% 
-%             % plot concentration in z ax4
-%             x2 = vars.C1Profile.zVertcm;
-%             y2 = vars.C1Profile.CVert;
-%             cla(ax4)
-%             plot(ax4, x2, y2,'LineWidth',2)
-%             xlabel(ax4,'Z [cm]')
-%             ylabel(ax4,'C_{ave}_1 [-]')
-%             grid(ax4,'on')          
-%             axis(ax4,'tight')
-%             axis(ax4,'manual')
-%             camroll(ax4,270)
-%             ylim(ax4,[-0.02 1])
-%             ax4.YAxisLocation = 'right';
-% 
-%             % plot image ax3
-%             rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
-%             if strcmp(dataSource,'conc')
-%                 plotImage = interpFcn(rhoNormImage);
-%             else
-%                 plotImage = rhoNormImage;
-%             end
-%             % imgSmooth = imgaussfilt(plotImage, 20);
-%             cla(ax3)
-%             imagesc(ax3, plotImage)
-%             axis(ax3,'xy','fill')
-%             set(ax3,'YDir','reverse')
-%             xlabel(ax3,'Pixel Number')
-%             ylabel(ax3,'Pixel Number')
-%             % nLevels = 10;
-%             % cmap = turbo(nLevels);
-%             % colormap(ax3,cmap)
-%             colormap(ax3,turbo)
-%             clim(ax3,[0 1]);
-%             cb = colorbar(ax3,'Position',cbPos);
-%             cb.Label.String = 'C_1 [-]';
-%             % levels = 0:0.1:1;
-%             % hold(ax3,'on')
-%             % contour(ax3, imgSmooth, levels, ...
-%             %     'LineColor','k', ...
-%             %     'LineWidth',1,'ShowText',true,'LabelFormat',"%0.1f")
-%             % hold(ax3,'off')
-% 
-%             % plot histogram ax2
-%             freq = vars.histImage.counts;
-%             binCenters = (vars.histImage.minEdge + vars.histImage.maxEdge)/2;
-%             binWidth = abs(vars.histImage.maxEdge-vars.histImage.minEdge);
-%             cla(ax2)
-%             bar(ax2,binCenters,freq,1)
-%             xlim(ax2,[-0.02,1])
-%             ylim(ax2,[0,length(x1)*length(x2)])
-%             xlabel(ax2,'C_1 [-]')
-%             ylabel(ax2,'Counts')
-%             title(ax2,"run: " +string(j)+" , angle: " + vars.rotPos + "°")
-%             grid(ax2, 'on')
-% 
-%             % plot BTcore ax5
-%             t = vars.secondsElapsed;
-%             C = y2(end);
-%             tmin = expCTData.(filedataExp.Key).BTcore.secondsElapsed(1);
-%             tmax = expCTData.(filedataExp.Key).BTcore.secondsElapsed(end);
-%             scatter(ax5,t,C,15,'filled','MarkerFaceColor',[0, 0.4470, 0.7410],'MarkerEdgeColor','none')
-%             hold(ax5,'on')
-%             ylim(ax5,[-0.02 1])
-%             xlim(ax5,[tmin,tmax])
-%             xlabel(ax5,'secondsElapsed')
-%             ylabel(ax5,'C_{ave}_1 [-]')
-%             xlabel(ax5b,'t_D [-]')
-%             grid(ax5, 'on')
-% 
-%             drawnow;
-%             frame = getframe(fig);  % capture frame
-%             writeVideo(v, frame); % write to movie
-%         end
-%     end
-%     close(v)
-% end
+%% Imaging movie
+
+fig = figure('Position', [50, 50, 600, 1000]); % [left, bottom, width, height];
+frame = getframe(fig);
+v = VideoWriter(pathExportAll + "movie_" + filedataExp.Key + "_" + dataSource, 'MPEG-4');
+v.FrameRate = 100;   % frames per second
+open(v);
+writeVideo(v, frame);
+% Shared geometry
+imgPos  = [0.12 0.24  0.3 0.5]; % image axes
+cbPos   = [0.45 imgPos(2) 0.02 0.5];
+ax1Pos  = [imgPos(1) 0.79 imgPos(3) 0.14];  % same WIDTH as image
+ax4Pos  = [0.62 imgPos(2)  0.27 imgPos(4)];  % same HEIGHT as image  
+ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)];
+ax5Pos  = [ax1Pos(1) 0.05 0.77 0.12]; 
+ax1 = axes('Position',ax1Pos);
+ax2 = axes('Position',ax2Pos);
+ax3 = axes('Position',imgPos);
+ax4 = axes('Position',ax4Pos);
+ax5 = axes('Position',ax5Pos);
+ax5b = axes('Position', ax5.Position, ...
+    'XAxisLocation','top', ...
+    'YAxisLocation','right', ...
+    'Color','none', ...
+    'YColor','none');   % hide Y axis
+linkaxes([ax5 ax5b],'x')
+
+% hTitle
+hTitle = annotation('textbox', [0 0.93 1 0.05], ...
+    'String', '', ...
+    'EdgeColor','none', ...
+    'HorizontalAlignment','center', ...
+    'FontWeight','bold', ...
+    'Interpreter','none');
+
+for j = 1:length(expFolderName) % number of runs
+    run_name = "run_" + sprintf('%02d', j);
+    HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+    info = h5info(HDF5filename, HDF5dataPath);
+    dims = info.Dataspace.Size;
+    nx = dims(1);
+    ny = dims(2);
+    nz = dims(3);
+
+    for k = 1:nz
+        vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+
+        % hTitle
+        set(hTitle, 'String', ...
+            filedataExp.Key + ": CT " + dataSource + " " + run_name + ...
+            " ImgNumber_" + sprintf('%03d', k));
+
+        % plot concentration in x ax1
+        x1 = vars.C1Axial.xHorzcm;
+        y1 = vars.C1Axial.CHorz;
+        cla(ax1)
+        plot(ax1, x1, y1,'LineWidth',2)
+        xlim(ax1,[min(x1) max(x1)])
+        ylim(ax1,[-0.02 1])
+        xlabel(ax1,'X [cm]')
+        ylabel(ax1,'C_{ave}_1 [-]')
+        title(ax1,"timeElapsed: " + vars.secondsElapsed + ...
+                  " s, volInjected: " + sprintf('%.2f', vars.volInjected) + ...
+                  " mL, tD: " + sprintf('%.3f', vars.tDtotal))
+        grid(ax1,'on')
+
+        % plot concentration in z ax4
+        x2 = vars.C1Profile.zVertcm;
+        y2 = vars.C1Profile.CVert;
+        cla(ax4)
+        plot(ax4, x2, y2,'LineWidth',2)
+        xlabel(ax4,'Z [cm]')
+        ylabel(ax4,'C_{ave}_1 [-]')
+        grid(ax4,'on')          
+        axis(ax4,'tight')
+        axis(ax4,'manual')
+        camroll(ax4,270)
+        ylim(ax4,[-0.02 1])
+        ax4.YAxisLocation = 'right';
+
+        % plot image ax3
+        rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+        if strcmp(dataSource,'conc')
+            plotImage = interpFcn(rhoNormImage);
+        else
+            plotImage = rhoNormImage;
+        end
+        % imgSmooth = imgaussfilt(plotImage, 20);
+        cla(ax3)
+        imagesc(ax3, plotImage)
+        axis(ax3,'xy','fill')
+        set(ax3,'YDir','reverse')
+        xlabel(ax3,'Pixel Number')
+        ylabel(ax3,'Pixel Number')
+        % nLevels = 10;
+        % cmap = turbo(nLevels);
+        % colormap(ax3,cmap)
+        colormap(ax3,turbo)
+        clim(ax3,[0 1]);
+        cb = colorbar(ax3,'Position',cbPos);
+        cb.Label.String = 'C_1 [-]';
+        % levels = 0:0.1:1;
+        % hold(ax3,'on')
+        % contour(ax3, imgSmooth, levels, ...
+        %     'LineColor','k', ...
+        %     'LineWidth',1,'ShowText',true,'LabelFormat',"%0.1f")
+        % hold(ax3,'off')
+
+        % plot histogram ax2
+        freq = vars.histImage.counts;
+        binCenters = (vars.histImage.minEdge + vars.histImage.maxEdge)/2;
+        binWidth = abs(vars.histImage.maxEdge-vars.histImage.minEdge);
+        cla(ax2)
+        bar(ax2,binCenters,freq,1)
+        xlim(ax2,[-0.02,1])
+        ylim(ax2,[0,length(x1)*length(x2)])
+        xlabel(ax2,'C_1 [-]')
+        ylabel(ax2,'Counts')
+        title(ax2,"run: " +string(j)+" , angle: " + vars.rotPos + "°")
+        grid(ax2, 'on')
+
+        % plot BTcore ax5
+        t = vars.secondsElapsed;
+        C = y2(end);
+        BTdata = expCTData.(filedataExp.Key).BTcore.(dataSource); 
+        tmin = BTdata.secondsElapsed(1);
+        tmax = BTdata.secondsElapsed(end);
+        scatter(ax5,t,C,15,'filled','MarkerFaceColor',[0, 0.4470, 0.7410],'MarkerEdgeColor','none')
+        hold(ax5,'on')
+        ylim(ax5,[-0.02 1])
+        xlim(ax5,[tmin,tmax])
+        xlabel(ax5,'secondsElapsed')
+        ylabel(ax5,'C_{ave}_1 [-]')
+        xlabel(ax5b,'t_D [-]')
+        grid(ax5, 'on')
+
+        drawnow;
+        frame = getframe(fig);  % capture frame
+        writeVideo(v, frame); % write to movie
+    end
+end
+close(v)
 
 %% Interactive imaging
 
@@ -362,7 +357,7 @@ for j = 1:length(expFolderName)
 
     for k = 1:nz
 
-        vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(:,k);
+        vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
 
         % breakthrough point
         t = vars.secondsElapsed;
