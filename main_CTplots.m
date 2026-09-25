@@ -95,6 +95,11 @@ inputFileConfigName = 'inputCTExpConfig.xlsx';
 inputFileConfig = readtable(inputFileConfigName);
 exportPath = 'results/';
 
+dataSource = 'conc';   % 'conc' or 'rhoNorm' — applies to ALL comparisons in this script
+if ~ismember(dataSource, {'rhoNorm','conc'})
+    error('dataSource must be "rhoNorm" or "conc", got "%s"', dataSource);
+end
+
 %% Load data
 nExp = height(inputFileConfig);
 filedataExpAll = cell(nExp,1);
@@ -147,7 +152,7 @@ legendEntries = cell(1, height(inputFileConfig));
 
 for i = 1:nExp
     filedataExp = filedataExpAll{i};
-    vars = expCTDataAll{i}.concVarsAll;
+    vars = expCTDataAll{i}.varsAll.(dataSource);
 
     best_dist = inf;
     best_ZD = NaN;
@@ -160,7 +165,7 @@ for i = 1:nExp
         C1Profile = vars.C1Profile{l};
 
         ZD = C1Profile.zDimLess;
-        CD = C1Profile.rhoNormVert;
+        CD = C1Profile.CVert;
 
         dist = (ZD - ZD_target).^2 + (CD - CD_target).^2;
 
@@ -186,7 +191,7 @@ for i = 1:nExp
     legendEntries{i} = filedataExp.Key;
 
     % plot
-    plot(C1Profile_plot.zDimLess, C1Profile_plot.rhoNormVert,'LineWidth',3,'Color',colours{:,i})
+    plot(C1Profile_plot.zDimLess, C1Profile_plot.CVert,'LineWidth',3,'Color',colours{:,i})
     xlabel('Z_D [-]','FontSize',14)
     ylabel('C_1 [-]','FontSize',14)
     set(gca, 'FontSize', 14)
@@ -212,7 +217,7 @@ for m=1:length(tD_target)
     
     for i = 1:height(inputFileConfig)
         filedataExp = filedataExpAll{i};   
-        vars = expCTDataAll{i}.concVarsAll;
+        vars = expCTDataAll{i}.varsAll.(dataSource);
     
         % find the scan (row) whose tDtotal is closest to target
         [minDist, l] = min(abs(vars.tDtotal - tD_target(m)));
@@ -229,7 +234,7 @@ for m=1:length(tD_target)
         legendEntries{i} = char(filedataExp.Key) + sprintf(" (t_D=%.2f)", tD_found(i));
     
         % plot
-        plot(C1Profile_plot.zDimLess, C1Profile_plot.rhoNormVert,'LineWidth',3,'Color',colours{:,i})
+        plot(C1Profile_plot.zDimLess, C1Profile_plot.CVert,'LineWidth',3,'Color',colours{:,i})
         xlabel('Z_D [-]','FontSize',14)
         ylabel('C_1 [-]','FontSize',14)
         xlim([0,1])
@@ -244,10 +249,10 @@ for m=1:length(tD_target)
     else
         legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southwest')
     end
-    title(sprintf('Z profiles @ tD = %.1f', tD_target(m)),'Interpreter','none')
+    title(sprintf('Z profiles (%s) @ tD = %.1f', dataSource,tD_target(m)),'Interpreter','none')
     % save the completed figure for this selection
     tDStr = strrep(sprintf('%.1f', tD_target(m)), '.', 'p');  % e.g. 0.50 -> 0p50
-    fname = sprintf('Zprofiles_tD%s', tDStr);
+    fname = sprintf('Zprofiles_%s_tD%s', dataSource,tDStr);
     saveas(fig, fullfile(exportPath, fname), 'png');
     saveas(fig, fullfile(exportPath, fname), 'fig');
 end
@@ -261,12 +266,12 @@ legendEntries = cell(1, height(inputFileConfig));
 
 for i = 1:height(inputFileConfig)
     filedataExp = filedataExpAll{i}; 
-    vars = expCTDataAll{i}.BTcore;
+    vars = expCTDataAll{i}.BTcore.(dataSource);
 
     legendEntries{i} = "CT"+filedataExp.Key;
 
     % plot
-    plot(vars.timeElapsed, vars.rhoNorm,'LineWidth',2,'Color',colours{:,i})
+    plot(vars.timeElapsed, vars.CD1,'LineWidth',2,'Color',colours{:,i})
     xlabel('time elapsed [hh:mm:ss]','FontSize',14)
     ylabel('C_1 [-]','FontSize',14)
     set(gca, 'FontSize', 14)
@@ -275,8 +280,8 @@ for i = 1:height(inputFileConfig)
     hold on
 end
 legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southeast')
-title(sprintf('BT curves from CT'),'Interpreter','none')
-fname = sprintf('BT_CT_time');
+title(sprintf('BT curves from CT (%S)',dataSource),'Interpreter','none')
+fname = sprintf('BT_CT_%s_time',dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
 
@@ -288,12 +293,12 @@ legendEntries = cell(1, height(inputFileConfig));
 
 for i = 1:height(inputFileConfig)
     filedataExp = filedataExpAll{i}; 
-    vars = expCTDataAll{i}.BTcore;
+    vars = expCTDataAll{i}.BTcore.(dataSource);
 
     legendEntries{i} = "CT"+filedataExp.Key;
 
     % plot
-    plot(vars.tDtotal, vars.rhoNorm,'LineWidth',2,'Color',colours{:,i})
+    plot(vars.tDtotal, vars.CD1,'LineWidth',2,'Color',colours{:,i})
     xlabel('t_D [-]','FontSize',14)
     ylabel('C_1 [-]','FontSize',14)
     set(gca, 'FontSize', 14)
@@ -303,8 +308,8 @@ for i = 1:height(inputFileConfig)
     hold on
 end
 legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
-title(sprintf('BT curves from CT'),'Interpreter','none')
-fname = sprintf('BT_CT_tD');
+title(sprintf('BT curves from CT (%S)',dataSource),'Interpreter','none')
+fname = sprintf('BT_CT_%s_tD',dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
 
@@ -395,6 +400,3 @@ saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
 
 %% width with time and theoretical ---
-% add theoretical to main_CTpreproc
-% add rhonorm and Cnorm (both) to be able to compare when Z is not
-% corrected

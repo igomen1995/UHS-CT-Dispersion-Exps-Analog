@@ -813,8 +813,8 @@ function updateSelection(fig, idx)
 
     % update title
     if ~isempty(hTitle) && isvalid(hTitle)
-        hTitle.String = sprintf('%s - CT %s, tD = %.1f, theta = %.0f°', ...
-                char(keyName), frames(idx).run_name, frames(idx).tD, frames(idx).rotPos);
+        hTitle.String = sprintf('%s - CT %s %s, tD = %.1f, theta = %.0f°', ...
+                char(keyName), dataSource, frames(idx).run_name, frames(idx).tD, frames(idx).rotPos);
         title(ax2, sprintf('Concentration map @ t_D = %.1f', frames(idx).tD), 'FontSize', 9)
     end
 
