@@ -1,5 +1,5 @@
 function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filedataExp, ...
-    ax1,ax2,ax3,ax4,cbPos,hTitle)
+    interpFcn,dataSource,ax1,ax2,ax3,ax4,cbPos,hTitle)
 
 
 %ONCLICKCALLBACK Update visualization panels after selecting a breakthrough point.
@@ -70,15 +70,14 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
     [~, idx] = min(dist);
 
     % Recover indices
-    i = BT.i(idx);
     j = BT.j(idx);
     k = BT.k(idx);
 
     run_name = "run_" + sprintf('%02d', j);
-    vars = expCTData.(filedataExp.Key(i)).exp.(run_name).concVars(k);
+    vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
 
     % load image params
-    HDF5filename = fullfile(path, filedataExp.Key(i) + ".h5");
+    HDF5filename = fullfile(path, filedataExp.Key + ".h5");
     HDF5dataPath = ['/exp/' char(run_name) '/conc'];   
     info = h5info(HDF5filename, HDF5dataPath);
     dims = info.Dataspace.Size;   
@@ -93,7 +92,7 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
 
     % plot concentration in x ax1
     x1 = vars.C1Axial.xHorzcm;
-    y1 = vars.C1Axial.rhoNormHorz;
+    y1 = vars.C1Axial.CHorz;
     cla(ax1)
     plot(ax1, x1, y1,'LineWidth',2,'Color','k')
     xlim(ax1,[min(x1) max(x1)])
@@ -107,12 +106,12 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
 
     % hTitle
     set(hTitle, 'String', ...
-        filedataExp.Key(i) + ": CT " + run_name + ...
-        " ImgNumber_" + sprintf('%03d', k));
+        filedataExp.Key + ": CT " + run_name + ...
+        " ImgNumber_" + sprintf('%03d', k) + "_" + dataSource);
 
     % plot concentration in z ax4
     x2 = vars.C1Profile.zVertcm;
-    y2 = vars.C1Profile.rhoNormVert;
+    y2 = vars.C1Profile.CVert;
     cla(ax4)
     plot(ax4, x2, y2,'LineWidth',2,'Color','k')
     xlabel(ax4,'Z [cm]')
@@ -125,10 +124,15 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
     ax4.YAxisLocation = 'right';
 
     % plot image ax3
-    concCTimages = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
-    imgSmooth = imgaussfilt(concCTimages, 20);
+    rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+    if strcmp(dataSource,'conc')
+        plotImage = interpFcn(rhoNormImage);
+    else
+        plotImage = rhoNormImage;
+    end
+    imgSmooth = imgaussfilt(plotImage, 20);
     cla(ax3)
-    imagesc(ax3, concCTimages)
+    imagesc(ax3, plotImage)
     axis(ax3,'xy','fill')
     set(ax3,'YDir','reverse')
     xlabel(ax3,'Pixel Number')
