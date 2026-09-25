@@ -154,7 +154,7 @@
 
 %% IMPORT input
 
-CT_setupPaths;
+Root = CT_setupPaths;
 
 % Introduce name of input and desired output folder name
 
@@ -164,7 +164,7 @@ inputFileConfig = readtable(inputFileConfigName);
 
 %% Extract data from images
 
-for i = 2%1:length(filedataExp.Key)
+for i = 1:height(inputFileConfig)
 
     filenameExp = inputFileConfig.inputFileName{i};
 
@@ -173,6 +173,18 @@ for i = 2%1:length(filedataExp.Key)
     mkdir(pathExportAll); % Create directory for output
 
     filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
+
+    % MFM analog (CT) data for this experiment — source of D
+    pathImport_MFM_CT = regexprep(inputFileConfig.MFM_BTC_CT_Path{i}, '^(\.\./)+', '');
+    MFM_CT_name = inputFileConfig.MFM_BTC_CT_Key{i};
+    MFM_CT_file = fullfile(Root, pathImport_MFM_CT, 'expProcFullData.mat');
+
+    if ~isfile(MFM_CT_file)
+        error('MFM results file not found: %s', MFM_CT_file);
+    end
+    MFM_CT_Data = load(MFM_CT_file);
+    expProcFullData_MFM_CT = MFM_CT_Data.expProcFullData.(MFM_CT_name);
+    D = expProcFullData_MFM_CT.exp_params.D12_cm2min;
 
     % Capture init ref data folder
     refInitFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_init); % Xe
@@ -241,6 +253,8 @@ for i = 2%1:length(filedataExp.Key)
     interpFcn = buildInterpolant(filedataExp.Fluid1, ...
         filedataExp.Fluid2, filedataExp.T, filedataExp.P);
 
+
+
     for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
@@ -275,148 +289,36 @@ for i = 2%1:length(filedataExp.Key)
             tDtotal = volInjected/filedataExp.Vtotal;
             rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
             concImage = interpFcn(rhoNormImage);
-            % ct prop
-            resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX; % mm
-            resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY; % mm
-            % rhoNorm case
-                % histogram 
-                numBins = 100;
-                [counts, edges] = histcounts(rhoNormImage, numBins);
-                % y vars
-                concVert = mean(rhoNormImage');
-                pixelVert = 1:1:length(concVert);
-                zVertcm = pixelVert*resYmm/10; %cm
-                zDimLess = zVertcm/zVertcm(end); %[-]
-                % x vars
-                concHorz = mean(rhoNormImage);
-                pixelHorz = 1:1:length(concHorz);
-                xHorzcm = pixelHorz*resXmm/10; %cm
-                % store in struct
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).imgNr = imgNr;
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).rotPos = rotPos;
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).timeStamp = timeStamp;
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).timeElapsed = timeElapsed;     
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).secondsElapsed = secondsElapsed; 
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).volInjected = volInjected;
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).tDtotal = tDtotal;
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).histImage = ...
-                    table(counts', edges(1:end-1)',edges(2:end)','VariableNames',{'counts','minEdge','maxEdge'}); % hist
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).C1Profile = table(zVertcm',zDimLess',concVert','VariableNames',{'zVertcm','zDimLess','CVert'}); % y vars
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).C1Axial = table(xHorzcm',concHorz','VariableNames',{'xHorzcm','CHorz'}); % x vars
-                % fronts
-                % C = 0.1
-                idx = (rhoNormImage>=0.08 & rhoNormImage <= 0.12);
-                [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
-                if ~isempty(rows)
-                    zFront_10_cm_mean = mean(rows) * resYmm / 10;
-                else
-                    zFront_10_cm_mean = NaN;
-                end
-                % C = 0.9
-                idx = (rhoNormImage>=0.88 & rhoNormImage <= 0.92);
-                [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
-                if ~isempty(rows)
-                    zFront_90_cm_mean = mean(rows) * resYmm / 10;
-                else
-                    zFront_90_cm_mean = NaN;
-                end
-                zWidth = zFront_10_cm_mean - zFront_90_cm_mean;
-                % C = 0.5
-                idx = (rhoNormImage>=0.48 & rhoNormImage <= 0.52);
-                [rows, cols] = find(idx);   % rows = Z positions (pixel indices)
-                if ~isempty(rows)
-                    xFront_50_cm = cols*resXmm/10;
-                    zFront_50_cm = rows*resYmm/10;
-                    zFront_50_cm_mean = mean(rows) * resYmm / 10;
-                else
-                    xFront_50_cm = [];
-                    zFront_50_cm = [];
-                    zFront_50_cm_mean = NaN;
-                end
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).zFront10 = zFront_10_cm_mean; % Z C = 0.1 front
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).zFront50 = zFront_50_cm_mean; % Z C = 0.5 front
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).zFront90 = zFront_90_cm_mean; % Z C = 0.9 front
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).front50_xcm = xFront_50_cm;
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).front50_zcm = zFront_50_cm;
-                expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k).zWidth = zWidth; % Z width front from 0.9 to 0.1
-    
-                % BT conc case
-                rhoNormBTlinesBefore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(1),...
-                    'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1'});
-                rhoNormBTcore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(end),zFront_10_cm_mean,zFront_50_cm_mean,zFront_90_cm_mean,zWidth,...
-                    'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1','zFront10','zFront50','zFront90','zWidth'});
-                rhoNormBTlinesBefore = [rhoNormBTlinesBefore;rhoNormBTlinesBefore_temp];
-                rhoNormBTcore = [rhoNormBTcore;rhoNormBTcore_temp];
 
-                % conc case
-                % histogram 
-                numBins = 100;
-                [counts, edges] = histcounts(concImage, numBins);
-                % y vars
-                concVert = mean(concImage');
-                pixelVert = 1:1:length(concVert);
-                zVertcm = pixelVert*resYmm/10; %cm
-                zDimLess = zVertcm/zVertcm(end); %[-]
-                % x vars
-                concHorz = mean(concImage);
-                pixelHorz = 1:1:length(concHorz);
-                xHorzcm = pixelHorz*resXmm/10; %cm
-                % store in struct
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).imgNr = imgNr;
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).rotPos = rotPos;
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).timeStamp = timeStamp;
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).timeElapsed = timeElapsed;     
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).secondsElapsed = secondsElapsed; 
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).volInjected = volInjected;
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).tDtotal = tDtotal;
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).histImage = ...
-                    table(counts', edges(1:end-1)',edges(2:end)','VariableNames',{'counts','minEdge','maxEdge'}); % hist
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).C1Profile = table(zVertcm',zDimLess',concVert','VariableNames',{'zVertcm','zDimLess','CVert'}); % y vars
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).C1Axial = table(xHorzcm',concHorz','VariableNames',{'xHorzcm','CHorz'}); % x vars
-                % fronts
-                % C = 0.1
-                idx = (concImage>=0.08 & concImage <= 0.12);
-                [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
-                if ~isempty(rows)
-                    zFront_10_cm_mean = mean(rows) * resYmm / 10;
-                else
-                    zFront_10_cm_mean = NaN;
-                end
-                % C = 0.9
-                idx = (concImage>=0.88 & concImage <= 0.92);
-                [rows, ~] = find(idx);   % rows = Z positions (pixel indices)
-                if ~isempty(rows)
-                    zFront_90_cm_mean = mean(rows) * resYmm / 10;
-                else
-                    zFront_90_cm_mean = NaN;
-                end
-                zWidth = zFront_10_cm_mean - zFront_90_cm_mean;
-                % C = 0.5
-                idx = (concImage>=0.48 & concImage <= 0.52);
-                [rows, cols] = find(idx);   % rows = Z positions (pixel indices)
-                if ~isempty(rows)
-                    xFront_50_cm = cols*resXmm/10;
-                    zFront_50_cm = rows*resYmm/10;
-                    zFront_50_cm_mean = mean(rows) * resYmm / 10;
-                else
-                    xFront_50_cm = [];
-                    zFront_50_cm = [];
-                    zFront_50_cm_mean = NaN;
-                end
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).zFront10 = zFront_10_cm_mean; % Z C = 0.1 front
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).zFront50 = zFront_50_cm_mean; % Z C = 0.5 front
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).zFront90 = zFront_90_cm_mean; % Z C = 0.9 front
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).front50_xcm = xFront_50_cm;
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).front50_zcm = zFront_50_cm;
-                expCTData.(filedataExp.Key).exp.(run_name).concVars(k).zWidth = zWidth; % Z width front from 0.9 to 0.1
-  
-                % BT conc case
-                concBTlinesBefore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(1),...
-                    'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1'});
-                concBTcore_temp = table( timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVert(end),zFront_10_cm_mean,zFront_50_cm_mean,zFront_90_cm_mean,zWidth,...
-                    'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1','zFront10','zFront50','zFront90','zWidth'});
-                concBTlinesBefore = [concBTlinesBefore;concBTlinesBefore_temp];
-                concBTcore = [concBTcore;concBTcore_temp];
+            resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
+            resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
+
+            rhoNormVars_k = populate_CTframeVars(rhoNormImage, resXmm, resYmm, ...
+                imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal,D);
+            expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars(k) = rhoNormVars_k;
+            
+            concVars_k = populate_CTframeVars(concImage, resXmm, resYmm, ...
+                imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal,D);
+            expCTData.(filedataExp.Key).exp.(run_name).concVars(k) = concVars_k;
+
+            % BT rhoNorm case
+            rhoNormBTlinesBefore_temp = table(timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, rhoNormVars_k.CD1inlet, ...
+                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1'});
+            rhoNormBTcore_temp = table(timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, rhoNormVars_k.CD1, ...
+                rhoNormVars_k.zFront10, rhoNormVars_k.zFront50, rhoNormVars_k.zFront90, rhoNormVars_k.zWidth, rhoNormVars_k.zWidthDiff, ...
+                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1','zFront10','zFront50','zFront90','zWidth','zWidthDiff'});
+            rhoNormBTlinesBefore = [rhoNormBTlinesBefore; rhoNormBTlinesBefore_temp];
+            rhoNormBTcore = [rhoNormBTcore; rhoNormBTcore_temp];
+
+            % BT conc case
+            concBTlinesBefore_temp = table(timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVars_k.CD1inlet, ...
+                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1'});
+            concBTcore_temp = table(timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVars_k.CD1, ...
+                concVars_k.zFront10, concVars_k.zFront50, concVars_k.zFront90, concVars_k.zWidth, concVars_k.zWidthDiff, ...
+                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1','zFront10','zFront50','zFront90','zWidth','zWidthDiff'});
+            concBTlinesBefore = [concBTlinesBefore; concBTlinesBefore_temp];
+            concBTcore = [concBTcore; concBTcore_temp];
+            
         end
 
         rhoNormVars_temp = expCTData.(filedataExp.Key).exp.(run_name).rhoNormVars;
