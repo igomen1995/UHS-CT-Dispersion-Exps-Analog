@@ -398,4 +398,3 @@ saveas(fig, fullfile(exportPath, fname), 'fig');
 % add theoretical to main_CTpreproc
 % add rhonorm and Cnorm (both) to be able to compare when Z is not
 % corrected
-% add uncertainty He/Xe mixture to estimation
