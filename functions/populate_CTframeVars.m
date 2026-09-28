@@ -20,28 +20,25 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     xHorzcm = pixelHorz*resXmm/10;
 
     % fronts
-    ny = size(image,1);
-    levels = [0.1 0.16 0.3 0.4 0.5 0.6 0.7 0.84 0.9];
-    imgSmooth = imgaussfilt(image, 20);
-    fronts = contourFront(imgSmooth, levels);
-    zDat = @(lvl) fronts([fronts.level] == lvl).zMean_px / ny;
-    zDFront50 = zDat(0.5);   % the tracked center point
+    zDFront10 = frontLevel1D(zDimLess, concVert, 0.1);
+    zDFront16 = frontLevel1D(zDimLess, concVert, 0.16);
+    zDFront30 = frontLevel1D(zDimLess, concVert, 0.3);
+    zDFront40 = frontLevel1D(zDimLess, concVert, 0.4);
+    zDFront50 = frontLevel1D(zDimLess, concVert, 0.5);
+    zDFront60 = frontLevel1D(zDimLess, concVert, 0.6);
+    zDFront70 = frontLevel1D(zDimLess, concVert, 0.7);
+    zDFront84 = frontLevel1D(zDimLess, concVert, 0.84);
+    zDFront90 = frontLevel1D(zDimLess, concVert, 0.9);
     
-    widthPairs = [0.1 0.9; 0.16 0.84; 0.3 0.7; 0.4 0.6];
-    zDWidth_10_90 = zDat(0.1) - zDat(0.9);
-    zDWidth_16_84 = zDat(0.16) - zDat(0.84);
-    zDWidth_30_70 = zDat(0.3) - zDat(0.7);
-    zDWidth_40_60 = zDat(0.4) - zDat(0.6);
-
+    zDWidth_10_90 = zDFront10 - zDFront90;
+    zDWidth_16_84 = zDFront16 - zDFront84;
+    zDWidth_30_70 = zDFront30 - zDFront70;
+    zDWidth_40_60 = zDFront40 - zDFront60;
+    
     zDWidthDiff_10_90 = widthDiff(D, secondsElapsed, 0.1, 0.9) / zVertcm(end);
     zDWidthDiff_16_84 = widthDiff(D, secondsElapsed, 0.16, 0.84) / zVertcm(end);
     zDWidthDiff_30_70 = widthDiff(D, secondsElapsed, 0.3, 0.7) / zVertcm(end);
     zDWidthDiff_40_60 = widthDiff(D, secondsElapsed, 0.4, 0.6) / zVertcm(end);
-
-    % C=0.5 contour geometry - dimensionless
-    f50 = fronts([fronts.level] == 0.5);
-    front50_xD = f50.xDContour;
-    front50_zD = f50.zDContour;
 
     % pack results
     frameVars.imgNr = imgNr;
@@ -59,8 +56,6 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
         'VariableNames',{'xHorzcm','CHorz'});
 
     frameVars.zDFront50 = zDFront50;
-    frameVars.front50_xD = front50_xD;
-    frameVars.front50_zD = front50_zD;
 
     frameVars.zDWidth_10_90 = zDWidth_10_90;
     frameVars.zDWidth_16_84 = zDWidth_16_84;
