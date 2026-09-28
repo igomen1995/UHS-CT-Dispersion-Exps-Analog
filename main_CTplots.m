@@ -280,7 +280,7 @@ for i = 1:height(inputFileConfig)
     hold on
 end
 legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southeast')
-title(sprintf('BT curves from CT (%S)',dataSource),'Interpreter','none')
+title(sprintf('BT curves from CT (%s)',dataSource),'Interpreter','none')
 fname = sprintf('BT_CT_%s_time',dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
@@ -308,7 +308,7 @@ for i = 1:height(inputFileConfig)
     hold on
 end
 legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
-title(sprintf('BT curves from CT (%S)',dataSource),'Interpreter','none')
+title(sprintf('BT curves from CT (%s)',dataSource),'Interpreter','none')
 fname = sprintf('BT_CT_%s_tD',dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
@@ -331,11 +331,11 @@ for i = 1:height(inputFileConfig)
     ylabel('C_1 [-]','FontSize',14)
     set(gca, 'FontSize', 14)
     ylim([-0.02 1])
-    % xlim([0,1.2])
+    xlim([0,2])
     grid on
     hold on
 end
-legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southeast')
+legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
 title(sprintf('BT curves from MFM analog CT-CF'),'Interpreter','none')
 fname = sprintf('BT_CT_MFM_tD');
 saveas(fig, fullfile(exportPath, fname), 'png');
@@ -359,11 +359,11 @@ for i = 1:height(inputFileConfig)
     ylabel('C_1 [-]','FontSize',14)
     set(gca, 'FontSize', 14)
     ylim([-0.02 1])
-    % xlim([0,1.2])
+    xlim([0,2])
     grid on
     hold on
 end
-legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southeast')
+legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
 title(sprintf('BT curves from MFM UHS'),'Interpreter','none')
 fname = sprintf('BT_UHS_MFM_tD');
 saveas(fig, fullfile(exportPath, fname), 'png');
@@ -389,14 +389,44 @@ for i = 1:height(inputFileConfig)
     ylabel('C_1 [-]','FontSize',14)
     set(gca, 'FontSize', 14)
     ylim([-0.02 1])
-    % xlim([0,1.2])
+    xlim([0,2])
     grid on
     
 end
-legend('Interpreter','none','FontSize',8,'Location','southeast')
+legend('Interpreter','none','FontSize',8,'Location','northwest')
 title(sprintf('BT curves from MFM analog CT-CF'),'Interpreter','none')
 fname = sprintf('BT_UHS_MFM_tD');
 saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
 
 %% width with time and theoretical ---
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102] }; %light blue, dark blue, light green, dark green
+
+fig = figure('Position',[100 100 1000 650]);
+legendEntries = cell(1, height(inputFileConfig));
+
+for i = 1:height(inputFileConfig)
+    filedataExp = filedataExpAll{i}; 
+    vars = expCTDataAll{i}.BTcore.(dataSource);
+
+    % plot
+    plot(vars.tDtotal, vars.zWidth/(filedataExp.L*2.54), ...
+        'LineWidth',2,'Color',colours{:,i}, 'DisplayName',"meas - " + filedataExp.Key)
+    hold on
+    plot(vars.tDtotal, vars.zWidthDiff/(filedataExp.L*2.54), '--',...
+        'LineWidth',2,'Color',colours{:,i}, 'DisplayName',"theor - " + filedataExp.Key)
+    xlabel('t_D [-]','FontSize',14)
+    ylabel('dZ_D [-]','FontSize',14)
+    set(gca, 'FontSize', 14)
+    ylim([-0.02 1])
+    xlim([0,1.2])
+    grid on
+
+end
+legend('Interpreter','none','FontSize',8,'Location','southeast','NumColumns',2)
+title(sprintf('width (dZ) measured vs theoretical from CT (%s)',dataSource),'Interpreter','none')
+fname = sprintf('width_CT_%s_tD',dataSource);
+saveas(fig, fullfile(exportPath, fname), 'png');
+saveas(fig, fullfile(exportPath, fname), 'fig');
+
+%% add plot KL/D0 vs Pe v*L/KL for all : MFM UHS, MFM analog, BTC CT, profile average CT
