@@ -62,6 +62,16 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     else
         zDMean = NaN; sigmaD = NaN; skewFront = NaN; kurtFront = NaN; KL_CT = NaN;
     end
+    
+    % tilt and shape geometry consistent with controur shape C = 0.5
+    imgSmooth = imgaussfilt(double(image), 20);
+    frontC05 = contourFront(imgSmooth, 0.5);
+    tiltStats = getFrontTilt(frontC05);
+    shapeStats = getFrontShapeMetrics(frontC05);
+    
+    frameVars.frontTiltSlope = tiltStats.slope;
+    frameVars.frontTiltR2 = tiltStats.R2;
+    frameVars.frontArcLengthRatio = shapeStats.arcLengthRatio;
 
     % concentration interpolated at each zD level, zD=0 to zD=1
     zDlevels = 0:0.1:1;

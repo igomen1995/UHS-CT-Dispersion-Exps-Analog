@@ -164,7 +164,7 @@ inputFileConfig = readtable(inputFileConfigName);
 
 %% Extract data from images
 
-for i = 2%1:height(inputFileConfig)
+for i = 1:height(inputFileConfig)
 
     filenameExp = inputFileConfig.inputFileName{i};
 
@@ -293,6 +293,7 @@ for i = 2%1:height(inputFileConfig)
             secondsElapsed = seconds(timeElapsed);
             volInjected = secondsElapsed*filedataExp.Q/60;
             tDtotal = volInjected/filedataExp.Vtotal;
+
             rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
             concImage = interpFcn(rhoNormImage);
 

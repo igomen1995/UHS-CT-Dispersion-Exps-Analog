@@ -106,7 +106,7 @@ expCTDataAll   = cell(nExp,1);
 MFM_CT_DataAll     = cell(nExp,1);
 MFM_UHS_DataAll    = cell(nExp,1);
 
-for i = 2%1:nExp
+for i = 1:nExp
     filenameExp   = inputFileConfig.inputFileName{i};
     pathExportAll = inputFileConfig.exportPath{i};
 
@@ -149,7 +149,7 @@ l_found = [];
 figure
 legendEntries = cell(1, height(inputFileConfig));
 
-for i = 2%1:nExp
+for i = 1:nExp
     filedataExp = filedataExpAll{i};
     vars = expCTDataAll{i}.varsAll.(dataSource);
 
@@ -214,7 +214,7 @@ for m=1:length(tD_target)
     fig = figure;
     legendEntries = cell(1, height(inputFileConfig));
     
-    for i = 2%1:height(inputFileConfig)
+    for i = 1:height(inputFileConfig)
         filedataExp = filedataExpAll{i};   
         vars = expCTDataAll{i}.varsAll.(dataSource);
     
@@ -263,7 +263,7 @@ colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.
 fig = figure;
 legendEntries = cell(1, height(inputFileConfig));
 
-for i = 2%1:height(inputFileConfig)
+for i = 1:height(inputFileConfig)
     filedataExp = filedataExpAll{i}; 
     vars = expCTDataAll{i}.varsAll.(dataSource);
     CfieldOutlet = 'CD1_zD1p0';
@@ -291,7 +291,7 @@ colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.
 fig = figure;
 legendEntries = cell(1, height(inputFileConfig));
 
-for i = 2%1:height(inputFileConfig)
+for i = 1:height(inputFileConfig)
     filedataExp = filedataExpAll{i}; 
     vars = expCTDataAll{i}.varsAll.(dataSource);
     CfieldOutlet = 'CD1_zD1p0';
@@ -321,7 +321,7 @@ colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.
 fig = figure;
 legendEntries = cell(1, height(inputFileConfig));
 
-for i = 2%1:height(inputFileConfig)
+for i = 1:height(inputFileConfig)
     vars_MFM_CT  = MFM_CT_DataAll{i}.BT;
 
     legendEntries{i} = inputFileConfig.MFM_BTC_CT_Key{i};
@@ -349,7 +349,7 @@ colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.
 fig = figure;
 legendEntries = cell(1, height(inputFileConfig));
 
-for i = 2%1:height(inputFileConfig)
+for i = 1:height(inputFileConfig)
     vars_MFM_UHS  = MFM_UHS_DataAll{i}.BT;
 
     legendEntries{i} = inputFileConfig.MFM_BTC_UHS_Key{i};
@@ -376,7 +376,7 @@ colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.
 
 fig = figure;
 
-for i = 2%1:height(inputFileConfig)
+for i = 1:height(inputFileConfig)
     vars_MFM_CT  = MFM_CT_DataAll{i}.BT;
     vars_MFM_UHS  = MFM_UHS_DataAll{i}.BT;
 
@@ -411,7 +411,7 @@ for p = 1:length(widthPairs)
     theorField = ['zDWidthDiff_' widthPair];
 
     fig = figure('Position',[100 100 1000 650]);
-    for i = 2%1:height(inputFileConfig)
+    for i = 1:height(inputFileConfig)
         filedataExp = filedataExpAll{i};
         vars = expCTDataAll{i}.varsAll.(dataSource);
 
@@ -446,7 +446,7 @@ for p = 1:length(widthPairs)
     theorField = ['zDWidthDiff_' widthPair];
 
     fig = figure('Position',[100 100 1000 650]); hold on
-    for i = 2%1:height(inputFileConfig)
+    for i = 1:height(inputFileConfig)
         filedataExp = filedataExpAll{i};
         vars = expCTDataAll{i}.varsAll.(dataSource);
 
