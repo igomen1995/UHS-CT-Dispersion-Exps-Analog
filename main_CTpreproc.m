@@ -164,7 +164,7 @@ inputFileConfig = readtable(inputFileConfigName);
 
 %% Extract data from images
 
-for i = 1:height(inputFileConfig)
+for i = 2%1:height(inputFileConfig)
 
     filenameExp = inputFileConfig.inputFileName{i};
 
@@ -362,10 +362,12 @@ for i = 1:height(inputFileConfig)
     expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_BTC_CT = KL_fit_byZD_rn.zD1p0;
     expCTData.(filedataExp.Key).resultsAll.rhoNorm.BTCMetrics = BTCMetrics_byZD_rn.zD1p0;
     % KL from average fronts
+    validKL = ~isnan(rhoNormVarsAll.KL_CT);
     expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_front_CT.KL_cm2min_mean = ...
-        mean(expCTData.(filedataExp.Key).varsAll.rhoNorm.KL_CT);
+        mean(expCTData.(filedataExp.Key).varsAll.rhoNorm.KL_CT(validKL));
     expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_front_CT.KL_cm2min_std = ...
-        std(expCTData.(filedataExp.Key).varsAll.rhoNorm.KL_CT);
+        std(expCTData.(filedataExp.Key).varsAll.rhoNorm.KL_CT(validKL));
+    expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_front_CT.nValidFrames = sum(validKL);
 
     % conc
     varsAll_c = concVarsAll;
@@ -403,10 +405,12 @@ for i = 1:height(inputFileConfig)
     expCTData.(filedataExp.Key).resultsAll.conc.KL_BTC_CT = KL_fit_byZD_c.zD1p0;
     expCTData.(filedataExp.Key).resultsAll.conc.BTCMetrics = BTCMetrics_byZD_c.zD1p0;
     % KL from average fronts
+    validKL = ~isnan(concVarsAll.KL_CT);
     expCTData.(filedataExp.Key).resultsAll.conc.KL_front_CT.KL_cm2min_mean = ...
-        mean(expCTData.(filedataExp.Key).varsAll.conc.KL_CT);
-    expCTData.(filedataExp.Key).resultsAll.conc.KL_front_CT.KL_cm2min_std = ...
-        std(expCTData.(filedataExp.Key).varsAll.conc.KL_CT);
+        mean(expCTData.(filedataExp.Key).varsAll.conc.KL_CT(validKL));
+    expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_front_CT.KL_cm2min_std = ...
+        std(expCTData.(filedataExp.Key).varsAll.conc.KL_CT(validKL));
+    expCTData.(filedataExp.Key).resultsAll.conc.KL_front_CT.nValidFrames = sum(validKL);
 
     % save expCTData
     expCT_name = pathExportAll + filedataExp.Key;
