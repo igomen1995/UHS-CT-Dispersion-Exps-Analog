@@ -492,4 +492,66 @@ for p = 1:length(widthPairs)
     saveas(fig, fullfile(exportPath, fname), 'png');
     saveas(fig, fullfile(exportPath, fname), 'fig');
 end
+%% Front tilt and shape diagnostics vs tD
+
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
+
+fig = figure('Position',[100 100 1200 650]);
+
+subplot(2,1,1); hold on
+for i = 1:nExp
+    filedataExp = filedataExpAll{i};
+    vars = expCTDataAll{i}.varsAll.(dataSource);
+    plot(vars.tDtotal, vars.frontTiltSlope, 'o-', 'LineWidth',1.5, 'Color',colours{i}, ...
+        'DisplayName', char(filedataExp.Key))
+end
+xlabel('t_D [-]','FontSize',12)
+ylabel('front tilt slope [z_D/x_D]','FontSize',12)
+title('Front tilt vs t_D','FontSize',12)
+grid on
+legend('Interpreter','none','FontSize',8,'Location','northeast')
+
+subplot(2,1,2); hold on
+for i = 1:nExp
+    filedataExp = filedataExpAll{i};
+    vars = expCTDataAll{i}.varsAll.(dataSource);
+    plot(vars.tDtotal, vars.frontArcLengthRatio, 's-', 'LineWidth',1.5, 'Color',colours{i}, ...
+        'DisplayName', char(filedataExp.Key))
+end
+yline(1, ':k', 'LineWidth',1, 'DisplayName','perfectly flat')
+xlabel('t_D [-]','FontSize',12)
+ylabel('arc length ratio [-]','FontSize',12)
+title('Front non-planarity (shape-agnostic) vs t_D','FontSize',12)
+grid on
+legend('Interpreter','none','FontSize',8,'Location','northeast')
+
+sgtitle(sprintf('Front planarity diagnostics (%s)', dataSource),'Interpreter','none')
+fname = sprintf('frontTiltShape_%s_tD', dataSource);
+saveas(fig, fullfile(exportPath, fname), 'png');
+saveas(fig, fullfile(exportPath, fname), 'fig');
+
+%% KL_CT vs tD, across all experiments — now populated at every scan
+
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
+
+fig = figure('Position',[100 100 1000 650]); hold on
+for i = 1:nExp
+    filedataExp = filedataExpAll{i};
+    vars = expCTDataAll{i}.varsAll.(dataSource);
+
+    valid = ~isnan(vars.KL_CT);
+    plot(vars.tDtotal(valid), vars.KL_CT(valid), 'o-', 'LineWidth',1.5, ...
+        'Color',colours{i}, 'MarkerSize',4, 'DisplayName', char(filedataExp.Key))
+end
+xlabel('t_D [-]','FontSize',14)
+ylabel('K_L from \sigma [cm^2/min]','FontSize',14)
+set(gca,'FontSize',14)
+grid on
+legend('Interpreter','none','FontSize',9,'Location','best')
+title(sprintf('K_L from front moments vs t_D (%s)', dataSource),'Interpreter','tex')
+
+fname = sprintf('KL_front_%s_tD', dataSource);
+saveas(fig, fullfile(exportPath, fname), 'png');
+saveas(fig, fullfile(exportPath, fname), 'fig');
+
 %% add plot KL/D0 vs Pe v*L/KL for all : MFM UHS, MFM analog, BTC CT, profile average CT

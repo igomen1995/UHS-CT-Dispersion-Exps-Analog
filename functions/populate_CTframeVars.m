@@ -46,22 +46,18 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     % theoretical (advective) front location, from interstitial velocity
     zDFront_theory = (uint * secondsElapsed/60) / zVertcm(end); % uint in cm2/min
 
-    % --- moment-based sigma/KL: gated on the FULL S-curve being inside
-    % the FOV (inlet already saturated, outlet not yet broken through) ---
-    isFrontComplete = (concVert(1) >= Cmax) && (concVert(end) <= Cmin);
+    % --- moment-based sigma/KL
+    dCdz = gradient(concVert, zVertcm);
+    w_spatial = -dCdz;
+    frontStats = weightedMoments(zVertcm, w_spatial);
+    
+    zDMean    = frontStats.mean / zVertcm(end);
+    sigmaD    = frontStats.sigma / zVertcm(end);
+    skewFront = frontStats.skewness;
+    kurtFront = frontStats.kurtosis;
+    KL_CT     = (frontStats.sigma^2 / (2*secondsElapsed)) * 60;   % cm^2/min
 
-    if isFrontComplete
-        dCdz = gradient(concVert, zVertcm);
-        w_spatial = -dCdz;
-        frontStats = weightedMoments(zVertcm, w_spatial);
-        zDMean    = frontStats.mean / zVertcm(end);
-        sigmaD    = frontStats.sigma / zVertcm(end);
-        skewFront = frontStats.skewness;
-        kurtFront = frontStats.kurtosis;
-        KL_CT     = (frontStats.sigma^2 / (2*secondsElapsed)) * 60;   % cm^2/min
-    else
-        zDMean = NaN; sigmaD = NaN; skewFront = NaN; kurtFront = NaN; KL_CT = NaN;
-    end
+    frontInCore = (concVert(1) > 0) && (concVert(end) < 1);
     
     % tilt and shape geometry consistent with controur shape C = 0.5
     imgSmooth = imgaussfilt(double(image), 20);
@@ -92,9 +88,9 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     frameVars.C1Axial = table(xHorzcm', concHorz', ...
         'VariableNames',{'xHorzcm','CHorz'});
 
-    frameVars.isFrontComplete = isFrontComplete;
-
     frameVars.zDFront50 = zDFront50;         % geometric center (crossing-based)
+    
+    frameVars.frontInCore = frontInCore;
     frameVars.zDMean = zDMean;               % moment center, NaN unless complete
     frameVars.zDFront_theory = zDFront_theory;
     frameVars.sigmaD = sigmaD;
