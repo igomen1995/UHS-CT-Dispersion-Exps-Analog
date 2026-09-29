@@ -20,24 +20,17 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     xHorzcm = pixelHorz*resXmm/10;
 
     % fronts
-    % moment method: sigma from the profile shape itself
     dCdz = gradient(concVert, zVertcm);
-    w = -dCdz;                     % positive pulse (C decreases with z, inlet at z=0)
-    w(w < 0) = 0;                  % guard against noise producing small negative weights
-
-    if sum(w) > 0
-        z_mean = trapz(zVertcm, zVertcm.*w) / trapz(zVertcm, w);   % cm, front centroid
-        sigma2 = trapz(zVertcm, (zVertcm-z_mean).^2 .* w) / trapz(zVertcm, w);  % cm^2
-        sigma  = sqrt(sigma2);
-    else
-        z_mean = NaN; sigma = NaN;
-    end
-
-    zDMean = z_mean / zVertcm(end);          % CT-measured front location, dimensionless
-    sigmaD = sigma / zVertcm(end);           % dimensionless sigma
-
+    w_spatial = -dCdz;   % pulse: C decreases with z (inlet at z=0)
+    frontStats = weightedMoments(zVertcm, w_spatial);
+    
+    zDMean   = frontStats.mean / zVertcm(end);
+    sigmaD   = frontStats.sigma / zVertcm(end);
+    skewFront = frontStats.skewness;
+    kurtFront = frontStats.kurtosis;
+    
     % per-scan CT-derived dispersion coefficient, directly comparable to D
-    KL_CT_cm2s = sigma^2 / (2*secondsElapsed);    % cm2/s
+    KL_CT_cm2s = frontStats.sigma^2 / (2*secondsElapsed); % cm2/s
     KL_CT = KL_CT_cm2s*60;    % cm2/min
 
     % widths for any C1,C2 pair, all from the same sigma
@@ -75,6 +68,8 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     frameVars.zDFront_theory = zDFront_theory;
     frameVars.sigmaD = sigmaD;
     frameVars.KL_CT = KL_CT;
+    frameVars.skewFront = skewFront;
+    frameVars.kurtFront = kurtFront;
 
     frameVars.zDWidth_10_90 = zDWidth_10_90;
     frameVars.zDWidth_16_84 = zDWidth_16_84;
