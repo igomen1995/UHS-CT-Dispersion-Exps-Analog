@@ -209,10 +209,6 @@ for i = 2%1:height(inputFileConfig)
     expFolderPath = {expFolderContent.folder};
     
     % BT extract
-    concBTlinesBefore = table(); 
-    concBTcore = table();
-    rhoNormBTlinesBefore = table(); 
-    rhoNormBTcore = table();
     expCTData = struct();
 
     % Image
@@ -255,6 +251,15 @@ for i = 2%1:height(inputFileConfig)
     % interpolant for composition form array 0 to 1 (binary mixture)
     interpFcn = buildInterpolant(filedataExp.Fluid1, ...
         filedataExp.Fluid2, filedataExp.T, filedataExp.P);
+    
+    % zD levels for spatially-resolved BTC extraction (zD=0 is BTlinesBefore; zD=1 is outlet BTcore)
+    zDlevels = 0:0.1:1.0;
+    zDBTC_rhoNorm = cell(length(zDlevels),1);
+    zDBTC_conc    = cell(length(zDlevels),1);
+    for m = 1:length(zDlevels)
+        zDBTC_rhoNorm{m} = table();
+        zDBTC_conc{m} = table();
+    end
 
     for j = 1%:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
@@ -301,34 +306,6 @@ for i = 2%1:height(inputFileConfig)
             concVars_k = populate_CTframeVars(concImage, resXmm, resYmm, ...
                 imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal,D,uint_cm2min);
             expCTData.(filedataExp.Key).exp.(run_name).vars.conc(k) = concVars_k;
-
-            % BT rhoNorm case
-            rhoNormBTlinesBefore_temp = table(timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, rhoNormVars_k.CD1inlet, ...
-                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1'});
-            rhoNormBTcore_temp = table(timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, rhoNormVars_k.CD1, ...
-                rhoNormVars_k.zDMean, rhoNormVars_k.zDFront_theory, rhoNormVars_k.sigmaD, rhoNormVars_k.KL_CT, ...
-                rhoNormVars_k.zDWidth_10_90, rhoNormVars_k.zDWidth_16_84, rhoNormVars_k.zDWidth_30_70, rhoNormVars_k.zDWidth_40_60, ...
-                rhoNormVars_k.zDWidthDiff_10_90, rhoNormVars_k.zDWidthDiff_16_84, rhoNormVars_k.zDWidthDiff_30_70, rhoNormVars_k.zDWidthDiff_40_60, ...
-                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1', ...
-                'zDMean','zDFront_theory','sigmaD','KL_CT', ...
-                'zDWidth_10_90','zDWidth_16_84','zDWidth_30_70','zDWidth_40_60', ...
-                'zDWidthDiff_10_90','zDWidthDiff_16_84','zDWidthDiff_30_70','zDWidthDiff_40_60'});
-            rhoNormBTlinesBefore = [rhoNormBTlinesBefore; rhoNormBTlinesBefore_temp];
-            rhoNormBTcore = [rhoNormBTcore; rhoNormBTcore_temp];
-            
-            % BT conc case
-            concBTlinesBefore_temp = table(timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVars_k.CD1inlet, ...
-                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1'});
-            concBTcore_temp = table(timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, concVars_k.CD1, ...
-                concVars_k.zDMean, concVars_k.zDFront_theory, concVars_k.sigmaD, concVars_k.KL_CT, ...
-                concVars_k.zDWidth_10_90, concVars_k.zDWidth_16_84, concVars_k.zDWidth_30_70, concVars_k.zDWidth_40_60, ...
-                concVars_k.zDWidthDiff_10_90, concVars_k.zDWidthDiff_16_84, concVars_k.zDWidthDiff_30_70, concVars_k.zDWidthDiff_40_60, ...
-                'VariableNames',{'timeStamp','timeElapsed','secondsElapsed','volInjected','tDtotal','CD1', ...
-                'zDMean','zDFront_theory','sigmaD','KL_CT', ...
-                'zDWidth_10_90','zDWidth_16_84','zDWidth_30_70','zDWidth_40_60', ...
-                'zDWidthDiff_10_90','zDWidthDiff_16_84','zDWidthDiff_30_70','zDWidthDiff_40_60'});
-            concBTlinesBefore = [concBTlinesBefore; concBTlinesBefore_temp];
-            concBTcore = [concBTcore; concBTcore_temp];
             
         end
 
@@ -346,60 +323,90 @@ for i = 2%1:height(inputFileConfig)
     L_SI = L_cm/100;
     dt_guess = 0;
     Cmin = 0.16; Cmax = 0.84;
+
+    zDlevels_KLfit = 0.1:0.1:1.0;
     
     % rho norm
-    % KL from BTC_CT
-    [rhoNormMethods, rhoNormBestMethod, rhoNormBest] = fitBTC_KL_allMethods( ...
-        rhoNormBTcore.secondsElapsed, rhoNormBTcore.CD1, ones(height(rhoNormBTcore),1), ...
-        u_SI, Cj, Ci, L_SI, dt_guess, Cmin, Cmax);
-    
-    % BTC metrics
-    t_vals = rhoNormBTcore.secondsElapsed;
-    tD_vals = rhoNormBTcore.tDtotal;
-    C1_vals = rhoNormBTcore.CD1;
-    [C1_unique,idx] = unique(C1_vals,'stable');
-    t_unique = t_vals(idx);
-    tD_unique = tD_vals(idx);
-    BTC_Metrics = getBTCMetrics(t_unique,tD_unique,C1_unique);
+    varsAll_rn = rhoNormVarsAll;
+    KL_fit_byZD_rn = struct();
+    BTCMetrics_byZD_rn = struct();
+    for m = 1:length(zDlevels_KLfit)
+        zD = zDlevels_KLfit(m);
+        fieldName = strrep(sprintf('zD%.1f', zD), '.', 'p');   % zD0p1 ... zD1p0
+        CfieldName = strrep(sprintf('CD1_zD%.1f', zD), '.', 'p');
+        
+        C_at_zD = varsAll_rn.(CfieldName);
+        t_vals  = varsAll_rn.secondsElapsed;
+        tD_vals = varsAll_rn.tDtotal;
+        L_eff   = zD * L_SI;
 
-    expCTData.(filedataExp.Key).BTlinesBefore.rhoNorm = rhoNormBTlinesBefore;
-    expCTData.(filedataExp.Key).BTcore.rhoNorm = rhoNormBTcore;
+        % KL fit from BTC_CT
+        [methods_m, bestMethod_m, best_m] = fitBTC_KL_allMethods( ...
+            t_vals, C_at_zD, ones(height(varsAll_rn),1), ...
+            u_SI, Cj, Ci, L_eff, dt_guess, Cmin, Cmax);
+
+        KL_fit_byZD_rn.(fieldName) = struct('zD',zD,'L_eff',L_eff, ...
+            'allMethods',methods_m,'bestMethod',bestMethod_m,'best',best_m);
+
+        % BTC metrics at this zD
+        [C_unique, idx] = unique(C_at_zD,'stable');
+        t_unique  = t_vals(idx);
+        tD_unique = tD_vals(idx);
+        BTCMetrics_byZD_rn.(fieldName) = getBTCMetrics(t_unique, tD_unique, C_unique);
+    end
+    
     expCTData.(filedataExp.Key).varsAll.rhoNorm = rhoNormVarsAll;
-    expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_BTC_CT.allMethods = rhoNormMethods;
-    expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_BTC_CT.bestMethod = rhoNormBestMethod;
-    expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_BTC_CT.best = rhoNormBest;
+    expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_BTC_CT_byZD = KL_fit_byZD_rn;
+    expCTData.(filedataExp.Key).resultsAll.rhoNorm.BTCMetrics_byZD = BTCMetrics_byZD_rn;
+    % at zd = 1.0 (outlet of the core)
+    expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_BTC_CT = KL_fit_byZD_rn.zD1p0;
+    expCTData.(filedataExp.Key).resultsAll.rhoNorm.BTCMetrics = BTCMetrics_byZD_rn.zD1p0;
+    % KL from average fronts
     expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_front_CT.KL_cm2min_mean = ...
         mean(expCTData.(filedataExp.Key).varsAll.rhoNorm.KL_CT);
     expCTData.(filedataExp.Key).resultsAll.rhoNorm.KL_front_CT.KL_cm2min_std = ...
         std(expCTData.(filedataExp.Key).varsAll.rhoNorm.KL_CT);
-    expCTData.(filedataExp.Key).resultsAll.rhoNorm.BTCMetrics = BTC_Metrics;
 
     % conc
-    % KL from BTC_CT
-    [concMethods, concBestMethod, concBest] = fitBTC_KL_allMethods( ...
-        concBTcore.secondsElapsed, concBTcore.CD1, ones(height(concBTcore),1), ...
-        u_SI, Cj, Ci, L_SI, dt_guess, Cmin, Cmax);
+    varsAll_c = concVarsAll;
+    KL_fit_byZD_c = struct();
+    BTCMetrics_byZD_c = struct();
+    for m = 1:length(zDlevels_KLfit)
+        zD = zDlevels_KLfit(m);
+        fieldName = strrep(sprintf('zD%.1f', zD), '.', 'p');   % zD0p1 ... zD1p0
+        CfieldName = strrep(sprintf('CD1_zD%.1f', zD), '.', 'p');
+        
+        C_at_zD = varsAll_c.(CfieldName);
+        t_vals  = varsAll_c.secondsElapsed;
+        tD_vals = varsAll_c.tDtotal;
+        L_eff   = zD * L_SI;
 
-    % BTC metrics
-    t_vals = concBTcore.secondsElapsed;
-    tD_vals = concBTcore.tDtotal;
-    C1_vals = concBTcore.CD1;
-    [C1_unique,idx] = unique(C1_vals,'stable');
-    t_unique = t_vals(idx);
-    tD_unique = tD_vals(idx);
-    BTC_Metrics = getBTCMetrics(t_unique,tD_unique,C1_unique);
+        % KL fit from BTC_CT
+        [methods_m, bestMethod_m, best_m] = fitBTC_KL_allMethods( ...
+            t_vals, C_at_zD, ones(height(varsAll_c),1), ...
+            u_SI, Cj, Ci, L_eff, dt_guess, Cmin, Cmax);
 
-    expCTData.(filedataExp.Key).BTlinesBefore.conc = concBTlinesBefore;
-    expCTData.(filedataExp.Key).BTcore.conc = concBTcore;
+        KL_fit_byZD_c.(fieldName) = struct('zD',zD,'L_eff',L_eff, ...
+            'allMethods',methods_m,'bestMethod',bestMethod_m,'best',best_m);
+
+        % BTC metrics at this zD
+        [C_unique, idx] = unique(C_at_zD,'stable');
+        t_unique  = t_vals(idx);
+        tD_unique = tD_vals(idx);
+        BTCMetrics_byZD_c.(fieldName) = getBTCMetrics(t_unique, tD_unique, C_unique);
+    end
+    
     expCTData.(filedataExp.Key).varsAll.conc = concVarsAll;
-    expCTData.(filedataExp.Key).resultsAll.conc.KL_BTC_CT.allMethods = concMethods;
-    expCTData.(filedataExp.Key).resultsAll.conc.KL_BTC_CT.bestMethod = concBestMethod;
-    expCTData.(filedataExp.Key).resultsAll.conc.KL_BTC_CT.best = concBest;
+    expCTData.(filedataExp.Key).resultsAll.conc.KL_BTC_CT_byZD = KL_fit_byZD_c;
+    expCTData.(filedataExp.Key).resultsAll.conc.BTCMetrics_byZD = BTCMetrics_byZD_c;
+    % at zd = 1.0 (outlet of the core)
+    expCTData.(filedataExp.Key).resultsAll.conc.KL_BTC_CT = KL_fit_byZD_c.zD1p0;
+    expCTData.(filedataExp.Key).resultsAll.conc.BTCMetrics = BTCMetrics_byZD_c.zD1p0;
+    % KL from average fronts
     expCTData.(filedataExp.Key).resultsAll.conc.KL_front_CT.KL_cm2min_mean = ...
         mean(expCTData.(filedataExp.Key).varsAll.conc.KL_CT);
     expCTData.(filedataExp.Key).resultsAll.conc.KL_front_CT.KL_cm2min_std = ...
         std(expCTData.(filedataExp.Key).varsAll.conc.KL_CT);
-    expCTData.(filedataExp.Key).resultsAll.conc.BTCMetrics = BTC_Metrics;
 
     % save expCTData
     expCT_name = pathExportAll + filedataExp.Key;

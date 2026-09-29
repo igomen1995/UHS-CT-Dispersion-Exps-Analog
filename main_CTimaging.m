@@ -297,7 +297,7 @@ for j = 1:length(expFolderName) % number of runs
         % plot BTcore ax5
         t = vars.secondsElapsed;
         C = y2(end);
-        BTdata = expCTData.(filedataExp.Key).BTcore.(dataSource); 
+        BTdata = expCTData.(filedataExp.Key).varsAll.(dataSource); 
         tmin = BTdata.secondsElapsed(1);
         tmax = BTdata.secondsElapsed(end);
         scatter(ax5,t,C,15,'filled','MarkerFaceColor',[0, 0.4470, 0.7410],'MarkerEdgeColor','none')
@@ -609,9 +609,10 @@ ax3.YAxisLocation = 'right';
 title(ax3,'Vert. conc. profile @ t_D','FontSize',9)
 
 % ax4 Breakthrough curve (base black data only; red current point deferred)
-BTdata = expCTData.(filedataExp.Key).BTcore.(dataSource);
+BTdata = expCTData.(filedataExp.Key).varsAll.(dataSource);
+CfieldOutlet = 'CD1_zD1p0';
 colors = get(groot,'defaultAxesColorOrder');
-hBT_CT = scatter(ax4, BTdata.tDtotal, BTdata.CD1, 5, 'filled', ...
+hBT_CT = scatter(ax4, BTdata.tDtotal, BTdata.(CfieldOutlet), 5, 'filled', ...
     'MarkerFaceColor','k', 'HitTest','off','PickableParts','none', ...
     'DisplayName',"CT analog BTC "+ dataSource); 
 hold(ax4,'on')

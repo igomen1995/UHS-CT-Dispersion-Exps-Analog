@@ -33,6 +33,9 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     KL_CT_cm2s = frontStats.sigma^2 / (2*secondsElapsed); % cm2/s
     KL_CT = KL_CT_cm2s*60;    % cm2/min
 
+    % Diff theory
+    D_cm2min = D;
+
     % widths for any C1,C2 pair, all from the same sigma
     widthFromSigma = @(C1,C2) 2*sigmaD*(erfcinv(2*C1) - erfcinv(2*C2));
 
@@ -48,6 +51,10 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
 
     % theoretical (advective) front location, from interstitial velocity
     zDFront_theory = (uint * secondsElapsed/60) / zVertcm(end); % uint in cm2/min
+
+    % concentration interpolated at each zD level, zD=0 to zD=1
+    zDlevels = 0:0.1:1;
+    Cz = interp1(zDimLess, concVert, zDlevels, 'linear', 'extrap');
 
     % pack results
     frameVars.imgNr = imgNr;
@@ -68,6 +75,7 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     frameVars.zDFront_theory = zDFront_theory;
     frameVars.sigmaD = sigmaD;
     frameVars.KL_CT = KL_CT;
+    frameVars.Diff = D_cm2min;
     frameVars.skewFront = skewFront;
     frameVars.kurtFront = kurtFront;
 
@@ -81,6 +89,17 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     frameVars.zDWidthDiff_30_70 = zDWidthDiff_30_70;
     frameVars.zDWidthDiff_40_60 = zDWidthDiff_40_60;
 
-    frameVars.CD1inlet = concVert(1); % inlet-side value -> BTlinesBefore
-    frameVars.CD1 = concVert(end);  % outlet-side value -> BTcore    
+    % per-zD concentration
+    frameVars.CD1_zD0p0 = Cz(1);   % zD=0.0 -> inlet, was CD1inlet
+    frameVars.CD1_zD0p1 = Cz(2);
+    frameVars.CD1_zD0p2 = Cz(3);
+    frameVars.CD1_zD0p3 = Cz(4);
+    frameVars.CD1_zD0p4 = Cz(5);
+    frameVars.CD1_zD0p5 = Cz(6);
+    frameVars.CD1_zD0p6 = Cz(7);
+    frameVars.CD1_zD0p7 = Cz(8);
+    frameVars.CD1_zD0p8 = Cz(9);
+    frameVars.CD1_zD0p9 = Cz(10);
+    frameVars.CD1_zD1p0 = Cz(11);  % zD=1.0 -> outlet, was CD1
+  
 end
