@@ -164,7 +164,7 @@ inputFileConfig = readtable(inputFileConfigName);
 
 %% Extract data from images
 
-for i = 2%1:height(inputFileConfig)
+for i = 1:height(inputFileConfig)
 
     filenameExp = inputFileConfig.inputFileName{i};
 
@@ -261,7 +261,7 @@ for i = 2%1:height(inputFileConfig)
         zDBTC_conc{m} = table();
     end
 
-    for j = 1%:length(expFolderName)
+    for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
             % pca
