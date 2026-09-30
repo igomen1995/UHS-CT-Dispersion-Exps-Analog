@@ -535,24 +535,39 @@ saveas(fig, fullfile(exportPath, fname), 'fig');
 %% KL_CT vs tD, across all experiments — now populated at every scan
 
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
-
 fig = figure('Position',[100 100 1000 650]); hold on
+
 for i = 1:nExp
     filedataExp = filedataExpAll{i};
     vars = expCTDataAll{i}.varsAll.(dataSource);
 
     valid = ~isnan(vars.KL_CT);
     plot(vars.tDtotal(valid), vars.KL_CT(valid), 'o-', 'LineWidth',1.5, ...
-        'Color',colours{i}, 'MarkerSize',4, 'DisplayName', char(filedataExp.Key))
+        'Color',colours{i}, 'MarkerSize',4, 'DisplayName', char(filedataExp.Key) + " (front moments)")
+
+    % KL from BTC fit at the outlet (zD=1.0), from fitBTC_KL_allMethods
+    KL_BTC_CT = expCTDataAll{i}.resultsAll.(dataSource).KL_BTC_CT.best.KL_cm2min;
+    yline(KL_BTC_CT, '--', 'Color',colours{i}, 'LineWidth',1.5, ...
+        'DisplayName', char(filedataExp.Key) + " (BTC_CT fit)")
+
+    % KL from MFM analog and MFM UHS, from the BTC repo's main_Processing.m
+    KL_MFM_CT  = MFM_CT_DataAll{i}.results.KL_cm2min;
+    KL_MFM_UHS = MFM_UHS_DataAll{i}.results.KL_cm2min;
+
+    yline(KL_MFM_CT, ':', 'Color',colours{i}, 'LineWidth',1.5, ...
+        'DisplayName', char(filedataExp.Key) + " (MFM analog)")
+    yline(KL_MFM_UHS, '-.', 'Color',colours{i}, 'LineWidth',1.5, ...
+        'DisplayName', char(filedataExp.Key) + " (MFM UHS)")
 end
+
 xlabel('t_D [-]','FontSize',14)
-ylabel('K_L from \sigma [cm^2/min]','FontSize',14)
+ylabel('K_L [cm^2/min]','FontSize',14)
 set(gca,'FontSize',14)
 grid on
-legend('Interpreter','none','FontSize',9,'Location','best')
-title(sprintf('K_L from front moments vs t_D (%s)', dataSource),'Interpreter','tex')
+legend('Interpreter','none','FontSize',7,'Location','best','NumColumns',2)
+title(sprintf('K_L: front moments vs BTC_{CT} vs MFM analog/UHS (%s)', dataSource),'Interpreter','tex')
 
-fname = sprintf('KL_front_%s_tD', dataSource);
+fname = sprintf('KL_compare_%s_tD', dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
 
@@ -598,3 +613,9 @@ saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
 
 %% add plot KL/D0 vs Pe v*L/KL for all : MFM UHS, MFM analog, BTC CT, profile average CT
+% check BTC lines coming from a different zD
+% plot all measured width and front position with time (no theoretical)
+% consider KL_CT from tD around 0.5 (more complete curve), the one to obtain KL from fronts
+% add degree in tilt graphs
+% consider a 3D contour graph, contours advance every tD given and with colours
+% velocity field map for same angles scanned
