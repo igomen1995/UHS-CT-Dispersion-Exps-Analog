@@ -439,6 +439,105 @@ hScatter.ButtonDownFcn = @(src,event) ...
     BT, expCTData,filedataExp,interpFcn,dataSource, ...
     ax1,ax2,ax3,ax4,cbPos,hTitle);
 
+%% 3D front reconstruction across rotation angles (ghosted, no time correction)
+
+fig3D = figure('Position',[100 100 900 800]);
+hold on
+
+% transparent reference cylinder, shifted to [0,1] range
+[Xc, Yc, Zc] = cylinder(0.5, 60);
+Xc = Xc + 0.5;
+Yc = Yc + 0.5;
+surf(Xc, Yc, Zc, 'FaceAlpha',0.08, 'EdgeColor','none', 'FaceColor',[0.6 0.6 0.9])
+
+cmap = winter(256);
+level = [0.5 0.5];
+
+angleTicks = 0:30:330;
+rTick = 0.58;
+rTickLine = [0.5 0.56];
+
+thetaFull = linspace(0, 2*pi, 200);
+xBase = 0.5 + 0.5*sin(thetaFull);
+yBase = 0.5 - 0.5*cos(thetaFull);
+plot3(xBase, yBase, zeros(size(thetaFull)), 'k-', 'LineWidth',1)
+
+for a = angleTicks
+    theta = deg2rad(a);
+    xTick = 0.5 + rTickLine*sin(theta);
+    yTick = 0.5 - rTickLine*cos(theta);
+    plot3(xTick, yTick, [0 0], 'k-', 'LineWidth',1)
+
+    xLab = 0.5 + rTick*sin(theta);
+    yLab = 0.5 - rTick*cos(theta);
+    text(xLab, yLab, 0, sprintf('%d°', a), ...
+        'HorizontalAlignment','center', 'VerticalAlignment','middle', ...
+        'FontSize',8, 'Color',[0.3 0.3 0.3])
+end
+
+for j = 1:length(expFolderName)
+    run_name = "run_" + sprintf('%02d', j);
+    HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+    info = h5info(HDF5filename, HDF5dataPath);
+    dims = info.Dataspace.Size;
+    nx = dims(1); ny = dims(2); nz = dims(3);
+
+    varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
+    tDRun = [varsRun.tDtotal];
+    plotIdx = find(tDRun < 1.0);
+
+    for ii = 1:length(plotIdx)
+        k = plotIdx(ii);
+        vars = varsRun(k);
+        tD = vars.tDtotal;
+        theta = deg2rad(vars.rotPos);
+
+        rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+        if strcmp(dataSource,'conc')
+            plotImage = interpFcn(rhoNormImage);
+        else
+            plotImage = rhoNormImage;
+        end
+        imgSmooth = imgaussfilt(double(plotImage), 20);
+
+        C = contourc(imgSmooth, level);
+        if isempty(C), continue; end
+        [xpx, zpx] = contourMatrixPoints(C);
+        xD = xpx / size(imgSmooth,2);
+        zD = zpx / size(imgSmooth,1);
+
+        X = (xD - 0.5) * cos(theta) + 0.5;
+        Y = (xD - 0.5) * sin(theta) + 0.5;
+        Z = zD;
+
+        cidx = round(1 + 255*tD);
+        cidx = max(1,min(256,cidx));
+
+        plot3(X, Y, Z, '-', 'Color',cmap(cidx,:), 'LineWidth',1.5)
+    end
+end
+
+xlabel('X_D [-]'); ylabel('Y_D [-]'); zlabel('Z_D [-]')
+xlim([0 1]); ylim([0 1]); zlim([0 1])
+axis equal
+set(gca,'ZDir','reverse')   % zD=0 at top
+view(45,20)
+colormap(cmap)
+clim([0 1])
+cb = colorbar;
+cb.Label.String = 't_D [-]';
+cb.Direction = 'reverse';   % tD=0 at top of colorbar, matching zD=0 at top of plot
+title({sprintf('%s: 3D front (C=0.5), no time correction (%s)', char(filedataExp.Key), dataSource), ...
+    'Ghosting/blur reflects true front advance during each rotation cycle'}, ...
+    'Interpreter','none','FontSize',9)
+grid on
+box on
+
+fname3D = sprintf('front3D_%s_%s', char(filedataExp.Key), dataSource);
+if ~isfolder(pathExportAll), mkdir(pathExportAll); end
+saveas(fig3D, fullfile(pathExportAll, fname3D), 'png');
+saveas(fig3D, fullfile(pathExportAll, fname3D), 'fig');
+
 %% Countour map
  
 fig = figure('Position', [50, 50, 800, 1000]); % [left, bottom, width, height];
