@@ -306,8 +306,15 @@ for j = 1:length(expFolderName) % number of runs
         xlim(ax5,[tmin,tmax])
         xlabel(ax5,'secondsElapsed')
         ylabel(ax5,'C_{ave}_1 [-]')
-        xlabel(ax5b,'t_D [-]')
         grid(ax5, 'on')
+
+        % sync ax5b's ticks to show tD instead of raw seconds
+        xt = ax5.XTick;
+        tDmax_val = BTdata.tDtotal(end);
+        tDtick = xt * (tDmax_val / tmax);
+        ax5b.XTick = xt;
+        ax5b.XTickLabel = compose('%.2f', tDtick);
+        xlabel(ax5b,'t_D [-]')
 
         drawnow;
         frame = getframe(fig);  % capture frame
@@ -362,7 +369,7 @@ for j = 1:length(expFolderName)
         % breakthrough point
         t = vars.secondsElapsed;
         tD = vars.tDtotal;
-        C = vars.CD1;
+        C = vars.CD1_zD1p0;
 
         % store
         BT.t(end+1) = t;
@@ -622,11 +629,11 @@ hBT_CT = plot(ax4, BTdata.tDtotal, BTdata.(zDoutlet), '-', ...
     'DisplayName','CT analog BTC (z_D=1.0, outlet)');
 hold(ax4,'on')
 hBT_CT_mid = plot(ax4, BTdata.tDtotal, BTdata.(zDmid), '--', ...
-    'LineWidth',1.5, 'Color',[0.5 0.5 0.5], ...
+    'LineWidth',1.5, 'Color','k', ...
     'HitTest','off','PickableParts','none', ...
     'DisplayName','CT analog BTC (z_D=0.5, mid-core)');
-hBT_CT_inlet = plot(ax4, BTdata.tDtotal, BTdata.(zDinlet), '--', ...
-    'LineWidth',1.5, 'Color',[0.5 0.5 0.5], ...
+hBT_CT_inlet = plot(ax4, BTdata.tDtotal, BTdata.(zDinlet), ':', ...
+    'LineWidth',1.5, 'Color','k', ...
     'HitTest','off','PickableParts','none', ...
     'DisplayName','CT analog BTC (z_D=0.0, inlet)');
 
