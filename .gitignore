@@ -11,3 +11,6 @@ desktop.ini
 
 % input excel
 *.xlsx
+
+% setup file
+CT_setupPaths.m
