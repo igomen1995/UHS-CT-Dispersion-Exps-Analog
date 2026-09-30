@@ -198,7 +198,7 @@ for i = 1:nExp
     hold on
 
 end
-% legend(legendEntries, 'Interpreter','none','FontSize',9.8)
+legend(legendEntries, 'Interpreter','none','FontSize',9.8)
 
 %% Find where to plot profile
 % Plot Z Profile at fixed tD
@@ -243,11 +243,11 @@ for m=1:length(tD_target)
         hold on
     
     end
-    % if tD_target(m) < 0.8
-    %     legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northeast')
-    % else
-    %     legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southwest')
-    % end
+    if tD_target(m) < 0.8
+        legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northeast')
+    else
+        legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southwest')
+    end
     title(sprintf('Z profiles (%s) @ tD = %.1f', dataSource,tD_target(m)),'Interpreter','none')
     % save the completed figure for this selection
     tDStr = strrep(sprintf('%.1f', tD_target(m)), '.', 'p');  % e.g. 0.50 -> 0p50
@@ -279,7 +279,7 @@ for i = 1:height(inputFileConfig)
     grid on
     hold on
 end
-% legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southeast')
+legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','southeast')
 title(sprintf('BT curves from CT (%s)',dataSource),'Interpreter','none')
 fname = sprintf('BT_CT_%s_time',dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
@@ -308,7 +308,7 @@ for i = 1:height(inputFileConfig)
     grid on
     hold on
 end
-% legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
+legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
 title(sprintf('BT curves from CT (%s)',dataSource),'Interpreter','none')
 fname = sprintf('BT_CT_%s_tD',dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
@@ -336,7 +336,7 @@ for i = 1:height(inputFileConfig)
     grid on
     hold on
 end
-% legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
+legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
 title(sprintf('BT curves from MFM analog CT-CF'),'Interpreter','none')
 fname = sprintf('BT_CT_MFM_tD');
 saveas(fig, fullfile(exportPath, fname), 'png');
@@ -364,7 +364,7 @@ for i = 1:height(inputFileConfig)
     grid on
     hold on
 end
-% legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
+legend(legendEntries, 'Interpreter','none','FontSize',8,'Location','northwest')
 title(sprintf('BT curves from MFM UHS'),'Interpreter','none')
 fname = sprintf('BT_UHS_MFM_tD');
 saveas(fig, fullfile(exportPath, fname), 'png');
@@ -415,10 +415,10 @@ for p = 1:length(widthPairs)
         filedataExp = filedataExpAll{i};
         vars = expCTDataAll{i}.varsAll.(dataSource);
 
-        plot(vars.tDtotal, vars.(measField), ...
-            'LineWidth',2,'Color',colours{i}, 'DisplayName',"meas - " + filedataExp.Key)
+        scatter(vars.tDtotal, vars.(measField),6, 'filled',...
+            'MarkerFaceColor',colours{i}, 'DisplayName',"meas - " + filedataExp.Key)
         hold on
-        plot(vars.tDtotal, vars.(theorField), '--', ...
+        plot(vars.tDtotal, vars.(theorField), '-', ...
             'LineWidth',2,'Color',colours{i}, 'DisplayName',"theor - " + filedataExp.Key)
     end
     xlabel('t_D [-]','FontSize',14)
@@ -427,7 +427,7 @@ for p = 1:length(widthPairs)
     ylim([-0.02 1])
     xlim([0,1.2])
     grid on
-    legend('Interpreter','none','FontSize',8,'Location','southeast','NumColumns',2)
+    legend('Interpreter','none','FontSize',8,'Location','northeast','NumColumns',2)
     title(sprintf('width (dZ, %s) measured vs theoretical from CT (%s)', strrep(widthPair,'_','-'), dataSource),'Interpreter','none')
 
     fname = sprintf('width_CT_%s_%s_tD', widthPair, dataSource);
@@ -438,22 +438,24 @@ end
 %% Front envelope: measured (solid) and theoretical (dashed) width, centered on front position
 
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
-widthPairs = {'10_90','16_84','30_70','40_60'};
+darkFactor = 0.6;   % <1 = darker
+coloursDark = cellfun(@(c) c*darkFactor, colours, 'UniformOutput', false);
+% widthPairs = {'10_90','16_84','30_70','40_60'};
+widthPairs = {'30_70','40_60'};
 
 for p = 1:length(widthPairs)
     widthPair = widthPairs{p};
     measField = ['zDWidth_' widthPair];
     theorField = ['zDWidthDiff_' widthPair];
 
-    fig = figure('Position',[100 100 1000 650]); hold on
     for i = 1:height(inputFileConfig)
+        fig = figure('Position',[100 100 1000 650]); hold on
         filedataExp = filedataExpAll{i};
         vars = expCTDataAll{i}.varsAll.(dataSource);
 
         tD = vars.tDtotal;
         centerMeas = vars.zDFront50;
         halfMeas = vars.(measField) / 2;
-
         centerTheor = vars.zDFront_theory;
         halfTheor = vars.(theorField) / 2;
 
@@ -461,42 +463,42 @@ for p = 1:length(widthPairs)
         for k = 1:height(vars)
             if isnan(centerMeas(k)) || isnan(halfMeas(k)), continue; end
             plot([tD(k) tD(k)], [centerMeas(k)-halfMeas(k), centerMeas(k)+halfMeas(k)], ...
-                '-', 'Color',[colours{i} 0.6], 'LineWidth',1.5, 'HandleVisibility','off')
+                '-', 'Color',[colours{i} 0.8], 'LineWidth',1.5, 'HandleVisibility','off')
         end
         validMeas = ~isnan(centerMeas) & ~isnan(halfMeas);
-        plot(tD(validMeas), centerMeas(validMeas), '.', 'Color',colours{i}, 'MarkerSize',8, ...
+        scatter(tD(validMeas), centerMeas(validMeas), 20, coloursDark{i}, 'filled', ...
             'DisplayName',"meas - " + filedataExp.Key)
 
-        % theoretical segments (dashed), only where width exists
+        % theoretical segments, only where width exists
         for k = 1:height(vars)
             if isnan(centerTheor(k)) || isnan(halfTheor(k)), continue; end
             plot([tD(k) tD(k)], [centerTheor(k)-halfTheor(k), centerTheor(k)+halfTheor(k)], ...
-                '--', 'Color',[colours{i} 0.6], 'LineWidth',1.2, 'HandleVisibility','off')
+                '-', 'Color',[colours{i} 0.8], 'LineWidth',1.2, 'HandleVisibility','off')
         end
         validTheor = ~isnan(centerTheor) & ~isnan(halfTheor);
-        plot(tD(validTheor), centerTheor(validTheor), 'x', 'Color',colours{i}, 'MarkerSize',5, ...
+        scatter(tD(validTheor), centerTheor(validTheor), 30, coloursDark{i}, 'x', 'LineWidth',1.5, ...
             'DisplayName',"theor - " + filedataExp.Key)
+
+        xlabel('t_D [-]','FontSize',14)
+        ylabel('z_D [-]','FontSize',14)
+        set(gca, 'FontSize', 14)
+        ylim([-0.02 1.02])
+        xlim([0,1.2])
+        grid on
+        legend('Interpreter','none','FontSize',8,'Location','southwest','NumColumns',2)
+        title(sprintf('Front envelope (%s) - %s: measured vs theoretical, centered on front position (%s)', ...
+            strrep(widthPair,'_','-'), filedataExp.Key, dataSource),'Interpreter','none')
+
+        fname = sprintf('frontEnvelope_CT_%s_%s_%s_tD', filedataExp.Key, widthPair, dataSource);
+        saveas(fig, fullfile(exportPath, fname), 'png');
+        saveas(fig, fullfile(exportPath, fname), 'fig');
     end
-
-    xlabel('t_D [-]','FontSize',14)
-    ylabel('z_D [-]','FontSize',14)
-    set(gca, 'FontSize', 14)
-    ylim([-0.02 1.02])
-    xlim([0,1.2])
-    grid on
-    legend('Interpreter','none','FontSize',8,'Location','best','NumColumns',2)
-    title(sprintf('Front envelope (%s): measured vs theoretical, centered on front position (%s)', ...
-        strrep(widthPair,'_','-'), dataSource),'Interpreter','none')
-
-    fname = sprintf('frontEnvelope_CT_%s_%s_tD', widthPair, dataSource);
-    saveas(fig, fullfile(exportPath, fname), 'png');
-    saveas(fig, fullfile(exportPath, fname), 'fig');
 end
 %% Front tilt and shape diagnostics vs tD
 
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
 
-fig = figure('Position',[100 100 1200 650]);
+fig = figure('Position',[100 100 650 1200]);
 
 subplot(2,1,1); hold on
 for i = 1:nExp
@@ -551,6 +553,47 @@ legend('Interpreter','none','FontSize',9,'Location','best')
 title(sprintf('K_L from front moments vs t_D (%s)', dataSource),'Interpreter','tex')
 
 fname = sprintf('KL_front_%s_tD', dataSource);
+saveas(fig, fullfile(exportPath, fname), 'png');
+saveas(fig, fullfile(exportPath, fname), 'fig');
+
+%% BTC width at outlet (zD=1.0): time-domain width, one row per experiment
+
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
+darkFactor = 0.6;
+coloursDark = cellfun(@(c) c*darkFactor, colours, 'UniformOutput', false);
+
+fig = figure('Position',[100 100 1000 650]); hold on
+
+yLabels = cell(height(inputFileConfig),1);
+
+for i = 1:height(inputFileConfig)
+    filedataExp = filedataExpAll{i};
+    metrics = expCTDataAll{i}.resultsAll.(dataSource).BTCMetrics;
+
+    tD16 = metrics.tD16;
+    tD50 = metrics.tD50;
+    tD84 = metrics.tD84;
+
+    yPos = i;   % row position = experiment index
+
+    plot([tD16 tD84], [yPos yPos], '-', 'Color',[colours{i} 0.8], 'LineWidth',3, 'HandleVisibility','off')
+    scatter(tD50, yPos, 40, coloursDark{i}, 'filled', 'DisplayName', char(filedataExp.Key))
+
+    yLabels{i} = char(filedataExp.Key);
+end
+
+xlabel('t_D [-]','FontSize',14)
+ylabel('Experiment','FontSize',14)
+set(gca, 'FontSize', 14)
+yticks(1:height(inputFileConfig))
+yticklabels(yLabels)
+set(gca, 'TickLabelInterpreter', 'none')
+ylim([0.5, height(inputFileConfig)+0.5])
+xlim([0,1.5])
+grid on
+title(sprintf('Outlet BTC width (16-84%%), centered on tD=0.5 (%s)', dataSource),'Interpreter','none')
+
+fname = sprintf('BTCwidth_outlet_%s_tD', dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
 

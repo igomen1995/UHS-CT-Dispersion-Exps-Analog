@@ -426,3 +426,5 @@ end
 % then add average ok that KL and std, 
 % then solve KL from BTC CT at zD = 1, zd = 0.8, zd = 0.6, zd = 0.4, zd = 0.2, zd = 0 (lines)
 % add to data CT saved
+
+% check KL_CT procedure 
