@@ -227,12 +227,13 @@ for j = 1:length(expFolderName) % number of runs
 
         % plot concentration in x ax1
         x1 = vars.C1Axial.xHorzcm;
+        xD1 = x1 / max(x1);
         y1 = vars.C1Axial.CHorz;
         cla(ax1)
-        plot(ax1, x1, y1,'LineWidth',2)
-        xlim(ax1,[min(x1) max(x1)])
+        plot(ax1, xD1, y1,'LineWidth',2)
+        xlim(ax1,[0 1])
         ylim(ax1,[-0.02 1])
-        xlabel(ax1,'X [cm]')
+        xlabel(ax1,'x_D [-]')
         ylabel(ax1,'C_{ave}_1 [-]')
         title(ax1,"timeElapsed: " + vars.secondsElapsed + ...
                   " s, volInjected: " + sprintf('%.2f', vars.volInjected) + ...
@@ -241,10 +242,11 @@ for j = 1:length(expFolderName) % number of runs
 
         % plot concentration in z ax4
         x2 = vars.C1Profile.zVertcm;
+        zD2 = x2 / max(x2);
         y2 = vars.C1Profile.CVert;
         cla(ax4)
-        plot(ax4, x2, y2,'LineWidth',2)
-        xlabel(ax4,'Z [cm]')
+        plot(ax4, zD2, y2,'LineWidth',2)
+        xlabel(ax4,'z_D [-]')
         ylabel(ax4,'C_{ave}_1 [-]')
         grid(ax4,'on')          
         axis(ax4,'tight')
@@ -260,13 +262,20 @@ for j = 1:length(expFolderName) % number of runs
         else
             plotImage = rhoNormImage;
         end
-        % imgSmooth = imgaussfilt(plotImage, 20);
+        imgSmooth = imgaussfilt(plotImage, 20);
+        resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
+        resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
+        xcm = (1:ny)*resXmm/10;
+        zcm = (1:nx)*resYmm/10;
+        xD = xcm/max(xcm);
+        zD = zcm/max(zcm);
+
         cla(ax3)
-        imagesc(ax3, plotImage)
+        imagesc(ax3, xD, zD, plotImage)
         axis(ax3,'xy','fill')
         set(ax3,'YDir','reverse')
-        xlabel(ax3,'Pixel Number')
-        ylabel(ax3,'Pixel Number')
+        xlabel(ax3,'x_D [-]')
+        ylabel(ax3,'z_D [-]')
         % nLevels = 10;
         % cmap = turbo(nLevels);
         % colormap(ax3,cmap)
