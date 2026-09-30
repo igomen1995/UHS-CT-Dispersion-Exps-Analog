@@ -453,24 +453,23 @@ surf(Xc, Yc, Zc, 'FaceAlpha',0.08, 'EdgeColor','none', 'FaceColor',[0.6 0.6 0.9]
 cmap = winter(256);
 level = [0.5 0.5];
 
-angleTicks = 0:30:330;
-rTick = 0.58;
-rTickLine = [0.5 0.56];
-
 thetaFull = linspace(0, 2*pi, 200);
 xBase = 0.5 + 0.5*sin(thetaFull);
 yBase = 0.5 - 0.5*cos(thetaFull);
-plot3(xBase, yBase, zeros(size(thetaFull)), 'k-', 'LineWidth',1)
+plot3(xBase, yBase, ones(size(thetaFull)), 'k-', 'LineWidth',1)   % z=1, was z=0
 
+angleTicks = 0:30:330;
+rTick = 0.58;
+rTickLine = [0.5 0.56];
 for a = angleTicks
     theta = deg2rad(a);
     xTick = 0.5 + rTickLine*sin(theta);
     yTick = 0.5 - rTickLine*cos(theta);
-    plot3(xTick, yTick, [0 0], 'k-', 'LineWidth',1)
+    plot3(xTick, yTick, [1 1], 'k-', 'LineWidth',1)   % z=1, was z=0
 
     xLab = 0.5 + rTick*sin(theta);
     yLab = 0.5 - rTick*cos(theta);
-    text(xLab, yLab, 0, sprintf('%d°', a), ...
+    text(xLab, yLab, 1, sprintf('%d°', a), ...   % z=1, was z=0
         'HorizontalAlignment','center', 'VerticalAlignment','middle', ...
         'FontSize',8, 'Color',[0.3 0.3 0.3])
 end
@@ -484,7 +483,21 @@ for j = 1:length(expFolderName)
 
     varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
     tDRun = [varsRun.tDtotal];
-    plotIdx = find(tDRun < 1.0);
+
+    % --- fixed tD grid, same for every experiment regardless of flow rate ---
+    tDtargets = 0.01:0.01:1.0;
+    plotIdx = nan(size(tDtargets));
+    for m = 1:length(tDtargets)
+        [minDist, idx] = min(abs(tDRun - tDtargets(m)));
+        if minDist > 0.025   % half the grid spacing; flag if nothing close enough
+            warning('run %s: no scan close to tD=%.2f (nearest %.3f, off by %.3f)', ...
+                run_name, tDtargets(m), tDRun(idx), minDist);
+            continue
+        end
+        plotIdx(m) = idx;
+    end
+    plotIdx = plotIdx(~isnan(plotIdx));
+    plotIdx = unique(plotIdx, 'stable');
 
     for ii = 1:length(plotIdx)
         k = plotIdx(ii);
@@ -499,7 +512,6 @@ for j = 1:length(expFolderName)
             plotImage = rhoNormImage;
         end
         imgSmooth = imgaussfilt(double(plotImage), 20);
-
         C = contourc(imgSmooth, level);
         if isempty(C), continue; end
         [xpx, zpx] = contourMatrixPoints(C);
