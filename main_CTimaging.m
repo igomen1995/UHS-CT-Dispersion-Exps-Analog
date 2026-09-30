@@ -485,7 +485,7 @@ for j = 1:length(expFolderName)
     tDRun = [varsRun.tDtotal];
 
     % --- fixed tD grid, same for every experiment regardless of flow rate ---
-    tDtargets = 0.01:0.01:1.0;
+    tDtargets = 0.05:0.05:1.0;
     plotIdx = nan(size(tDtargets));
     for m = 1:length(tDtargets)
         [minDist, idx] = min(abs(tDRun - tDtargets(m)));
@@ -525,7 +525,7 @@ for j = 1:length(expFolderName)
         cidx = round(1 + 255*tD);
         cidx = max(1,min(256,cidx));
 
-        plot3(X, Y, Z, '-', 'Color',cmap(cidx,:), 'LineWidth',1.5)
+        scatter3(X, Y, Z, 8, cmap(cidx,:), 'filled')
     end
 end
 
