@@ -619,3 +619,5 @@ saveas(fig, fullfile(exportPath, fname), 'fig');
 % add degree in tilt graphs
 % consider a 3D contour graph, contours advance every tD given and with colours
 % velocity field map for same angles scanned
+% add btc all parts of the core different experiments (initial mid and
+% last)
