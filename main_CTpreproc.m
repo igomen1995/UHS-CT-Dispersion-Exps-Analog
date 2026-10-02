@@ -188,7 +188,7 @@ for i = 1:height(inputFileConfig)
     % experiment data all in cm (not m) and min (not seconds)
     Ci = filedataExp.C1init/100;
     Cj = filedataExp.C1j/100;
-    uint_cm2min = filedataExp.Q/(filedataExp.phi*pi*((filedataExp.D*2.54/2)^2));     % u interstitial theoretical
+    uint_cmmin = filedataExp.Q/(filedataExp.phi*pi*((filedataExp.D*2.54/2)^2));     % u interstitial theoretical
     L_cm = filedataExp.L*2.54; 
     D = expProcFullData_MFM_CT.exp_params.D12_cm2min;
 
@@ -301,11 +301,11 @@ for i = 1:height(inputFileConfig)
             resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
 
             rhoNormVars_k = populate_CTframeVars(rhoNormImage, resXmm, resYmm, ...
-                imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal,D,uint_cm2min);
+                imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal,D,uint_cmmin);
             expCTData.(filedataExp.Key).exp.(run_name).vars.rhoNorm(k) = rhoNormVars_k;
             
             concVars_k = populate_CTframeVars(concImage, resXmm, resYmm, ...
-                imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal,D,uint_cm2min);
+                imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal,D,uint_cmmin);
             expCTData.(filedataExp.Key).exp.(run_name).vars.conc(k) = concVars_k;
             
         end
@@ -320,7 +320,7 @@ for i = 1:height(inputFileConfig)
 
     end
     
-    u_SI = uint_cm2min/(60*10000);
+    u_SI = uint_cmmin/(60*100);
     L_SI = L_cm/100;
     dt_guess = 0;
     Cmin = 0.16; Cmax = 0.84;
@@ -343,7 +343,7 @@ for i = 1:height(inputFileConfig)
 
         % KL fit from BTC_CT
         [methods_m, bestMethod_m, best_m] = fitBTC_KL_allMethods( ...
-            t_vals, C_at_zD, ones(height(varsAll_rn),1), ...
+            t_vals, C_at_zD, ones(size(t_vals)), ...
             u_SI, Cj, Ci, L_eff, dt_guess, Cmin, Cmax);
 
         KL_fit_byZD_rn.(fieldName) = struct('zD',zD,'L_eff',L_eff, ...
