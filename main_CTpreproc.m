@@ -294,7 +294,9 @@ for i = 1:height(inputFileConfig)
             volInjected = secondsElapsed*filedataExp.Q/60;
             tDtotal = volInjected/filedataExp.Vtotal;
 
-            rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac,filedataExp.Fluid1, ...
+                filedataExp.Fluid2, filedataExp.T, filedataExp.P);
             concImage = interpFcn(rhoNormImage);
 
             resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
