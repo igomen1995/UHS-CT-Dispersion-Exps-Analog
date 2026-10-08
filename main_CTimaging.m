@@ -108,688 +108,751 @@ Root = CT_setupPaths;   % absolute path to the BTC repo, from your existing setu
 inputFileConfigName = 'inputCTExpConfig.xlsx';
 inputFileConfig = readtable(inputFileConfigName);
 
-if height(inputFileConfig) > 1
-    warning(['inputCTExpConfig.xlsx has %d rows, but this script processes ' ...
-             'one experiment at a time. Using row 1 only (%s). ' ...
-             'Filter the table or edit the spreadsheet if you meant a different row.'], ...
-             height(inputFileConfig), inputFileConfig.inputFileName{1});
-    inputFileConfig = inputFileConfig(1,:);
-end
+%% Import params and load data
 
-filenameExp = inputFileConfig.inputFileName{:};
+nExp = height(inputFileConfig);
+filedataExpAll   = cell(nExp,1);
+expCTDataAll     = cell(nExp,1);
+MFM_CT_DataAll   = cell(nExp,1);
+MFM_UHS_DataAll  = cell(nExp,1);
+HDF5filenameAll  = cell(nExp,1);
+interpFcnAll     = cell(nExp,1);
+expFolderNameAll = cell(nExp,1);
+pathExportAllVec = cell(nExp,1);
+dataSourceAll    = cell(nExp,1);
 
-pathImportAll = inputFileConfig.importPath{:}; % Path for OUTPUT
-pathExportAll = inputFileConfig.exportPath{:}; % Path for OUTPUT
-mkdir(pathExportAll); % Create directory for output
+for i = 1:nExp
 
-dataSource = inputFileConfig.dataSource{:};   % "rhoNorm" or "conc"
-if ~ismember(dataSource, {'rhoNorm','conc'})
-    error('dataSource must be "rhoNorm" or "conc", got "%s"', dataSource);
-end
+    filenameExp = inputFileConfig.inputFileName{i};
 
-pathImport_MFM_CT = inputFileConfig.MFM_BTC_CT_Path{:};   % "../results/exp_He-Xe-T20-V_REFPROP/"
-pathImport_MFM_UHS = inputFileConfig.MFM_BTC_UHS_Path{:};   % "../results/exp_H2-CG-T40-P1160-V_REFPROP/"
-MFM_CT_name = inputFileConfig.MFM_BTC_CT_Key{:};
-MFM_UHS_name = inputFileConfig.MFM_BTC_UHS_Key{:};
+    pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
+    mkdir(pathExportAll); % Create directory for output
+    dataSource = inputFileConfig.dataSource{i};   % "rhoNorm" or "conc"
+    if ~ismember(dataSource, {'rhoNorm','conc'})
+        error('dataSource must be "rhoNorm" or "conc", got "%s"', dataSource);
+    end
 
-% main_Processing in other should have been executed first
-MFM_CT_file = fullfile(Root, pathImport_MFM_CT, 'expProcFullData.mat');
-MFM_UHS_file = fullfile(Root, pathImport_MFM_UHS, 'expProcFullData.mat');
+    filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
+        
+    % Capture exp data folder (for run numbers)
+    expFolderContent = dir(filedataExp.path+filedataExp.CT_data_exp); % exp
+    expFolderContent = expFolderContent([expFolderContent.isdir] & ~startsWith({expFolderContent.name},'.'));
+    expFolderName = {expFolderContent.name}';
 
+    HDF5filename = fullfile(pathExportAll, filedataExp.Key + ".h5");
+    expCTDataname = fullfile(pathExportAll, filedataExp.Key + ".mat");
+    expCTDataTemp = load(expCTDataname);
 
-%% Import params and data
+    % interpolant for composition form array 0 to 1 (binary mixture)
+    interpFcn = buildInterpolant(filedataExp.Fluid1, ...
+        filedataExp.Fluid2, filedataExp.T, filedataExp.P);
 
-% load processed MFM data
-MFM_CT_Data = load(MFM_CT_file);
-MFM_UHS_Data = load(MFM_UHS_file);
-% store UHS and CT MFM data
-expProcFullData_MFM_CT = MFM_CT_Data.expProcFullData.(MFM_CT_name);
-expProcFullData_MFM_UHS = MFM_UHS_Data.expProcFullData.(MFM_UHS_name);
+    pathImport_MFM_CT = inputFileConfig.MFM_BTC_CT_Path{i};   % "../results/exp_He-Xe-T20-V_REFPROP/"
+    pathImport_MFM_UHS = inputFileConfig.MFM_BTC_UHS_Path{i};   % "../results/exp_H2-CG-T40-P1160-V_REFPROP/"
+    MFM_CT_name = inputFileConfig.MFM_BTC_CT_Key{i};
+    MFM_UHS_name = inputFileConfig.MFM_BTC_UHS_Key{i};
+    % main_Processing in other should have been executed first
+    MFM_CT_file = fullfile(Root, pathImport_MFM_CT, 'expProcFullData.mat');
+    MFM_UHS_file = fullfile(Root, pathImport_MFM_UHS, 'expProcFullData.mat');
+    % load processed MFM data
+    MFM_CT_Data = load(MFM_CT_file);
+    MFM_UHS_Data = load(MFM_UHS_file);
 
-filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
+    filedataExpAll{i}   = filedataExp;
+    expCTDataAll{i}     = expCTDataTemp.expCTDataSave;
+    MFM_CT_DataAll{i}   = MFM_CT_Data.expProcFullData.(MFM_CT_name);
+    MFM_UHS_DataAll{i}  = MFM_UHS_Data.expProcFullData.(MFM_UHS_name);
+    HDF5filenameAll{i}  = HDF5filename;
+    interpFcnAll{i}     = interpFcn;
+    expFolderNameAll{i} = expFolderName;
+    pathExportAllVec{i} = pathExportAll;
+    dataSourceAll{i}    = dataSource;
 
-% Capture init ref data folder
-refInitFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_init); % Xe
-refInitFolderContent = refInitFolderContent([refInitFolderContent.isdir] & ~startsWith({refInitFolderContent.name},'.'));
-refInitFolderName = refInitFolderContent.name;
-
-% Capture final ref data folder
-refFinalFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_final); % He
-refFinalFolderContent = refFinalFolderContent([refFinalFolderContent.isdir] & ~startsWith({refFinalFolderContent.name},'.'));
-refFinalFolderName = refFinalFolderContent.name;
-
-% Capture exp data folder
-expFolderContent = dir(filedataExp.path+filedataExp.CT_data_exp); % exp
-expFolderContent = expFolderContent([expFolderContent.isdir] & ~startsWith({expFolderContent.name},'.'));
-expFolderName = {expFolderContent.name}';
-expFolderPath = {expFolderContent.folder};
-
-HDF5filename = fullfile(pathExportAll, filedataExp.Key + ".h5");
-expCTDataname = fullfile(pathExportAll, filedataExp.Key + ".mat");
-expCTDataTemp = load(expCTDataname);
-expCTData.(filedataExp.Key) = expCTDataTemp.expCTDataSave;
-    
-% interpolant for composition form array 0 to 1 (binary mixture)
-interpFcn = buildInterpolant(filedataExp.Fluid1, ...
-    filedataExp.Fluid2, filedataExp.T, filedataExp.P);
+end   
 
 %% Imaging movie
 
-fig = figure('Position', [50, 50, 600, 1000]); % [left, bottom, width, height];
-frame = getframe(fig);
-v = VideoWriter(pathExportAll + "movie_" + filedataExp.Key + "_" + dataSource, 'MPEG-4');
-v.FrameRate = 100;   % frames per second
-open(v);
-writeVideo(v, frame);
-% Shared geometry
-imgPos  = [0.12 0.24  0.3 0.5]; % image axes
-cbPos   = [0.45 imgPos(2) 0.02 0.5];
-ax1Pos  = [imgPos(1) 0.79 imgPos(3) 0.14];  % same WIDTH as image
-ax4Pos  = [0.62 imgPos(2)  0.27 imgPos(4)];  % same HEIGHT as image  
-ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)];
-ax5Pos  = [ax1Pos(1) 0.05 0.77 0.12]; 
-ax1 = axes('Position',ax1Pos);
-ax2 = axes('Position',ax2Pos);
-ax3 = axes('Position',imgPos);
-ax4 = axes('Position',ax4Pos);
-ax5 = axes('Position',ax5Pos);
-ax5b = axes('Position', ax5.Position, ...
-    'XAxisLocation','top', ...
-    'YAxisLocation','right', ...
-    'Color','none', ...
-    'YColor','none');   % hide Y axis
-linkaxes([ax5 ax5b],'x')
+for i = 1:nExp
 
-% hTitle
-hTitle = annotation('textbox', [0 0.93 1 0.05], ...
-    'String', '', ...
-    'EdgeColor','none', ...
-    'HorizontalAlignment','center', ...
-    'FontWeight','bold', ...
-    'Interpreter','none');
+    filedataExp   = filedataExpAll{i};
+    pathExportAll = pathExportAllVec{i};
+    dataSource    = dataSourceAll{i};
+    HDF5filename  = HDF5filenameAll{i};
+    interpFcn     = interpFcnAll{i};
+    expFolderName = expFolderNameAll{i};
+    expProcFullData_MFM_CT  = MFM_CT_DataAll{i};   % only used in Interactive imaging & Countour map
+    expProcFullData_MFM_UHS = MFM_UHS_DataAll{i};
 
-for j = 1:length(expFolderName) % number of runs
-    run_name = "run_" + sprintf('%02d', j);
-    HDF5dataPath = ['/exp/' char(run_name) '/conc'];
-    info = h5info(HDF5filename, HDF5dataPath);
-    dims = info.Dataspace.Size;
-    nx = dims(1);
-    ny = dims(2);
-    nz = dims(3);
+    expCTData = struct();
+    expCTData.(filedataExp.Key) = expCTDataAll{i};
 
-    for k = 1:nz
-        vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
-
-        % hTitle
-        set(hTitle, 'String', ...
-            filedataExp.Key + ": CT " + dataSource + " " + run_name + ...
-            " ImgNumber_" + sprintf('%03d', k));
-
-        % plot concentration in x ax1
-        x1 = vars.C1Axial.xHorzcm;
-        xD1 = x1 / max(x1);
-        y1 = vars.C1Axial.CHorz;
-        cla(ax1)
-        plot(ax1, xD1, y1,'LineWidth',2)
-        xlim(ax1,[0 1])
-        ylim(ax1,[-0.02 1])
-        xlabel(ax1,'x_D [-]')
-        ylabel(ax1,'C_{ave}_1 [-]')
-        title(ax1,"timeElapsed: " + vars.secondsElapsed + ...
-                  " s, volInjected: " + sprintf('%.2f', vars.volInjected) + ...
-                  " mL, tD: " + sprintf('%.3f', vars.tDtotal))
-        grid(ax1,'on')
-
-        % plot concentration in z ax4
-        x2 = vars.C1Profile.zVertcm;
-        zD2 = x2 / max(x2);
-        y2 = vars.C1Profile.CVert;
-        cla(ax4)
-        plot(ax4, zD2, y2,'LineWidth',2)
-        xlabel(ax4,'z_D [-]')
-        ylabel(ax4,'C_{ave}_1 [-]')
-        grid(ax4,'on')          
-        axis(ax4,'tight')
-        axis(ax4,'manual')
-        camroll(ax4,270)
-        ylim(ax4,[-0.02 1])
-        ax4.YAxisLocation = 'right';
-
-        % plot image ax3
-        rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
-        if strcmp(dataSource,'conc')
-            plotImage = interpFcn(rhoNormImage);
-        else
-            plotImage = rhoNormImage;
+    fprintf('Running imaging movie %s\n',filedataExp.Key)
+    
+    fig = figure('Position', [50, 50, 600, 1000]); % [left, bottom, width, height];
+    frame = getframe(fig);
+    v = VideoWriter(pathExportAll + "movie_" + filedataExp.Key + "_" + dataSource, 'MPEG-4');
+    v.FrameRate = 100;   % frames per second
+    open(v);
+    writeVideo(v, frame);
+    % Shared geometry
+    imgPos  = [0.12 0.24  0.3 0.5]; % image axes
+    cbPos   = [0.45 imgPos(2) 0.02 0.5];
+    ax1Pos  = [imgPos(1) 0.79 imgPos(3) 0.14];  % same WIDTH as image
+    ax4Pos  = [0.62 imgPos(2)  0.27 imgPos(4)];  % same HEIGHT as image  
+    ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)];
+    ax5Pos  = [ax1Pos(1) 0.05 0.77 0.12]; 
+    ax1 = axes('Position',ax1Pos);
+    ax2 = axes('Position',ax2Pos);
+    ax3 = axes('Position',imgPos);
+    ax4 = axes('Position',ax4Pos);
+    ax5 = axes('Position',ax5Pos);
+    ax5b = axes('Position', ax5.Position, ...
+        'XAxisLocation','top', ...
+        'YAxisLocation','right', ...
+        'Color','none', ...
+        'YColor','none');   % hide Y axis
+    linkaxes([ax5 ax5b],'x')
+    
+    % hTitle
+    hTitle = annotation('textbox', [0 0.93 1 0.05], ...
+        'String', '', ...
+        'EdgeColor','none', ...
+        'HorizontalAlignment','center', ...
+        'FontWeight','bold', ...
+        'Interpreter','none');
+    
+    for j = 1:length(expFolderName) % number of runs
+        run_name = "run_" + sprintf('%02d', j);
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+        info = h5info(HDF5filename, HDF5dataPath);
+        dims = info.Dataspace.Size;
+        nx = dims(1);
+        ny = dims(2);
+        nz = dims(3);
+    
+        for k = 1:nz
+            vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+    
+            % hTitle
+            set(hTitle, 'String', ...
+                filedataExp.Key + ": CT " + dataSource + " " + run_name + ...
+                " ImgNumber_" + sprintf('%03d', k));
+    
+            % plot concentration in x ax1
+            x1 = vars.C1Axial.xHorzcm;
+            xD1 = x1 / max(x1);
+            y1 = vars.C1Axial.CHorz;
+            cla(ax1)
+            plot(ax1, xD1, y1,'LineWidth',2)
+            xlim(ax1,[0 1])
+            ylim(ax1,[-0.02 1])
+            xlabel(ax1,'x_D [-]')
+            ylabel(ax1,'C_{ave}_1 [-]')
+            title(ax1,"timeElapsed: " + vars.secondsElapsed + ...
+                      " s, volInjected: " + sprintf('%.2f', vars.volInjected) + ...
+                      " mL, tD: " + sprintf('%.3f', vars.tDtotal))
+            grid(ax1,'on')
+    
+            % plot concentration in z ax4
+            x2 = vars.C1Profile.zVertcm;
+            zD2 = x2 / max(x2);
+            y2 = vars.C1Profile.CVert;
+            cla(ax4)
+            plot(ax4, zD2, y2,'LineWidth',2)
+            xlabel(ax4,'z_D [-]')
+            ylabel(ax4,'C_{ave}_1 [-]')
+            grid(ax4,'on')          
+            axis(ax4,'tight')
+            axis(ax4,'manual')
+            camroll(ax4,270)
+            ylim(ax4,[-0.02 1])
+            ax4.YAxisLocation = 'right';
+    
+            % plot image ax3
+            rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            if strcmp(dataSource,'conc')
+                plotImage = interpFcn(rhoNormImage);
+            else
+                plotImage = rhoNormImage;
+            end
+            imgSmooth = imgaussfilt(plotImage, 20);
+            resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
+            resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
+            xcm = (1:ny)*resXmm/10;
+            zcm = (1:nx)*resYmm/10;
+            xD = xcm/max(xcm);
+            zD = zcm/max(zcm);
+    
+            cla(ax3)
+            imagesc(ax3, xD, zD, plotImage)
+            axis(ax3,'xy','fill')
+            set(ax3,'YDir','reverse')
+            xlabel(ax3,'x_D [-]')
+            ylabel(ax3,'z_D [-]')
+            % nLevels = 10;
+            % cmap = turbo(nLevels);
+            % colormap(ax3,cmap)
+            colormap(ax3,turbo)
+            clim(ax3,[0 1]);
+            cb = colorbar(ax3,'Position',cbPos);
+            cb.Label.String = 'C_1 [-]';
+            % levels = 0:0.1:1;
+            % hold(ax3,'on')
+            % contour(ax3, imgSmooth, levels, ...
+            %     'LineColor','k', ...
+            %     'LineWidth',1,'ShowText',true,'LabelFormat',"%0.1f")
+            % hold(ax3,'off')
+    
+            % plot histogram ax2
+            freq = vars.histImage.counts;
+            binCenters = (vars.histImage.minEdge + vars.histImage.maxEdge)/2;
+            binWidth = abs(vars.histImage.maxEdge-vars.histImage.minEdge);
+            cla(ax2)
+            bar(ax2,binCenters,freq,1)
+            xlim(ax2,[-0.02,1])
+            ylim(ax2,[0,length(x1)*length(x2)])
+            xlabel(ax2,'C_1 [-]')
+            ylabel(ax2,'Counts')
+            title(ax2,"run: " +string(j)+" , angle: " + vars.rotPos + "°")
+            grid(ax2, 'on')
+    
+            % plot BTcore ax5
+            t = vars.secondsElapsed;
+            C = y2(end);
+            BTdata = expCTData.(filedataExp.Key).varsAll.(dataSource); 
+            tmin = BTdata.secondsElapsed(1);
+            tmax = BTdata.secondsElapsed(end);
+            scatter(ax5,t,C,15,'filled','MarkerFaceColor',[0, 0.4470, 0.7410],'MarkerEdgeColor','none')
+            hold(ax5,'on')
+            ylim(ax5,[-0.02 1])
+            xlim(ax5,[tmin,tmax])
+            xlabel(ax5,'secondsElapsed')
+            ylabel(ax5,'C_{ave}_1 [-]')
+            grid(ax5, 'on')
+    
+            % sync ax5b's ticks to show tD instead of raw seconds
+            xt = ax5.XTick;
+            tDmax_val = BTdata.tDtotal(end);
+            tDtick = xt * (tDmax_val / tmax);
+            ax5b.XTick = xt;
+            ax5b.XTickLabel = compose('%.2f', tDtick);
+            xlabel(ax5b,'t_D [-]')
+    
+            drawnow;
+            frame = getframe(fig);  % capture frame
+            writeVideo(v, frame); % write to movie
         end
-        imgSmooth = imgaussfilt(plotImage, 20);
-        resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
-        resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
-        xcm = (1:ny)*resXmm/10;
-        zcm = (1:nx)*resYmm/10;
-        xD = xcm/max(xcm);
-        zD = zcm/max(zcm);
-
-        cla(ax3)
-        imagesc(ax3, xD, zD, plotImage)
-        axis(ax3,'xy','fill')
-        set(ax3,'YDir','reverse')
-        xlabel(ax3,'x_D [-]')
-        ylabel(ax3,'z_D [-]')
-        % nLevels = 10;
-        % cmap = turbo(nLevels);
-        % colormap(ax3,cmap)
-        colormap(ax3,turbo)
-        clim(ax3,[0 1]);
-        cb = colorbar(ax3,'Position',cbPos);
-        cb.Label.String = 'C_1 [-]';
-        % levels = 0:0.1:1;
-        % hold(ax3,'on')
-        % contour(ax3, imgSmooth, levels, ...
-        %     'LineColor','k', ...
-        %     'LineWidth',1,'ShowText',true,'LabelFormat',"%0.1f")
-        % hold(ax3,'off')
-
-        % plot histogram ax2
-        freq = vars.histImage.counts;
-        binCenters = (vars.histImage.minEdge + vars.histImage.maxEdge)/2;
-        binWidth = abs(vars.histImage.maxEdge-vars.histImage.minEdge);
-        cla(ax2)
-        bar(ax2,binCenters,freq,1)
-        xlim(ax2,[-0.02,1])
-        ylim(ax2,[0,length(x1)*length(x2)])
-        xlabel(ax2,'C_1 [-]')
-        ylabel(ax2,'Counts')
-        title(ax2,"run: " +string(j)+" , angle: " + vars.rotPos + "°")
-        grid(ax2, 'on')
-
-        % plot BTcore ax5
-        t = vars.secondsElapsed;
-        C = y2(end);
-        BTdata = expCTData.(filedataExp.Key).varsAll.(dataSource); 
-        tmin = BTdata.secondsElapsed(1);
-        tmax = BTdata.secondsElapsed(end);
-        scatter(ax5,t,C,15,'filled','MarkerFaceColor',[0, 0.4470, 0.7410],'MarkerEdgeColor','none')
-        hold(ax5,'on')
-        ylim(ax5,[-0.02 1])
-        xlim(ax5,[tmin,tmax])
-        xlabel(ax5,'secondsElapsed')
-        ylabel(ax5,'C_{ave}_1 [-]')
-        grid(ax5, 'on')
-
-        % sync ax5b's ticks to show tD instead of raw seconds
-        xt = ax5.XTick;
-        tDmax_val = BTdata.tDtotal(end);
-        tDtick = xt * (tDmax_val / tmax);
-        ax5b.XTick = xt;
-        ax5b.XTickLabel = compose('%.2f', tDtick);
-        xlabel(ax5b,'t_D [-]')
-
-        drawnow;
-        frame = getframe(fig);  % capture frame
-        writeVideo(v, frame); % write to movie
     end
+    close(v)
+
 end
-close(v)
 
 %% Interactive imaging
 
-figure('Position',[50 50 600 1000])
-imgPos  = [0.12 0.24  0.3 0.5];
-cbPos   = [0.45 imgPos(2) 0.02 0.5];
-ax1Pos  = [imgPos(1) 0.79 imgPos(3) 0.14];
-ax4Pos  = [0.62 imgPos(2)  0.27 imgPos(4)];
-ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)];
-ax5Pos  = [ax1Pos(1) 0.05 0.77 0.12];
-ax1 = axes('Position',ax1Pos);
-ax2 = axes('Position',ax2Pos);
-ax3 = axes('Position',imgPos);
-ax4 = axes('Position',ax4Pos);
-ax5 = axes('Position',ax5Pos);
-ax5b = axes('Position', ax5.Position, ...
-    'XAxisLocation','top', ...
-    'YAxisLocation','right', ...
-    'Color','none', ...
-    'YColor','none');   % hide Y axis
-linkaxes([ax5 ax5b],'x')
-ax5b.HitTest = 'off';
-ax5b.PickableParts = 'none';
-hold(ax5,'on')
+for i = 1:nExp
 
-% store BT
-BT.t = [];
-BT.tD = [];
-BT.C = [];
-BT.j = [];
-BT.k = [];
+    filedataExp   = filedataExpAll{i};
+    pathExportAll = pathExportAllVec{i};
+    dataSource    = dataSourceAll{i};
+    HDF5filename  = HDF5filenameAll{i};
+    interpFcn     = interpFcnAll{i};
+    expFolderName = expFolderNameAll{i};
+    expProcFullData_MFM_CT  = MFM_CT_DataAll{i};   % only used in Interactive imaging & Countour map
+    expProcFullData_MFM_UHS = MFM_UHS_DataAll{i};
 
-for j = 1:length(expFolderName)
+    expCTData = struct();
+    expCTData.(filedataExp.Key) = expCTDataAll{i};
 
-    run_name = "run_" + sprintf('%02d', j);
-    HDF5dataPath = ['/exp/' char(run_name) '/conc'];
-    info = h5info(HDF5filename, HDF5dataPath);
-    dims = info.Dataspace.Size;
-    nz = dims(3);
+    fprintf('Running interactive imaging %s\n',filedataExp.Key)
 
-    for k = 1:nz
-
-        vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
-
-        % breakthrough point
-        t = vars.secondsElapsed;
-        tD = vars.tDtotal;
-        C = vars.CD1_zD1p0;
-
-        % store
-        BT.t(end+1) = t;
-        BT.tD(end+1) = tD;
-        BT.C(end+1) = C;
-        BT.j(end+1) = j;
-        BT.k(end+1) = k;
-
-    end
-end
+    figure('Position',[50 50 600 1000])
+    imgPos  = [0.12 0.24  0.3 0.5];
+    cbPos   = [0.45 imgPos(2) 0.02 0.5];
+    ax1Pos  = [imgPos(1) 0.79 imgPos(3) 0.14];
+    ax4Pos  = [0.62 imgPos(2)  0.27 imgPos(4)];
+    ax2Pos  = [ax4Pos(1) ax1Pos(2) ax4Pos(3) ax1Pos(4)];
+    ax5Pos  = [ax1Pos(1) 0.05 0.77 0.12];
+    ax1 = axes('Position',ax1Pos);
+    ax2 = axes('Position',ax2Pos);
+    ax3 = axes('Position',imgPos);
+    ax4 = axes('Position',ax4Pos);
+    ax5 = axes('Position',ax5Pos);
+    ax5b = axes('Position', ax5.Position, ...
+        'XAxisLocation','top', ...
+        'YAxisLocation','right', ...
+        'Color','none', ...
+        'YColor','none');   % hide Y axis
+    linkaxes([ax5 ax5b],'x')
+    ax5b.HitTest = 'off';
+    ax5b.PickableParts = 'none';
+    hold(ax5,'on')
     
-% plot BT
-colors = get(groot,'defaultAxesColorOrder');
-hScatter = scatter(ax5, BT.t, BT.C, 20, ...
-    'filled', ...
-    'MarkerFaceColor','k', ...
-    'MarkerEdgeColor','none','DisplayName','CT_analog_BTC');
-hold(ax5,'on')
-scatter(ax5, expProcFullData_MFM_CT.BT.SecondsElapsed, expProcFullData_MFM_CT.BT.CDi, 20, ...
-    'filled', ...
-    'MarkerFaceColor',colors(1,:), ...
-    'MarkerEdgeColor','none','DisplayName','MFM_analog_BTC');
-scatter(ax5, expProcFullData_MFM_UHS.BT.SecondsElapsed, expProcFullData_MFM_UHS.BT.CDi, 20, ...
-    'filled', ...
-    'MarkerFaceColor',colors(3,:), ...
-    'MarkerEdgeColor','none','DisplayName','MFM_UHS_BTC');
-tmin = min(BT.t);
-tmax = max(BT.t);
-xlim(ax5,[tmin tmax])
-ylim(ax5,[-0.02 1])
-xlabel(ax5,'secondsElapsed')
-ylabel(ax5,'C_{ave}_1 [-]')
-xt = ax5.XTick;
-tDtick = xt*(max(BT.tD)/max(BT.t));
-ax5b.XTick = xt;
-ax5b.XTickLabel = compose('%.2f',tDtick);
-xlabel(ax5b,'t_D [-]')
-legend(ax5, 'Location','best','Interpreter','none')
-grid(ax5,'on')
+    % store BT
+    BT.t = [];
+    BT.tD = [];
+    BT.C = [];
+    BT.j = [];
+    BT.k = [];
+    
+    for j = 1:length(expFolderName)
+    
+        run_name = "run_" + sprintf('%02d', j);
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+        info = h5info(HDF5filename, HDF5dataPath);
+        dims = info.Dataspace.Size;
+        nz = dims(3);
+    
+        for k = 1:nz
+    
+            vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+    
+            % breakthrough point
+            t = vars.secondsElapsed;
+            tD = vars.tDtotal;
+            C = vars.CD1_zD1p0;
+    
+            % store
+            BT.t(end+1) = t;
+            BT.tD(end+1) = tD;
+            BT.C(end+1) = C;
+            BT.j(end+1) = j;
+            BT.k(end+1) = k;
+    
+        end
+    end
+        
+    % plot BT
+    colors = get(groot,'defaultAxesColorOrder');
+    hScatter = scatter(ax5, BT.t, BT.C, 20, ...
+        'filled', ...
+        'MarkerFaceColor','k', ...
+        'MarkerEdgeColor','none','DisplayName','CT_analog_BTC');
+    hold(ax5,'on')
+    scatter(ax5, expProcFullData_MFM_CT.BT.SecondsElapsed, expProcFullData_MFM_CT.BT.CDi, 20, ...
+        'filled', ...
+        'MarkerFaceColor',colors(1,:), ...
+        'MarkerEdgeColor','none','DisplayName','MFM_analog_BTC');
+    scatter(ax5, expProcFullData_MFM_UHS.BT.SecondsElapsed, expProcFullData_MFM_UHS.BT.CDi, 20, ...
+        'filled', ...
+        'MarkerFaceColor',colors(3,:), ...
+        'MarkerEdgeColor','none','DisplayName','MFM_UHS_BTC');
+    tmin = min(BT.t);
+    tmax = max(BT.t);
+    xlim(ax5,[tmin tmax])
+    ylim(ax5,[-0.02 1])
+    xlabel(ax5,'secondsElapsed')
+    ylabel(ax5,'C_{ave}_1 [-]')
+    xt = ax5.XTick;
+    tDtick = xt*(max(BT.tD)/max(BT.t));
+    ax5b.XTick = xt;
+    ax5b.XTickLabel = compose('%.2f',tDtick);
+    xlabel(ax5b,'t_D [-]')
+    legend(ax5, 'Location','best','Interpreter','none')
+    grid(ax5,'on')
+    
+    % Selected point marker
+    hSelected = scatter(ax5, NaN, NaN, 40, ...
+        'filled', 'MarkerFaceColor','r', 'MarkerEdgeColor','k', ...
+        'Visible','off','HandleVisibility','off');
+    
+    hSelectedLine = xline(ax5, NaN, '--r', 'LineWidth', 2, 'HandleVisibility','off');
+    
+    hTitle = annotation('textbox', [0 0.93 1 0.05], ...
+        'String', '', ...
+        'EdgeColor','none', ...
+        'HorizontalAlignment','center', ...
+        'FontWeight','bold', ...
+        'Interpreter','none');
+    
+    % callback part
+    hScatter.ButtonDownFcn = @(src,event) ...
+        onClickCallback(src,event,pathExportAll,hSelected, hSelectedLine, ...
+        BT, expCTData,filedataExp,interpFcn,dataSource, ...
+        ax1,ax2,ax3,ax4,cbPos,hTitle);
 
-% Selected point marker
-hSelected = scatter(ax5, NaN, NaN, 40, ...
-    'filled', 'MarkerFaceColor','r', 'MarkerEdgeColor','k', ...
-    'Visible','off','HandleVisibility','off');
-
-hSelectedLine = xline(ax5, NaN, '--r', 'LineWidth', 2, 'HandleVisibility','off');
-
-hTitle = annotation('textbox', [0 0.93 1 0.05], ...
-    'String', '', ...
-    'EdgeColor','none', ...
-    'HorizontalAlignment','center', ...
-    'FontWeight','bold', ...
-    'Interpreter','none');
-
-% callback part
-hScatter.ButtonDownFcn = @(src,event) ...
-    onClickCallback(src,event,pathExportAll,hSelected, hSelectedLine, ...
-    BT, expCTData,filedataExp,interpFcn,dataSource, ...
-    ax1,ax2,ax3,ax4,cbPos,hTitle);
+end
 
 %% 3D front reconstruction across rotation angles (ghosted, no time correction)
 
-fig3D = figure('Position',[100 100 900 800]);
-hold on
+for i = 1:nExp
 
-% transparent reference cylinder, shifted to [0,1] range
-[Xc, Yc, Zc] = cylinder(0.5, 60);
-Xc = Xc + 0.5;
-Yc = Yc + 0.5;
-surf(Xc, Yc, Zc, 'FaceAlpha',0.08, 'EdgeColor','none', 'FaceColor',[0.6 0.6 0.9])
+    filedataExp   = filedataExpAll{i};
+    pathExportAll = pathExportAllVec{i};
+    dataSource    = dataSourceAll{i};
+    HDF5filename  = HDF5filenameAll{i};
+    interpFcn     = interpFcnAll{i};
+    expFolderName = expFolderNameAll{i};
+    expProcFullData_MFM_CT  = MFM_CT_DataAll{i};   % only used in Interactive imaging & Countour map
+    expProcFullData_MFM_UHS = MFM_UHS_DataAll{i};
 
-cmap = winter(256);
-level = [0.5 0.5];
+    expCTData = struct();
+    expCTData.(filedataExp.Key) = expCTDataAll{i};
 
-thetaFull = linspace(0, 2*pi, 200);
-xBase = 0.5 + 0.5*sin(thetaFull);
-yBase = 0.5 - 0.5*cos(thetaFull);
-plot3(xBase, yBase, ones(size(thetaFull)), 'k-', 'LineWidth',1)   % z=1, was z=0
+    fprintf('3D contours imaging %s\n',filedataExp.Key)
 
-angleTicks = 0:30:330;
-rTick = 0.58;
-rTickLine = [0.5 0.56];
-for a = angleTicks
-    theta = deg2rad(a);
-    xTick = 0.5 + rTickLine*sin(theta);
-    yTick = 0.5 - rTickLine*cos(theta);
-    plot3(xTick, yTick, [1 1], 'k-', 'LineWidth',1)   % z=1, was z=0
-
-    xLab = 0.5 + rTick*sin(theta);
-    yLab = 0.5 - rTick*cos(theta);
-    text(xLab, yLab, 1, sprintf('%d°', a), ...   % z=1, was z=0
-        'HorizontalAlignment','center', 'VerticalAlignment','middle', ...
-        'FontSize',8, 'Color',[0.3 0.3 0.3])
-end
-
-for j = 1:length(expFolderName)
-    run_name = "run_" + sprintf('%02d', j);
-    HDF5dataPath = ['/exp/' char(run_name) '/conc'];
-    info = h5info(HDF5filename, HDF5dataPath);
-    dims = info.Dataspace.Size;
-    nx = dims(1); ny = dims(2); nz = dims(3);
-
-    varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
-    tDRun = [varsRun.tDtotal];
-
-    % --- fixed tD grid, same for every experiment regardless of flow rate ---
-    tDtargets = 0.05:0.05:1.0;
-    plotIdx = nan(size(tDtargets));
-    for m = 1:length(tDtargets)
-        [minDist, idx] = min(abs(tDRun - tDtargets(m)));
-        if minDist > 0.025   % half the grid spacing; flag if nothing close enough
-            warning('run %s: no scan close to tD=%.2f (nearest %.3f, off by %.3f)', ...
-                run_name, tDtargets(m), tDRun(idx), minDist);
-            continue
-        end
-        plotIdx(m) = idx;
+    fig3D = figure('Position',[100 100 900 800]);
+    hold on
+    
+    % transparent reference cylinder, shifted to [0,1] range
+    [Xc, Yc, Zc] = cylinder(0.5, 60);
+    Xc = Xc + 0.5;
+    Yc = Yc + 0.5;
+    surf(Xc, Yc, Zc, 'FaceAlpha',0.08, 'EdgeColor','none', 'FaceColor',[0.6 0.6 0.9])
+    
+    cmap = winter(256);
+    level = [0.5 0.5];
+    
+    thetaFull = linspace(0, 2*pi, 200);
+    xBase = 0.5 + 0.5*sin(thetaFull);
+    yBase = 0.5 - 0.5*cos(thetaFull);
+    plot3(xBase, yBase, ones(size(thetaFull)), 'k-', 'LineWidth',1)   % z=1, was z=0
+    
+    angleTicks = 0:30:330;
+    rTick = 0.58;
+    rTickLine = [0.5 0.56];
+    for a = angleTicks
+        theta = deg2rad(a);
+        xTick = 0.5 + rTickLine*sin(theta);
+        yTick = 0.5 - rTickLine*cos(theta);
+        plot3(xTick, yTick, [1 1], 'k-', 'LineWidth',1)   % z=1, was z=0
+    
+        xLab = 0.5 + rTick*sin(theta);
+        yLab = 0.5 - rTick*cos(theta);
+        text(xLab, yLab, 1, sprintf('%d°', a), ...   % z=1, was z=0
+            'HorizontalAlignment','center', 'VerticalAlignment','middle', ...
+            'FontSize',8, 'Color',[0.3 0.3 0.3])
     end
-    plotIdx = plotIdx(~isnan(plotIdx));
-    plotIdx = unique(plotIdx, 'stable');
-
-    for ii = 1:length(plotIdx)
-        k = plotIdx(ii);
-        vars = varsRun(k);
-        tD = vars.tDtotal;
-        theta = deg2rad(vars.rotPos);
-
-        rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
-        if strcmp(dataSource,'conc')
-            plotImage = interpFcn(rhoNormImage);
-        else
-            plotImage = rhoNormImage;
+    
+    for j = 1:length(expFolderName)
+        run_name = "run_" + sprintf('%02d', j);
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+        info = h5info(HDF5filename, HDF5dataPath);
+        dims = info.Dataspace.Size;
+        nx = dims(1); ny = dims(2); nz = dims(3);
+    
+        varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
+        tDRun = [varsRun.tDtotal];
+    
+        % --- fixed tD grid, same for every experiment regardless of flow rate ---
+        tDtargets = 0.05:0.05:1.0;
+        plotIdx = nan(size(tDtargets));
+        for m = 1:length(tDtargets)
+            [minDist, idx] = min(abs(tDRun - tDtargets(m)));
+            if minDist > 0.025   % half the grid spacing; flag if nothing close enough
+                warning('run %s: no scan close to tD=%.2f (nearest %.3f, off by %.3f)', ...
+                    run_name, tDtargets(m), tDRun(idx), minDist);
+                continue
+            end
+            plotIdx(m) = idx;
         end
-        imgSmooth = imgaussfilt(double(plotImage), 20);
-        C = contourc(imgSmooth, level);
-        if isempty(C), continue; end
-        [xpx, zpx] = contourMatrixPoints(C);
-        xD = xpx / size(imgSmooth,2);
-        zD = zpx / size(imgSmooth,1);
-
-        X = (xD - 0.5) * cos(theta) + 0.5;
-        Y = (xD - 0.5) * sin(theta) + 0.5;
-        Z = zD;
-
-        cidx = round(1 + 255*tD);
-        cidx = max(1,min(256,cidx));
-
-        scatter3(X, Y, Z, 8, cmap(cidx,:), 'filled')
+        plotIdx = plotIdx(~isnan(plotIdx));
+        plotIdx = unique(plotIdx, 'stable');
+    
+        for ii = 1:length(plotIdx)
+            k = plotIdx(ii);
+            vars = varsRun(k);
+            tD = vars.tDtotal;
+            theta = deg2rad(vars.rotPos);
+    
+            rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            if strcmp(dataSource,'conc')
+                plotImage = interpFcn(rhoNormImage);
+            else
+                plotImage = rhoNormImage;
+            end
+            imgSmooth = imgaussfilt(double(plotImage), 20);
+            C = contourc(imgSmooth, level);
+            if isempty(C), continue; end
+            [xpx, zpx] = contourMatrixPoints(C);
+            xD = xpx / size(imgSmooth,2);
+            zD = zpx / size(imgSmooth,1);
+    
+            X = (xD - 0.5) * cos(theta) + 0.5;
+            Y = (xD - 0.5) * sin(theta) + 0.5;
+            Z = zD;
+    
+            cidx = round(1 + 255*tD);
+            cidx = max(1,min(256,cidx));
+    
+            scatter3(X, Y, Z, 8, cmap(cidx,:), 'filled')
+        end
     end
+    
+    xlabel('X_D [-]'); ylabel('Y_D [-]'); zlabel('Z_D [-]')
+    xlim([0 1]); ylim([0 1]); zlim([0 1])
+    axis equal
+    set(gca,'ZDir','reverse')   % zD=0 at top
+    view(45,20)
+    colormap(cmap)
+    clim([0 1])
+    cb = colorbar;
+    cb.Label.String = 't_D [-]';
+    cb.Direction = 'reverse';   % tD=0 at top of colorbar, matching zD=0 at top of plot
+    title({sprintf('%s: 3D front (C=0.5), no time correction (%s)', char(filedataExp.Key), dataSource), ...
+        'Ghosting/blur reflects true front advance during each rotation cycle'}, ...
+        'Interpreter','none','FontSize',9)
+    grid on
+    box on
+    
+    fname3D = sprintf('front3D_%s_%s', char(filedataExp.Key), dataSource);
+    if ~isfolder(pathExportAll), mkdir(pathExportAll); end
+    saveas(fig3D, fullfile(pathExportAll, fname3D), 'png');
+    saveas(fig3D, fullfile(pathExportAll, fname3D), 'fig');
+
 end
-
-xlabel('X_D [-]'); ylabel('Y_D [-]'); zlabel('Z_D [-]')
-xlim([0 1]); ylim([0 1]); zlim([0 1])
-axis equal
-set(gca,'ZDir','reverse')   % zD=0 at top
-view(45,20)
-colormap(cmap)
-clim([0 1])
-cb = colorbar;
-cb.Label.String = 't_D [-]';
-cb.Direction = 'reverse';   % tD=0 at top of colorbar, matching zD=0 at top of plot
-title({sprintf('%s: 3D front (C=0.5), no time correction (%s)', char(filedataExp.Key), dataSource), ...
-    'Ghosting/blur reflects true front advance during each rotation cycle'}, ...
-    'Interpreter','none','FontSize',9)
-grid on
-box on
-
-fname3D = sprintf('front3D_%s_%s', char(filedataExp.Key), dataSource);
-if ~isfolder(pathExportAll), mkdir(pathExportAll); end
-saveas(fig3D, fullfile(pathExportAll, fname3D), 'png');
-saveas(fig3D, fullfile(pathExportAll, fname3D), 'fig');
 
 %% Countour map
  
-fig = figure('Position', [50, 50, 800, 1000]); % [left, bottom, width, height];
+for i = 1:nExp
 
-% figure config
-imgPos  = [0.1 0.1  0.8 0.8]; % xleft ybottom W H
-hGap = 0.07;
-vGap = 0.07;   
-% colorbar reservation — only needed for ax2's column
-cbGap      = 0.012;
-cbWidth    = 0.018;
-cbLabelPad = 0.03;              % room for "C_1 [-]" label text
-cbReserve  = cbGap + cbWidth + cbLabelPad;
-% plotting window — 3 equal plot-box widths; extra cbReserve inserted after ax2 only
-colsW = (imgPos(3) - 2*hGap - cbReserve)/3;
-row1H = imgPos(4)*3/4 - vGap;
-row2H = imgPos(4)/4;
-ax1Pos  = [imgPos(1) imgPos(2)+row2H+vGap colsW row1H];
-ax2Pos  = [imgPos(1)+colsW+hGap ax1Pos(2) colsW ax1Pos(4)];
-ax3Pos  = [imgPos(1)+2*colsW+hGap+cbReserve+hGap ax1Pos(2) colsW ax1Pos(4)];
-ax4Pos  = [imgPos(1) imgPos(2) imgPos(3) row2H];
-% axes
-ax1 = axes('Position',ax1Pos);
-ax2 = axes('Position',ax2Pos);
-ax3 = axes('Position',ax3Pos);
-ax4 = axes('Position',ax4Pos);
+    filedataExp   = filedataExpAll{i};
+    pathExportAll = pathExportAllVec{i};
+    dataSource    = dataSourceAll{i};
+    HDF5filename  = HDF5filenameAll{i};
+    interpFcn     = interpFcnAll{i};
+    expFolderName = expFolderNameAll{i};
+    expProcFullData_MFM_CT  = MFM_CT_DataAll{i};   % only used in Interactive imaging & Countour map
+    expProcFullData_MFM_UHS = MFM_UHS_DataAll{i};
 
-% hTitle
-hTitle = annotation('textbox', [0 0.9 1 0.05], ...
-    'String', '', ...
-    'EdgeColor','none', ...
-    'HorizontalAlignment','center', ...
-    'FontSize', 12,'FontWeight','bold', ...
-    'Interpreter','none');
+    expCTData = struct();
+    expCTData.(filedataExp.Key) = expCTDataAll{i};
 
-HDF5filename = fullfile(pathExportAll, filedataExp.Key + ".h5");
-expCTDataname = fullfile(pathExportAll, filedataExp.Key + ".mat");
-expCTDataTemp = load(expCTDataname);
-expCTData.(filedataExp.Key) = expCTDataTemp.expCTDataSave;
+    fprintf('Contour map interactive imaging %s\n',filedataExp.Key)
 
-cmap = flipud(winter(256));
-varsAll = expCTData.(filedataExp.Key).varsAll.(dataSource);
-varsAll = varsAll(varsAll.tDtotal < 1,:);
-
-tDAll = varsAll.tDtotal;
-tDmin = 0;
-tDmax = 1;
-levels = [0.5 0.5];   % contour level, reused for both ax1 and ax2
-levelsFull = 0:0.1:1;  
-
-% struct array holding one entry per plotted frame
-frames = struct('tD',{},'run_name',{},'k',{},'rotPos',{}, ...
-    'color',{},'xD',{},'zD',{},'C',{}, ...
-    'xD2',{},'CVert',{},'hContour',{},'hScatter',{});
-
-% interpolant for composition form array 0 to 1 (binary mixture)
-interpFcn = buildInterpolant(filedataExp.Fluid1, ...
-    filedataExp.Fluid2, filedataExp.T, filedataExp.P);
-
-for j = 1:length(expFolderName) % number of runs
-    run_name = "run_" + sprintf('%02d', j);
-    HDF5dataPath = ['/exp/' char(run_name) '/conc'];
-    info = h5info(HDF5filename, HDF5dataPath);
-    dims = info.Dataspace.Size;
-    nx = dims(1);
-    ny = dims(2);
-    nz = dims(3);
-
-    varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
-    tDRun = [varsRun.tDtotal];
-    varsRun = varsRun(tDRun < 1);
-    tDstep = 0.1;
-    tDtargets = min([varsRun.tDtotal]):tDstep:max([varsRun.tDtotal]);
-    kPlot = zeros(length(tDtargets),1);
+    fig = figure('Position', [50, 50, 800, 1000]); % [left, bottom, width, height];
     
-    for m = 1:length(tDtargets)
-        [~,kPlot(m)] = min(abs([varsRun.tDtotal] - tDtargets(m)));
-    end
-
-    kPlot = unique(kPlot,'stable');
-
-    for ii = 1:length(kPlot)
-        k = kPlot(ii);
-        vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
-        tD = vars.tDtotal;
-
-        % ax1
-        rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
-        if strcmp(dataSource,'conc')
-            plotImage = interpFcn(rhoNormImage);
-        else
-            plotImage = rhoNormImage;
-        end
-        imgSmooth = imgaussfilt(plotImage, 20);
-        resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
-        resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
-        xcm = (1:ny)*resXmm/10;
-        zcm = (1:nx)*resYmm/10;
-        xD = xcm/max(xcm);
-        zD = zcm/max(zcm);
-        hold(ax1,'on')
-        [C, h] = contour(ax1,xD,zD,imgSmooth,levels, ...
-            'LineColor','k',...
-            'LineWidth',2.2);
-        set(h,'HitTest','off','PickableParts','none');
-
-        % ax3
-        x2 = vars.C1Profile.zVertcm;
-        xD2 = x2/max(x2);
-        y2 = vars.C1Profile.CVert;
-        s = scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor','k');
-        set(s,'HitTest','off','PickableParts','none');
-        hold(ax3,'on')
-
-        % store this frame (image + BT point NOT plotted yet)
-        frames(end+1) = struct( ...
-            'tD',tD,'run_name',run_name,'k',k,'rotPos',vars.rotPos, ...
-            'color','k','xD',xD,'zD',zD,'C',C, ...
-            'xD2',xD2,'CVert',y2, ...
-            'hContour',h,'hScatter',s);
-
-        if isempty(C)
-            continue
-        end
-        npts = C(2,1);
-        if npts > 5
-            mid = round(npts/2);
-            xLab = C(1,mid+1);
-            zLab = C(2,mid+1)+0.06;
-            % ax1
-            text(ax1,xLab,zLab,sprintf('t_D = %.1f\n\\theta = %.0f °', ...
-                tD,vars.rotPos),'Color','k',...
-                'FontSize',8,'FontWeight','bold',...
-                'HorizontalAlignment','center',...
-                'BackgroundColor','none','Margin',1,...
-                'HitTest','off','PickableParts','none');
-            % ax3
-            text(ax3,zLab,0.3, ...
-            sprintf('t_D = %.1f\n\\theta = %.0f °', ...
-                tD,vars.rotPos),'Color','k', ...
-            'FontSize',8,'FontWeight','bold', ...
-            'BackgroundColor','w','Margin',1,...
-            'HitTest','off','PickableParts','none');
-
-        end        
+    % figure config
+    imgPos  = [0.1 0.1  0.8 0.8]; % xleft ybottom W H
+    hGap = 0.07;
+    vGap = 0.07;   
+    % colorbar reservation — only needed for ax2's column
+    cbGap      = 0.012;
+    cbWidth    = 0.018;
+    cbLabelPad = 0.03;              % room for "C_1 [-]" label text
+    cbReserve  = cbGap + cbWidth + cbLabelPad;
+    % plotting window — 3 equal plot-box widths; extra cbReserve inserted after ax2 only
+    colsW = (imgPos(3) - 2*hGap - cbReserve)/3;
+    row1H = imgPos(4)*3/4 - vGap;
+    row2H = imgPos(4)/4;
+    ax1Pos  = [imgPos(1) imgPos(2)+row2H+vGap colsW row1H];
+    ax2Pos  = [imgPos(1)+colsW+hGap ax1Pos(2) colsW ax1Pos(4)];
+    ax3Pos  = [imgPos(1)+2*colsW+hGap+cbReserve+hGap ax1Pos(2) colsW ax1Pos(4)];
+    ax4Pos  = [imgPos(1) imgPos(2) imgPos(3) row2H];
+    % axes
+    ax1 = axes('Position',ax1Pos);
+    ax2 = axes('Position',ax2Pos);
+    ax3 = axes('Position',ax3Pos);
+    ax4 = axes('Position',ax4Pos);
+    
+    % hTitle
+    hTitle = annotation('textbox', [0 0.9 1 0.05], ...
+        'String', '', ...
+        'EdgeColor','none', ...
+        'HorizontalAlignment','center', ...
+        'FontSize', 12,'FontWeight','bold', ...
+        'Interpreter','none');
+    
+    cmap = flipud(winter(256));
+    varsAll = expCTData.(filedataExp.Key).varsAll.(dataSource);
+    varsAll = varsAll(varsAll.tDtotal < 1,:);
+    
+    tDAll = varsAll.tDtotal;
+    tDmin = 0;
+    tDmax = 1;
+    levels = [0.5 0.5];   % contour level, reused for both ax1 and ax2
+    levelsFull = 0:0.1:1;  
+    
+    % struct array holding one entry per plotted frame
+    frames = struct('tD',{},'run_name',{},'k',{},'rotPos',{}, ...
+        'color',{},'xD',{},'zD',{},'C',{}, ...
+        'xD2',{},'CVert',{},'hContour',{},'hScatter',{});
+    
+    % interpolant for composition form array 0 to 1 (binary mixture)
+    interpFcn = buildInterpolant(filedataExp.Fluid1, ...
+        filedataExp.Fluid2, filedataExp.T, filedataExp.P);
+    
+    for j = 1:length(expFolderName) % number of runs
+        run_name = "run_" + sprintf('%02d', j);
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+        info = h5info(HDF5filename, HDF5dataPath);
+        dims = info.Dataspace.Size;
+        nx = dims(1);
+        ny = dims(2);
+        nz = dims(3);
+    
+        varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
+        tDRun = [varsRun.tDtotal];
+        varsRun = varsRun(tDRun < 1);
+        tDstep = 0.1;
+        tDtargets = min([varsRun.tDtotal]):tDstep:max([varsRun.tDtotal]);
+        kPlot = zeros(length(tDtargets),1);
         
+        for m = 1:length(tDtargets)
+            [~,kPlot(m)] = min(abs([varsRun.tDtotal] - tDtargets(m)));
+        end
+    
+        kPlot = unique(kPlot,'stable');
+    
+        for ii = 1:length(kPlot)
+            k = kPlot(ii);
+            vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+            tD = vars.tDtotal;
+    
+            % ax1
+            rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            if strcmp(dataSource,'conc')
+                plotImage = interpFcn(rhoNormImage);
+            else
+                plotImage = rhoNormImage;
+            end
+            imgSmooth = imgaussfilt(plotImage, 20);
+            resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
+            resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
+            xcm = (1:ny)*resXmm/10;
+            zcm = (1:nx)*resYmm/10;
+            xD = xcm/max(xcm);
+            zD = zcm/max(zcm);
+            hold(ax1,'on')
+            [C, h] = contour(ax1,xD,zD,imgSmooth,levels, ...
+                'LineColor','k',...
+                'LineWidth',2.2);
+            set(h,'HitTest','off','PickableParts','none');
+    
+            % ax3
+            x2 = vars.C1Profile.zVertcm;
+            xD2 = x2/max(x2);
+            y2 = vars.C1Profile.CVert;
+            s = scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor','k');
+            set(s,'HitTest','off','PickableParts','none');
+            hold(ax3,'on')
+    
+            % store this frame (image + BT point NOT plotted yet)
+            frames(end+1) = struct( ...
+                'tD',tD,'run_name',run_name,'k',k,'rotPos',vars.rotPos, ...
+                'color','k','xD',xD,'zD',zD,'C',C, ...
+                'xD2',xD2,'CVert',y2, ...
+                'hContour',h,'hScatter',s);
+    
+            if isempty(C)
+                continue
+            end
+            npts = C(2,1);
+            if npts > 5
+                mid = round(npts/2);
+                xLab = C(1,mid+1);
+                zLab = C(2,mid+1)+0.06;
+                % ax1
+                text(ax1,xLab,zLab,sprintf('t_D = %.1f\n\\theta = %.0f °', ...
+                    tD,vars.rotPos),'Color','k',...
+                    'FontSize',8,'FontWeight','bold',...
+                    'HorizontalAlignment','center',...
+                    'BackgroundColor','none','Margin',1,...
+                    'HitTest','off','PickableParts','none');
+                % ax3
+                text(ax3,zLab,0.3, ...
+                sprintf('t_D = %.1f\n\\theta = %.0f °', ...
+                    tD,vars.rotPos),'Color','k', ...
+                'FontSize',8,'FontWeight','bold', ...
+                'BackgroundColor','w','Margin',1,...
+                'HitTest','off','PickableParts','none');
+    
+            end        
+            
+        end
     end
+    
+    % ax1
+    set(ax1,'YDir','reverse','FontSize',8)
+    grid(ax1,'on')
+    xlabel(ax1,'x_D [-]','FontSize',8)
+    ylabel(ax1,'z_D [-]','FontSize',8)
+    colormap(ax1,cmap)
+    clim(ax1,[tDmin tDmax])
+    xlim(ax1,[0 1])            
+    ylim(ax1,[0 1])
+    title(ax1,'Front advance @ C_D = 0.5','FontSize',9)
+    
+    % ax2 - format only, NO image plotted yet (created on first selection)
+    axis(ax2,'xy')
+    set(ax2,'YDir','reverse')
+    xlabel(ax2,'x_D [-]')
+    set(ax2,'YTickLabel',[])
+    colormap(ax2,turbo)
+    clim(ax2,[0 1])
+    xlim(ax2,[0 1])           
+    ylim(ax2,[0 1])           
+    cb2 = colorbar(ax2);
+    cb2.Label.String = 'C_1 [-]';
+    drawnow
+    alignAxesColorbar(ax2, cb2, ax2Pos, cbGap, cbWidth, 'right');
+    
+    % ax3
+    camroll(ax3,270)
+    set(ax3,'XTickLabel',[])
+    ylabel(ax3,'C_{ave,1} [-]')
+    colormap(ax3,cmap)
+    clim(ax3,[tDmin tDmax])
+    grid(ax3,'on')
+    ylim(ax3,[-0.02 1])
+    ax3.YAxisLocation = 'right';
+    title(ax3,'Vert. conc. profile @ t_D','FontSize',9)
+    
+    % ax4 Breakthrough curve (base black data only; red current point deferred)
+    BTdata = expCTData.(filedataExp.Key).varsAll.(dataSource);
+    colors = get(groot,'defaultAxesColorOrder');
+    
+    zDoutlet = 'CD1_zD1p0';
+    zDmid    = 'CD1_zD0p5';
+    zDinlet    = 'CD1_zD0p0';
+    
+    hBT_CT = plot(ax4, BTdata.tDtotal, BTdata.(zDoutlet), '-', ...
+        'LineWidth',1.5, 'Color','k', ...
+        'HitTest','off','PickableParts','none', ...
+        'DisplayName','CT analog BTC (z_D=1.0, outlet)');
+    hold(ax4,'on')
+    hBT_CT_mid = plot(ax4, BTdata.tDtotal, BTdata.(zDmid), '--', ...
+        'LineWidth',1.5, 'Color','k', ...
+        'HitTest','off','PickableParts','none', ...
+        'DisplayName','CT analog BTC (z_D=0.5, mid-core)');
+    hBT_CT_inlet = plot(ax4, BTdata.tDtotal, BTdata.(zDinlet), ':', ...
+        'LineWidth',1.5, 'Color','k', ...
+        'HitTest','off','PickableParts','none', ...
+        'DisplayName','CT analog BTC (z_D=0.0, inlet)');
+    
+    hBT_MFM_CT = scatter(ax4, expProcFullData_MFM_CT.BT.tDtotal, expProcFullData_MFM_CT.BT.CDi, ...
+        5, 'filled', 'MarkerFaceColor',colors(1,:), ...
+        'HitTest','off','PickableParts','none', 'DisplayName','MFM analog BTC');
+    hBT_MFM_UHS = scatter(ax4, expProcFullData_MFM_UHS.BT.tDtotal, expProcFullData_MFM_UHS.BT.CDi, ...
+        5, 'filled', 'MarkerFaceColor',colors(3,:), ...
+        'HitTest','off','PickableParts','none', 'DisplayName','MFM UHS BTC');
+    grid(ax4,'on')
+    xlabel(ax4,'t_D_{total} [-]')
+    ylabel(ax4,'C_{ave,1} [-]')
+    ylim(ax4,[-0.02 1])
+    xlim(ax4,[BTdata.tDtotal(1),BTdata.tDtotal(end)])
+    legend(ax4, 'Location','southeast','Interpreter','none')
+    title(ax4,'Breakthrough curve @ z_D = 0.0, 0.5 and 1.0','FontSize',9)
+    
+    % wire up interactivity
+    setappdata(fig,'frames',frames);
+    setappdata(fig,'HDF5filename',HDF5filename);
+    setappdata(fig,'interpFcn',interpFcn);
+    setappdata(fig,'ax2',ax2);
+    setappdata(fig,'ax4',ax4);
+    setappdata(fig,'levels',levels);
+    setappdata(fig,'levelsFull',levelsFull);
+    setappdata(fig,'hImgAx2',gobjects(0));
+    setappdata(fig,'hContourAx2',gobjects(0));   
+    setappdata(fig,'hCurrentAx4',gobjects(0));  
+    setappdata(fig,'hTitle',hTitle);
+    setappdata(fig,'keyName',filedataExp.Key);
+    setappdata(fig,'pathExportAll',pathExportAll);
+    setappdata(fig,'selectedIdx',[]);
+    setappdata(fig,'dataSource',dataSource);
+    
+    ax1.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax1, 'ax1');
+    ax4.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax4, 'ax4');
 end
-
-% ax1
-set(ax1,'YDir','reverse','FontSize',8)
-grid(ax1,'on')
-xlabel(ax1,'x_D [-]','FontSize',8)
-ylabel(ax1,'z_D [-]','FontSize',8)
-colormap(ax1,cmap)
-clim(ax1,[tDmin tDmax])
-xlim(ax1,[0 1])            
-ylim(ax1,[0 1])
-title(ax1,'Front advance @ C_D = 0.5','FontSize',9)
-
-% ax2 - format only, NO image plotted yet (created on first selection)
-axis(ax2,'xy')
-set(ax2,'YDir','reverse')
-xlabel(ax2,'x_D [-]')
-set(ax2,'YTickLabel',[])
-colormap(ax2,turbo)
-clim(ax2,[0 1])
-xlim(ax2,[0 1])           
-ylim(ax2,[0 1])           
-cb2 = colorbar(ax2);
-cb2.Label.String = 'C_1 [-]';
-drawnow
-alignAxesColorbar(ax2, cb2, ax2Pos, cbGap, cbWidth, 'right');
-
-% ax3
-camroll(ax3,270)
-set(ax3,'XTickLabel',[])
-ylabel(ax3,'C_{ave,1} [-]')
-colormap(ax3,cmap)
-clim(ax3,[tDmin tDmax])
-grid(ax3,'on')
-ylim(ax3,[-0.02 1])
-ax3.YAxisLocation = 'right';
-title(ax3,'Vert. conc. profile @ t_D','FontSize',9)
-
-% ax4 Breakthrough curve (base black data only; red current point deferred)
-BTdata = expCTData.(filedataExp.Key).varsAll.(dataSource);
-colors = get(groot,'defaultAxesColorOrder');
-
-zDoutlet = 'CD1_zD1p0';
-zDmid    = 'CD1_zD0p5';
-zDinlet    = 'CD1_zD0p0';
-
-hBT_CT = plot(ax4, BTdata.tDtotal, BTdata.(zDoutlet), '-', ...
-    'LineWidth',1.5, 'Color','k', ...
-    'HitTest','off','PickableParts','none', ...
-    'DisplayName','CT analog BTC (z_D=1.0, outlet)');
-hold(ax4,'on')
-hBT_CT_mid = plot(ax4, BTdata.tDtotal, BTdata.(zDmid), '--', ...
-    'LineWidth',1.5, 'Color','k', ...
-    'HitTest','off','PickableParts','none', ...
-    'DisplayName','CT analog BTC (z_D=0.5, mid-core)');
-hBT_CT_inlet = plot(ax4, BTdata.tDtotal, BTdata.(zDinlet), ':', ...
-    'LineWidth',1.5, 'Color','k', ...
-    'HitTest','off','PickableParts','none', ...
-    'DisplayName','CT analog BTC (z_D=0.0, inlet)');
-
-hBT_MFM_CT = scatter(ax4, expProcFullData_MFM_CT.BT.tDtotal, expProcFullData_MFM_CT.BT.CDi, ...
-    5, 'filled', 'MarkerFaceColor',colors(1,:), ...
-    'HitTest','off','PickableParts','none', 'DisplayName','MFM analog BTC');
-hBT_MFM_UHS = scatter(ax4, expProcFullData_MFM_UHS.BT.tDtotal, expProcFullData_MFM_UHS.BT.CDi, ...
-    5, 'filled', 'MarkerFaceColor',colors(3,:), ...
-    'HitTest','off','PickableParts','none', 'DisplayName','MFM UHS BTC');
-grid(ax4,'on')
-xlabel(ax4,'t_D_{total} [-]')
-ylabel(ax4,'C_{ave,1} [-]')
-ylim(ax4,[-0.02 1])
-xlim(ax4,[BTdata.tDtotal(1),BTdata.tDtotal(end)])
-legend(ax4, 'Location','southeast','Interpreter','none')
-title(ax4,'Breakthrough curve @ z_D = 0.0, 0.5 and 1.0','FontSize',9)
-
-% wire up interactivity
-setappdata(fig,'frames',frames);
-setappdata(fig,'HDF5filename',HDF5filename);
-setappdata(fig,'interpFcn',interpFcn);
-setappdata(fig,'ax2',ax2);
-setappdata(fig,'ax4',ax4);
-setappdata(fig,'levels',levels);
-setappdata(fig,'levelsFull',levelsFull);
-setappdata(fig,'hImgAx2',gobjects(0));
-setappdata(fig,'hContourAx2',gobjects(0));   
-setappdata(fig,'hCurrentAx4',gobjects(0));  
-setappdata(fig,'hTitle',hTitle);
-setappdata(fig,'keyName',filedataExp.Key);
-setappdata(fig,'pathExportAll',pathExportAll);
-setappdata(fig,'selectedIdx',[]);
-setappdata(fig,'dataSource',dataSource);
-
-ax1.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax1, 'ax1');
-ax4.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax4, 'ax4');
 
 % local functions
 
