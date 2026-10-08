@@ -768,7 +768,7 @@ xlabel(ax4,'t_D_{total} [-]')
 ylabel(ax4,'C_{ave,1} [-]')
 ylim(ax4,[-0.02 1])
 xlim(ax4,[BTdata.tDtotal(1),BTdata.tDtotal(end)])
-legend(ax4, 'Location','best','Interpreter','none')
+legend(ax4, 'Location','southeast','Interpreter','none')
 title(ax4,'Breakthrough curve @ z_D = 0.0, 0.5 and 1.0','FontSize',9)
 
 % wire up interactivity
