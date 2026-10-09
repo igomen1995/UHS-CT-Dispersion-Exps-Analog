@@ -601,7 +601,241 @@ for i = 1:nExp
 
 end
 
-%% Countour map
+%% Countour map (batch save, all contours)
+
+for i = 1:nExp
+
+    filedataExp   = filedataExpAll{i};
+    pathExportAll = pathExportAllVec{i};
+    dataSource    = dataSourceAll{i};
+    HDF5filename  = HDF5filenameAll{i};
+    interpFcn     = interpFcnAll{i};
+    expFolderName = expFolderNameAll{i};
+    expProcFullData_MFM_CT  = MFM_CT_DataAll{i};
+    expProcFullData_MFM_UHS = MFM_UHS_DataAll{i};
+
+    expCTData = struct();
+    expCTData.(filedataExp.Key) = expCTDataAll{i};
+
+    fprintf('Contour map batch save %s\n',filedataExp.Key)
+
+    fig = figure('Position', [50, 50, 800, 1000]);
+
+    % figure config
+    imgPos  = [0.1 0.1  0.8 0.8];
+    hGap = 0.07;
+    vGap = 0.07;
+    cbGap      = 0.012;
+    cbWidth    = 0.018;
+    cbLabelPad = 0.03;
+    cbReserve  = cbGap + cbWidth + cbLabelPad;
+    colsW = (imgPos(3) - 2*hGap - cbReserve)/3;
+    row1H = imgPos(4)*3/4 - vGap;
+    row2H = imgPos(4)/4;
+    ax1Pos  = [imgPos(1) imgPos(2)+row2H+vGap colsW row1H];
+    ax2Pos  = [imgPos(1)+colsW+hGap ax1Pos(2) colsW ax1Pos(4)];
+    ax3Pos  = [imgPos(1)+2*colsW+hGap+cbReserve+hGap ax1Pos(2) colsW ax1Pos(4)];
+    ax4Pos  = [imgPos(1) imgPos(2) imgPos(3) row2H];
+    ax1 = axes('Position',ax1Pos);
+    ax2 = axes('Position',ax2Pos);
+    ax3 = axes('Position',ax3Pos);
+    ax4 = axes('Position',ax4Pos);
+
+    hTitle = annotation('textbox', [0 0.9 1 0.05], ...
+        'String', '', 'EdgeColor','none', ...
+        'HorizontalAlignment','center', ...
+        'FontSize', 12,'FontWeight','bold', 'Interpreter','none');
+
+    cmap = flipud(winter(256));
+    varsAll = expCTData.(filedataExp.Key).varsAll.(dataSource);
+    varsAll = varsAll(varsAll.tDtotal < 1,:);
+
+    tDAll = varsAll.tDtotal;
+    tDminContours = 0;
+    tDmaxContours = 1;
+    levels = [0.5 0.5];
+    levelsFull = 0:0.1:1;
+
+    frames = struct('tD',{},'run_name',{},'k',{},'rotPos',{}, ...
+        'color',{},'xD',{},'zD',{},'C',{}, ...
+        'xD2',{},'CVert',{},'hContour',{},'hScatter',{});
+
+    interpFcn = buildInterpolant(filedataExp.Fluid1, ...
+        filedataExp.Fluid2, filedataExp.T, filedataExp.P);
+
+    for j = 1:length(expFolderName)
+        run_name = "run_" + sprintf('%02d', j);
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+        info = h5info(HDF5filename, HDF5dataPath);
+        dims = info.Dataspace.Size;
+        nx = dims(1);
+        ny = dims(2);
+        nz = dims(3);
+
+        varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
+        tDRun = [varsRun.tDtotal];
+        varsRun = varsRun(tDRun < 1);
+        tDstep = 0.1;
+        tDtargets = min([varsRun.tDtotal]):tDstep:max([varsRun.tDtotal]);
+        kPlot = zeros(length(tDtargets),1);
+
+        for m = 1:length(tDtargets)
+            [~,kPlot(m)] = min(abs([varsRun.tDtotal] - tDtargets(m)));
+        end
+
+        kPlot = unique(kPlot,'stable');
+
+        for ii = 1:length(kPlot)
+            k = kPlot(ii);
+            vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+            tD = vars.tDtotal;
+
+            rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            if strcmp(dataSource,'conc')
+                plotImage = interpFcn(rhoNormImage);
+            else
+                plotImage = rhoNormImage;
+            end
+            imgSmooth = imgaussfilt(plotImage, 20);
+            resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
+            resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
+            xcm = (1:ny)*resXmm/10;
+            zcm = (1:nx)*resYmm/10;
+            xD = xcm/max(xcm);
+            zD = zcm/max(zcm);
+            hold(ax1,'on')
+            [C, h] = contour(ax1,xD,zD,imgSmooth,levels, ...
+                'LineColor','k','LineWidth',2.2);
+            set(h,'HitTest','off','PickableParts','none');
+
+            x2 = vars.C1Profile.zVertcm;
+            xD2 = x2/max(x2);
+            y2 = vars.C1Profile.CVert;
+            s = scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor','k');
+            set(s,'HitTest','off','PickableParts','none');
+            hold(ax3,'on')
+
+            frames(end+1) = struct( ...
+                'tD',tD,'run_name',run_name,'k',k,'rotPos',vars.rotPos, ...
+                'color','k','xD',xD,'zD',zD,'C',C, ...
+                'xD2',xD2,'CVert',y2, ...
+                'hContour',h,'hScatter',s);
+
+            if isempty(C)
+                continue
+            end
+            npts = C(2,1);
+            if npts > 5
+                mid = round(npts/2);
+                xLab = C(1,mid+1);
+                zLab = C(2,mid+1)+0.06;
+                text(ax1,xLab,zLab,sprintf('t_D = %.1f\n\\theta = %.0f °', ...
+                    tD,vars.rotPos),'Color','k', ...
+                    'FontSize',8,'FontWeight','bold', ...
+                    'HorizontalAlignment','center', ...
+                    'BackgroundColor','none','Margin',1, ...
+                    'HitTest','off','PickableParts','none');
+                text(ax3,zLab,0.3, ...
+                    sprintf('t_D = %.1f\n\\theta = %.0f °', ...
+                    tD,vars.rotPos),'Color','k', ...
+                    'FontSize',8,'FontWeight','bold', ...
+                    'BackgroundColor','w','Margin',1, ...
+                    'HitTest','off','PickableParts','none');
+            end
+        end
+    end
+
+    set(ax1,'YDir','reverse','FontSize',8)
+    grid(ax1,'on')
+    xlabel(ax1,'x_D [-]','FontSize',8)
+    ylabel(ax1,'z_D [-]','FontSize',8)
+    colormap(ax1,cmap)
+    clim(ax1,[tDminContours tDmaxContours])
+    xlim(ax1,[0 1])
+    ylim(ax1,[0 1])
+    title(ax1,'Front advance @ C_D = 0.5','FontSize',9)
+
+    axis(ax2,'xy')
+    set(ax2,'YDir','reverse')
+    xlabel(ax2,'x_D [-]')
+    set(ax2,'YTickLabel',[])
+    colormap(ax2,turbo)
+    clim(ax2,[0 1])
+    xlim(ax2,[0 1])
+    ylim(ax2,[0 1])
+    cb2 = colorbar(ax2);
+    cb2.Label.String = 'C_1 [-]';
+    drawnow
+    alignAxesColorbar(ax2, cb2, ax2Pos, cbGap, cbWidth, 'right');
+
+    camroll(ax3,270)
+    set(ax3,'XTickLabel',[])
+    ylabel(ax3,'C_{ave,1} [-]')
+    colormap(ax3,cmap)
+    clim(ax3,[tDminContours tDmaxContours])
+    grid(ax3,'on')
+    ylim(ax3,[-0.02 1])
+    ax3.YAxisLocation = 'right';
+    title(ax3,'Vert. conc. profile @ t_D','FontSize',9)
+
+    BTdata = expCTData.(filedataExp.Key).varsAll.(dataSource);
+    colors = get(groot,'defaultAxesColorOrder');
+
+    zDoutlet = 'CD1_zD1p0';
+    zDmid    = 'CD1_zD0p5';
+    zDinlet  = 'CD1_zD0p0';
+
+    scatter(ax4, BTdata.tDtotal, BTdata.(zDinlet), 8, 'filled', ...
+        'MarkerFaceColor',[0.75 0.75 0.75], ...
+        'HitTest','off','PickableParts','none', ...
+        'DisplayName','CT analog BTC (zD=0.0, inlet)');
+    hold(ax4,'on')
+    scatter(ax4, BTdata.tDtotal, BTdata.(zDmid), 8, 'filled', ...
+        'MarkerFaceColor',[0.5 0.5 0.5], ...
+        'HitTest','off','PickableParts','none', ...
+        'DisplayName','CT analog BTC (zD=0.5, mid-core)');
+    scatter(ax4, BTdata.tDtotal, BTdata.(zDoutlet), 8, 'filled', ...
+        'MarkerFaceColor','k', ...
+        'HitTest','off','PickableParts','none', ...
+        'DisplayName','CT analog BTC (zD=1.0, outlet)');
+    scatter(ax4, expProcFullData_MFM_CT.BT.tDtotal, expProcFullData_MFM_CT.BT.CDi, ...
+        8, 'filled', 'MarkerFaceColor',colors(1,:), ...
+        'HitTest','off','PickableParts','none', 'DisplayName','MFM analog BTC');
+    scatter(ax4, expProcFullData_MFM_UHS.BT.tDtotal, expProcFullData_MFM_UHS.BT.CDi, ...
+        8, 'filled', 'MarkerFaceColor',colors(3,:), ...
+        'HitTest','off','PickableParts','none', 'DisplayName','MFM UHS BTC');
+    grid(ax4,'on')
+    xlabel(ax4,'t_D_{total} [-]')
+    ylabel(ax4,'C_{ave,1} [-]')
+    ylim(ax4,[-0.02 1])
+    xlim(ax4,[0,tDmax])
+    legend(ax4, 'Location','southeast','Interpreter','none')
+    title(ax4,'Breakthrough curve @ zD = 0.0, 0.5 and 1.0','FontSize',9)
+
+    setappdata(fig,'frames',frames);
+    setappdata(fig,'HDF5filename',HDF5filename);
+    setappdata(fig,'interpFcn',interpFcn);
+    setappdata(fig,'ax2',ax2);
+    setappdata(fig,'ax4',ax4);
+    setappdata(fig,'levels',levels);
+    setappdata(fig,'levelsFull',levelsFull);
+    setappdata(fig,'hImgAx2',gobjects(0));
+    setappdata(fig,'hContourAx2',gobjects(0));
+    setappdata(fig,'hCurrentAx4',gobjects(0));
+    setappdata(fig,'hTitle',hTitle);
+    setappdata(fig,'keyName',filedataExp.Key);
+    setappdata(fig,'pathExportAll',pathExportAll);
+    setappdata(fig,'selectedIdx',[]);
+    setappdata(fig,'dataSource',dataSource);
+
+    for idx = 1:numel(frames)
+        saveFrame(fig, idx);
+    end
+
+    close(fig)
+end
+
+%% Countour map interactive
  
 for i = 1:nExp
 
@@ -961,11 +1195,11 @@ function updateSelection(fig, idx)
     dims = info.Dataspace.Size;
     nx = dims(1); ny = dims(2);
     rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 frames(idx).k], [nx ny 1]);
-     if strcmp(dataSource,'conc')
-            plotImage = interpFcn(rhoNormImage);
-        else
-            plotImage = rhoNormImage;
-        end
+    if strcmp(dataSource,'conc')
+        plotImage = interpFcn(rhoNormImage);
+    else
+        plotImage = rhoNormImage;
+    end
     imgSmooth = imgaussfilt(plotImage, 20);
 
     % ax2 image: create on first use, otherwise just update it
@@ -1019,21 +1253,18 @@ function updateSelection(fig, idx)
     end
 
     setappdata(fig,'selectedIdx',idx);
-
-    % save the completed figure for this selection
-    tDStr = strrep(sprintf('%.1f', frames(idx).tD), '.', 'p');  % e.g. 0.50 -> 0p50
-    fname = sprintf('%s_tD%s_%s_%s', char(keyName), tDStr, frames(idx).run_name,dataSource);
-    saveas(fig, fullfile(pathExportAll, fname), 'png');
-    saveas(fig, fullfile(pathExportAll, fname), 'fig');
 end
 
-function selectFrameByTD(fig, tDQuery)
-    frames = getappdata(fig,'frames');
-    if isempty(frames)
-        warning('No frame data available for this figure.');
-        return
-    end
-    allTD = [frames.tD];
-    [~,idx] = min(abs(allTD - tDQuery));
+function saveFrame(fig, idx)
     updateSelection(fig, idx);
+    frames        = getappdata(fig,'frames');
+    keyName       = getappdata(fig,'keyName');
+    pathExportAll = getappdata(fig,'pathExportAll');
+    dataSource    = getappdata(fig,'dataSource');
+
+    tDStr = strrep(sprintf('%.1f', frames(idx).tD), '.', 'p');
+    fname = sprintf('%s_tD%s_%s_%s', char(keyName), tDStr, frames(idx).run_name, dataSource);
+    saveas(fig, fullfile(pathExportAll, fname), 'png');
+    % saveas(fig, fullfile(pathExportAll, fname), 'fig');
+    fprintf('Saved %s\n', fname);
 end
