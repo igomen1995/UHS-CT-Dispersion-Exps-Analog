@@ -66,7 +66,7 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
     yClick = cp(2);
 
     % Find closest point
-    dist = (BT.t - xClick).^2 + (BT.C - yClick).^2;
+    dist = (BT.tD - xClick).^2 + (BT.C - yClick).^2;
     [~, idx] = min(dist);
 
     % Recover indices
@@ -86,9 +86,9 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
 
     % Update selected point in ax5
     set(hSelected, ...
-        'XData', BT.t(idx), ...
+        'XData', BT.tD(idx), ...
         'YData', BT.C(idx));
-    hSelectedLine.Value = BT.t(idx);
+    hSelectedLine.Value = BT.tD(idx);
     hSelectedLine.DisplayName = sprintf('selected: tD = %.3f, t = %.0f s', BT.tD(idx), BT.t(idx));
 
     % plot concentration in x ax1
