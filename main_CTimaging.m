@@ -170,6 +170,9 @@ for i = 1:nExp
 
 end   
 
+% set tDmax
+tDmax = 2.0;
+
 %% Imaging movie
 
 for i = 1:nExp
@@ -320,20 +323,18 @@ for i = 1:nExp
             t = vars.secondsElapsed;
             C = y2(end);
             BTdata = expCTData.(filedataExp.Key).varsAll.(dataSource); 
-            tmin = BTdata.secondsElapsed(1);
-            tmax = BTdata.secondsElapsed(end);
+            tmax = interp1(BTdata.tDtotal, BTdata.secondsElapsed, tDmax, 'linear','extrap');
             scatter(ax5,t,C,15,'filled','MarkerFaceColor',[0, 0.4470, 0.7410],'MarkerEdgeColor','none')
             hold(ax5,'on')
             ylim(ax5,[-0.02 1])
-            xlim(ax5,[tmin,tmax])
+            xlim(ax5,[0,tmax])
             xlabel(ax5,'secondsElapsed')
             ylabel(ax5,'C_{ave}_1 [-]')
             grid(ax5, 'on')
     
             % sync ax5b's ticks to show tD instead of raw seconds
             xt = ax5.XTick;
-            tDmax_val = BTdata.tDtotal(end);
-            tDtick = xt * (tDmax_val / tmax);
+            tDtick = xt * (tDmax / tmax);
             ax5b.XTick = xt;
             ax5b.XTickLabel = compose('%.2f', tDtick);
             xlabel(ax5b,'t_D [-]')
@@ -391,6 +392,8 @@ for i = 1:nExp
     BT.t = [];
     BT.tD = [];
     BT.C = [];
+    BT.Cmid = [];
+    BT.Cinlet = [];
     BT.j = [];
     BT.k = [];
     
@@ -410,11 +413,15 @@ for i = 1:nExp
             t = vars.secondsElapsed;
             tD = vars.tDtotal;
             C = vars.CD1_zD1p0;
+            Cmid = vars.CD1_zD0p5;
+            Cinlet = vars.CD1_zD0p0;
     
             % store
             BT.t(end+1) = t;
             BT.tD(end+1) = tD;
             BT.C(end+1) = C;
+            BT.Cmid(end+1) = Cmid;
+            BT.Cinlet(end+1) = Cinlet;
             BT.j(end+1) = j;
             BT.k(end+1) = k;
     
@@ -423,27 +430,34 @@ for i = 1:nExp
         
     % plot BT
     colors = get(groot,'defaultAxesColorOrder');
-    hScatter = scatter(ax5, BT.t, BT.C, 20, ...
+    scatter(ax5, BT.t, BT.Cinlet, 8, ...
+        'filled', 'MarkerFaceColor',[0.75 0.75 0.75], 'MarkerEdgeColor','none', ...
+        'HitTest','off','PickableParts','none', ...
+        'DisplayName','CT analog BTC (zD=0.0, inlet)');
+    scatter(ax5, BT.t, BT.Cmid, 8, ...
+        'filled', 'MarkerFaceColor',[0.5 0.5 0.5], 'MarkerEdgeColor','none', ...
+        'HitTest','off','PickableParts','none', ...
+        'DisplayName','CT analog BTC (zD=0.5, mid-core)');
+    hold(ax5,'on')
+    hScatter = scatter(ax5, BT.t, BT.C, 8, ...
         'filled', ...
         'MarkerFaceColor','k', ...
-        'MarkerEdgeColor','none','DisplayName','CT_analog_BTC');
-    hold(ax5,'on')
-    scatter(ax5, expProcFullData_MFM_CT.BT.SecondsElapsed, expProcFullData_MFM_CT.BT.CDi, 20, ...
+        'MarkerEdgeColor','none','DisplayName','CT analog BTC (zD=1.0, outlet)');
+    scatter(ax5, expProcFullData_MFM_CT.BT.SecondsElapsed, expProcFullData_MFM_CT.BT.CDi, 8, ...
         'filled', ...
         'MarkerFaceColor',colors(1,:), ...
         'MarkerEdgeColor','none','DisplayName','MFM_analog_BTC');
-    scatter(ax5, expProcFullData_MFM_UHS.BT.SecondsElapsed, expProcFullData_MFM_UHS.BT.CDi, 20, ...
+    scatter(ax5, expProcFullData_MFM_UHS.BT.SecondsElapsed, expProcFullData_MFM_UHS.BT.CDi, 8, ...
         'filled', ...
         'MarkerFaceColor',colors(3,:), ...
         'MarkerEdgeColor','none','DisplayName','MFM_UHS_BTC');
-    tmin = min(BT.t);
-    tmax = max(BT.t);
-    xlim(ax5,[tmin tmax])
+    tmax = interp1(BT.tD, BT.t, tDmax, 'linear','extrap');
+    xlim(ax5,[0 tmax])
     ylim(ax5,[-0.02 1])
     xlabel(ax5,'secondsElapsed')
     ylabel(ax5,'C_{ave}_1 [-]')
     xt = ax5.XTick;
-    tDtick = xt*(max(BT.tD)/max(BT.t));
+    tDtick = xt*(tDmax/tmax);
     ax5b.XTick = xt;
     ax5b.XTickLabel = compose('%.2f',tDtick);
     xlabel(ax5b,'t_D [-]')
@@ -455,7 +469,7 @@ for i = 1:nExp
         'filled', 'MarkerFaceColor','r', 'MarkerEdgeColor','k', ...
         'Visible','off','HandleVisibility','off');
     
-    hSelectedLine = xline(ax5, NaN, '--r', 'LineWidth', 2, 'HandleVisibility','off');
+    hSelectedLine = xline(ax5, NaN, '--r', 'LineWidth', 2, 'DisplayName','');
     
     hTitle = annotation('textbox', [0 0.93 1 0.05], ...
         'String', '', ...
@@ -657,8 +671,8 @@ for i = 1:nExp
     varsAll = varsAll(varsAll.tDtotal < 1,:);
     
     tDAll = varsAll.tDtotal;
-    tDmin = 0;
-    tDmax = 1;
+    tDminContours = 0;
+    tDmaxContours = 1;
     levels = [0.5 0.5];   % contour level, reused for both ax1 and ax2
     levelsFull = 0:0.1:1;  
     
@@ -767,7 +781,7 @@ for i = 1:nExp
     xlabel(ax1,'x_D [-]','FontSize',8)
     ylabel(ax1,'z_D [-]','FontSize',8)
     colormap(ax1,cmap)
-    clim(ax1,[tDmin tDmax])
+    clim(ax1,[tDminContours tDmaxContours])
     xlim(ax1,[0 1])            
     ylim(ax1,[0 1])
     title(ax1,'Front advance @ C_D = 0.5','FontSize',9)
@@ -791,7 +805,7 @@ for i = 1:nExp
     set(ax3,'XTickLabel',[])
     ylabel(ax3,'C_{ave,1} [-]')
     colormap(ax3,cmap)
-    clim(ax3,[tDmin tDmax])
+    clim(ax3,[tDminContours tDmaxContours])
     grid(ax3,'on')
     ylim(ax3,[-0.02 1])
     ax3.YAxisLocation = 'right';
@@ -805,33 +819,33 @@ for i = 1:nExp
     zDmid    = 'CD1_zD0p5';
     zDinlet    = 'CD1_zD0p0';
     
-    hBT_CT = plot(ax4, BTdata.tDtotal, BTdata.(zDoutlet), '-', ...
-        'LineWidth',1.5, 'Color','k', ...
+    hBT_CT_inlet = scatter(ax4, BTdata.tDtotal, BTdata.(zDinlet), 8, 'filled', ...
+        'MarkerFaceColor',[0.75 0.75 0.75], ...
         'HitTest','off','PickableParts','none', ...
-        'DisplayName','CT analog BTC (z_D=1.0, outlet)');
+        'DisplayName','CT analog BTC (zD=0.0, inlet)');
     hold(ax4,'on')
-    hBT_CT_mid = plot(ax4, BTdata.tDtotal, BTdata.(zDmid), '--', ...
-        'LineWidth',1.5, 'Color','k', ...
+    hBT_CT_mid = scatter(ax4, BTdata.tDtotal, BTdata.(zDmid), 8, 'filled', ...
+        'MarkerFaceColor',[0.5 0.5 0.5], ...
         'HitTest','off','PickableParts','none', ...
-        'DisplayName','CT analog BTC (z_D=0.5, mid-core)');
-    hBT_CT_inlet = plot(ax4, BTdata.tDtotal, BTdata.(zDinlet), ':', ...
-        'LineWidth',1.5, 'Color','k', ...
+        'DisplayName','CT analog BTC (zD=0.5, mid-core)');
+    hBT_CT = scatter(ax4, BTdata.tDtotal, BTdata.(zDoutlet), 8, 'filled', ...
+        'MarkerFaceColor','k', ...
         'HitTest','off','PickableParts','none', ...
-        'DisplayName','CT analog BTC (z_D=0.0, inlet)');
+        'DisplayName','CT analog BTC (zD=1.0, outlet)');
     
     hBT_MFM_CT = scatter(ax4, expProcFullData_MFM_CT.BT.tDtotal, expProcFullData_MFM_CT.BT.CDi, ...
-        5, 'filled', 'MarkerFaceColor',colors(1,:), ...
+        8, 'filled', 'MarkerFaceColor',colors(1,:), ...
         'HitTest','off','PickableParts','none', 'DisplayName','MFM analog BTC');
     hBT_MFM_UHS = scatter(ax4, expProcFullData_MFM_UHS.BT.tDtotal, expProcFullData_MFM_UHS.BT.CDi, ...
-        5, 'filled', 'MarkerFaceColor',colors(3,:), ...
+        8, 'filled', 'MarkerFaceColor',colors(3,:), ...
         'HitTest','off','PickableParts','none', 'DisplayName','MFM UHS BTC');
     grid(ax4,'on')
     xlabel(ax4,'t_D_{total} [-]')
     ylabel(ax4,'C_{ave,1} [-]')
     ylim(ax4,[-0.02 1])
-    xlim(ax4,[BTdata.tDtotal(1),BTdata.tDtotal(end)])
+    xlim(ax4,[0,tDmax])
     legend(ax4, 'Location','southeast','Interpreter','none')
-    title(ax4,'Breakthrough curve @ z_D = 0.0, 0.5 and 1.0','FontSize',9)
+    title(ax4,'Breakthrough curve @ zD = 0.0, 0.5 and 1.0','FontSize',9)
     
     % wire up interactivity
     setappdata(fig,'frames',frames);
@@ -1004,7 +1018,7 @@ function updateSelection(fig, idx)
     % ax4: create the red current-point marker on first use
     if isempty(hCurrentAx4) || ~isvalid(hCurrentAx4)
         hCurrentAx4 = xline(ax4, frames(idx).tD, '--r', 'LineWidth', 2, ...
-            'DisplayName', sprintf('t_D = %.1f', frames(idx).tD));
+            'DisplayName', sprintf('tD = %.1f', frames(idx).tD));
     else
         hCurrentAx4.Value = frames(idx).tD;
         hCurrentAx4.DisplayName = sprintf('t_D = %.1f', frames(idx).tD);

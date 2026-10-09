@@ -89,6 +89,7 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
         'XData', BT.t(idx), ...
         'YData', BT.C(idx));
     hSelectedLine.Value = BT.t(idx);
+    hSelectedLine.DisplayName = sprintf('selected: tD = %.3f, t = %.0f s', BT.tD(idx), BT.t(idx));
 
     % plot concentration in x ax1
     x1 = vars.C1Axial.xHorzcm;
