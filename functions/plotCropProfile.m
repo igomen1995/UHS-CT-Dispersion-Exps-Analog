@@ -7,17 +7,16 @@ function fig = plotCropProfile(image, cropx, pv_sort_parts, partsNoCore, titleSt
 %   Recomputes the same smoothed mean-intensity profile that
 %   findcropCore_xAxis uses and plots it with:
 %       - every material region shaded and labelled, colored by MATERIAL
-%         (left and right air share a color, etc.), with all segments
+%         (left and right air share a color, etc.), with everything
 %         between the two core boundaries merged into one "Core" region
-%       - markers at each detected peak/valley transition
+%       - markers ONLY at the material boundaries (transitions inside
+%         the core are not shown)
 %       - the final crop window (cropx) as red dashed lines
-%
-%   Diagnostic / paper-figure only; it does not affect the cropping.
 %
 %   Inputs:
 %       image         - 2-D projection passed to findCropWindow_xAxis.
 %       cropx         - [xmin; xmax] crop window.
-%       pv_sort_parts - full untrimmed transition list (2nd output of
+%       pv_sort_parts - full transition list (2nd output of
 %                       findCropWindow_xAxis / findcropCore_xAxis).
 %       partsNoCore   - same value used for detection (e.g. 4).
 %       titleStr      - figure title ('' for none, typical for papers).
@@ -48,24 +47,23 @@ nx   = numel(me_y);
 x    = 1:nx;
 sm_y = smooth(me_y, 'sgolay', 3);
 
-% ---- Build material spans from the transition list ----------------------
-t = sort(pv_sort_parts(:,1));
-n = numel(t);
+% ---- Material boundaries (outer transitions only) -------------------------
+pv = sortrows(pv_sort_parts, 1);
+n  = size(pv, 1);
 if n < 2*partsNoCore
     error('plotCropProfile:transitions', ...
         'Only %d transitions detected; need at least %d for %d outer regions per side.', ...
         n, 2*partsNoCore, partsNoCore);
 end
-b = [1; t(:); nx];                      % region boundaries
+bnd = pv([1:partsNoCore, n-partsNoCore+1:n], :);   % boundaries, no core-interior points
+t   = bnd(:,1);
 
-spans = zeros(0,3);                     % [xStart xEnd materialIdx]
-for k = 1:partsNoCore                   % left side, outside -> in
-    spans(end+1,:) = [b(k) b(k+1) k]; %#ok<AGROW>
-end
-spans(end+1,:) = [b(partsNoCore+1) b(end-partsNoCore) nMat]; % core (merged)
-for k = partsNoCore:-1:1                % right side, inside -> out
-    idx = numel(b) - k;
-    spans(end+1,:) = [b(idx) b(idx+1) k]; %#ok<AGROW>
+% Region spans: partsNoCore on the left, the core, partsNoCore on the right
+b = [1; t; nx];
+spans = zeros(2*partsNoCore+1, 3);      % [xStart xEnd materialIdx]
+matIdx = [1:partsNoCore, nMat, partsNoCore:-1:1];
+for s = 1:numel(matIdx)
+    spans(s,:) = [b(s) b(s+1) matIdx(s)];
 end
 
 % Muted palette, one color per material
@@ -77,8 +75,9 @@ pal = [0.82 0.82 0.82;   % air
 if nMat > size(pal,1), pal = lines(nMat); end
 
 % ---- Figure -------------------------------------------------------------
-fig = figure('Color', 'w', 'Units', 'centimeters', 'Position', [2 2 17 8]);
-ax  = axes(fig);
+fig = figure('Color', 'w', 'Units', 'centimeters', 'Position', [2 2 26 11]);
+tl  = tiledlayout(fig, 1, 1, 'Padding', 'compact', 'TileSpacing', 'compact');
+ax  = nexttile(tl);
 hold(ax, 'on');
 
 yl = [min(me_y) max(me_y)];
@@ -97,21 +96,20 @@ for s = 1:size(spans,1)
         h.HandleVisibility = 'off';
     end
 
-    % Region label: vertical if the span is narrow
+    % Region label: vertical for all regions except the core (horizontal)
     xc = mean(spans(s,1:2));
-    w  = spans(s,2) - spans(s,1);
-    if w < 0.07*nx
-        text(ax, xc, yl(2) - 0.02*diff(yl), regionNames{m}, 'Rotation', 90, ...
-            'HorizontalAlignment', 'right', 'VerticalAlignment', 'middle', ...
-            'FontSize', 7, 'Color', [0.2 0.2 0.2]);
-    else
+    if m == nMat
         text(ax, xc, yl(2) - 0.03*diff(yl), regionNames{m}, ...
             'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', ...
+            'FontSize', 8, 'Color', [0.2 0.2 0.2]);
+    else
+        text(ax, xc, yl(2) - 0.02*diff(yl), regionNames{m}, 'Rotation', 90, ...
+            'HorizontalAlignment', 'right', 'VerticalAlignment', 'middle', ...
             'FontSize', 8, 'Color', [0.2 0.2 0.2]);
     end
 end
 
-% Thin separators at every detected transition
+% Thin separators at the material boundaries only
 for tt = t(:)'
     xline(ax, tt, ':', 'Color', [0.45 0.45 0.45], 'LineWidth', 0.5, ...
         'HandleVisibility', 'off');
@@ -121,10 +119,10 @@ end
 plot(ax, x, me_y, 'Color', [0.6 0.6 0.6], 'LineWidth', 0.6, 'DisplayName', 'Raw profile');
 plot(ax, x, sm_y, 'k-', 'LineWidth', 1.4, 'DisplayName', 'Smoothed profile');
 
-% Detected transitions
-plot(ax, pv_sort_parts(:,1), pv_sort_parts(:,2), 'o', 'Color', 'k', ...
+% Material boundaries
+plot(ax, bnd(:,1), bnd(:,2), 'o', 'Color', 'k', ...
     'MarkerFaceColor', 'w', 'MarkerSize', 4.5, 'LineWidth', 0.8, ...
-    'DisplayName', 'Detected transitions');
+    'DisplayName', 'Material boundaries');
 
 % Crop window
 xline(ax, cropx(1), 'r--', 'LineWidth', 1.8, ...
@@ -142,6 +140,9 @@ if ~isempty(titleStr), title(ax, titleStr, 'Interpreter', 'none'); end
 set(ax, 'FontSize', 9, 'TickDir', 'out', 'LineWidth', 0.8, 'Layer', 'top');
 box(ax, 'on');
 
-legend(ax, 'Location', 'southoutside', 'Orientation', 'horizontal', ...
-    'NumColumns', 5, 'Box', 'off', 'FontSize', 8);
+% Legend placed in the tiled layout's south tile so it always fits inside
+% the figure (the layout shrinks the axes to make room)
+lgd = legend(ax, 'Orientation', 'horizontal', 'NumColumns', 5, ...
+    'Box', 'off', 'FontSize', 8);
+lgd.Layout.Tile = 'south';
 end

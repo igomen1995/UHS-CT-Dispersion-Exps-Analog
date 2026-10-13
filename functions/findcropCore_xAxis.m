@@ -68,7 +68,23 @@ dx_bwd = [Inf; pv_sort(2:end,1) - pv_sort(1:end-1,1)];
 
 % Retain only well-separated transition
 keep = (dx_fwd > pixDistTol) | (dx_bwd > pixDistTol);
-pv_sort_parts = pv_sort(keep,:);
+kept = pv_sort(keep,:);
+
+% Merge consecutive kept transitions that are still closer than
+% pixDistTol (the two endpoints of a short cluster) into one point
+pv_sort_parts = zeros(0,2);
+ii = 1;
+nK = size(kept,1);
+while ii <= nK
+    if ii < nK && (kept(ii+1,1) - kept(ii,1)) <= pixDistTol
+        xm = round(mean(kept(ii:ii+1,1)));
+        pv_sort_parts(end+1,:) = [xm, sm_y(xm)]; 
+        ii = ii + 2;
+    else
+        pv_sort_parts(end+1,:) = kept(ii,:); 
+        ii = ii + 1;
+    end
+end
 
 % Remove external non-core regions
 out = pv_sort_parts(partsNoCore:(end-partsNoCore+1),:);
