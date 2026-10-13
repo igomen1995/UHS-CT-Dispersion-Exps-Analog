@@ -11,85 +11,64 @@
 %
 % Workflow
 % --------
-% 1. Read experiment configuration and metadata from Excel files.
-% 2. Load initial and final reference CT scans.
-% 3. Load experimental CT scan runs.
-% 4. Import scanner metadata and acquisition logs (.pca, .pcp, .pcj).
-% 5. Normalize raw CT images to the range [0,1].
-% 6. Crop images to the region containing the core sample.
-% 7. Compute normalized concentration images using:
+% 1. Read experiment configuration (one row per experiment) from
+%    inputCTExpConfig.xlsx.
+% 2. For each experiment: read metadata and locate reference and
+%    experimental scan folders.
+% 3. (Optional section) Plot the crop profile for j = 1, k = 1 of each
+%    experiment, without touching the HDF5 files.
+% 4. For each experiment and run:
+%       - import scanner metadata and acquisition logs (.pca, .pcp, .pcj)
+%       - normalize raw CT images to [0,1]
+%       - detect a fixed-width crop window per projection, centered on
+%         the core
+%       - compute normalized concentration images:
 %
-%        C = (Iexp - Iref_init) ./ (Iref_final - Iref_init)
+%           C = (Iexp - Iref_init) ./ (Iref_final - Iref_init)
 %
-% 8. Save concentration image stacks to HDF5 files.
+%       - save concentration image stacks to HDF5.
 %
 % Input Files
 % -----------
 % inputCTExpConfig.xlsx
-%     Repository configuration file containing:
-%       - Input metadata filename
-%       - Import directory
-%       - Export directory
+%     One row per experiment, containing:
+%       - inputFileName : experiment input spreadsheet
+%       - importPath    : import directory
+%       - exportPath    : export directory
 %
-% Experiment input spreadsheet
-%     Imported through IMPORT_INPUTCTEXP and contains:
-%       - Experiment identifiers
-%       - Scan paths
-%       - Reference scan locations
-%       - Experimental run locations
+% Experiment input spreadsheet (read by IMPORT_INPUTCTEXP)
+%       - Experiment identifier (Key)
+%       - Scan paths, reference scan and run locations
 %
 % CT scan folders
-%     Each folder may contain:
-%       - *.tif : Projection or reconstructed images
-%       - *.pca : Scanner/reconstruction settings
-%       - *.pcp : Acquisition log data
-%       - *.pcj : Reconstruction output data
+%       - *.tif : projection images
+%       - *.pca : scanner/reconstruction settings
+%       - *.pcp : acquisition log data
+%       - *.pcj : reconstruction output data
 %
-% Outputs
+% Outputs (per experiment, in its exportPath)
 % -------
-% One HDF5 file is generated for each experiment:
-%
-%     <ExperimentKey>.h5
-%
-% containing:
-%
-%     /exp/run_xx/conc
-%
-% where run_xx is the experimental run number and conc is a 3-D image
-% stack with dimensions:
-%
-%     [Nx Ny Nimages]
-%
-% corresponding to normalized concentration maps.
+%     <ExperimentKey>.h5            /exp/run_xx/conc, [Nx Ny Nimages]
+%     cropCoords_<ExperimentKey>.txt  j, k, xmin, xmax for every image
+%     cropProfile_<Key>_run_01_k001.(png|pdf|fig)  crop profile figure
+%     conc_<Key>_run_xx.mp4         (optional) movie of concentration maps
 %
 % Dependencies
 % ------------
-% Required custom functions:
-%
-%     import_inputCTExp
-%     importPCA
-%     importPCP
-%     importPCJ
-%     importImages
-%     normImage
-%     cropImage
-%     satImage
-%
-% Required MATLAB Toolboxes:
-%
-%     Image Processing Toolbox
+%     import_inputCTExp, importPCA, importPCP, importPCJ, importImages,
+%     normImage, cropImage, satImage, findcropCore_xAxis,
+%     findCropWindow_xAxis, plotCropProfile
+%     Image Processing Toolbox, Curve Fitting Toolbox (smooth)
 %
 % Notes
 % -----
 % - Reference and experimental scans must contain the same number of
 %   projections/images.
-% - Crop coordinates are imported from:
-%
-%       crop_xCoords.mat
-%
-% - Existing HDF5 output files are automatically overwritten.
-% - Concentration values may exceed the physical range [0,1] due to image
-%   noise or reference-image uncertainty.
+% - Crop window is detected per projection on the initial (Xe) reference
+%   image and applied to refInit, refFinal and the experiment image.
+% - Existing HDF5 output files are overwritten when writeH5 = true.
+% - Concentration values may exceed [0,1] due to noise or
+%   reference-image uncertainty.
 
 
 %% IMPORT input
@@ -101,81 +80,89 @@ CT_setupPaths;
 inputFileConfigName = 'inputCTExpConfig.xlsx';
 inputFileConfig = readtable(inputFileConfigName);
 
-filenameExp = inputFileConfig.inputFileName{:};
+% Crop parameters (shared by the plot and processing sections)
+pixDist      = 70;
+partsScanned = 5;      % air, core holder, water, sleeve, core
+cropWidth    = 1400;
 
-pathImportAll = inputFileConfig.importPath{:}; % Path for OUTPUT
-pathExportAll = inputFileConfig.exportPath{:}; % Path for OUTPUT
-mkdir(pathExportAll); % Create directory for output
+nExp = height(inputFileConfig);
 
 %% IMPORT, NORM and CROP data
 
-filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
+for i = 1:nExp
 
-% Capture init ref data folder
-refInitFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_init); % Xe
-refInitFolderContent = refInitFolderContent([refInitFolderContent.isdir] & ~startsWith({refInitFolderContent.name},'.'));
-refInitFolderName = refInitFolderContent.name;
-
-% Capture final ref data folder
-refFinalFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_final); % He
-refFinalFolderContent = refFinalFolderContent([refFinalFolderContent.isdir] & ~startsWith({refFinalFolderContent.name},'.'));
-refFinalFolderName = refFinalFolderContent.name;
-
-% Capture exp data folder
-expFolderContent = dir(filedataExp.path+filedataExp.CT_data_exp); % exp
-expFolderContent = expFolderContent([expFolderContent.isdir] & ~startsWith({expFolderContent.name},'.'));
-expFolderName = {expFolderContent.name}';
-expFolderPath = {expFolderContent.folder};
-
-for i = 1:length(filedataExp.Key)
+    filenameExp = inputFileConfig.inputFileName{i};
+    pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
+    % Create directory for output
+    if ~isfolder(pathExportAll)
+        mkdir(pathExportAll);
+    end
+    
+    filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
+    
+    % Capture init ref data folder
+    refInitFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_init); % Xe
+    refInitFolderContent = refInitFolderContent([refInitFolderContent.isdir] & ~startsWith({refInitFolderContent.name},'.'));
+    refInitFolderName = refInitFolderContent.name;
+    
+    % Capture final ref data folder
+    refFinalFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_final); % He
+    refFinalFolderContent = refFinalFolderContent([refFinalFolderContent.isdir] & ~startsWith({refFinalFolderContent.name},'.'));
+    refFinalFolderName = refFinalFolderContent.name;
+    
+    % Capture exp data folder
+    expFolderContent = dir(filedataExp.path+filedataExp.CT_data_exp); % exp
+    expFolderContent = expFolderContent([expFolderContent.isdir] & ~startsWith({expFolderContent.name},'.'));
+    expFolderName = {expFolderContent.name}';
+    expFolderPath = {expFolderContent.folder};
 
     % CT init ref
     refInitFolderPathCT = fullfile(refInitFolderContent.folder, refInitFolderName);
         % pca
         refInitpcaFiles = dir(fullfile(refInitFolderPathCT, '*.pca'));
-        expCTData.(filedataExp.Key(i)).refInit.pca = importPCA(refInitpcaFiles);
+        expCTData.(filedataExp.Key).refInit.pca = importPCA(refInitpcaFiles);
         % pcp
         refInitpcpFiles = dir(fullfile(refInitFolderPathCT, '*.pcp'));
-        expCTData.(filedataExp.Key(i)).refInit.pcp = importPCP(refInitpcpFiles);
+        expCTData.(filedataExp.Key).refInit.pcp = importPCP(refInitpcpFiles);
         % CTimages folder 
         refInitimgFiles = dir(fullfile(refInitFolderPathCT, '*.tif'));
         
-    nn_refInit = height(expCTData.(filedataExp.Key(i)).refInit.pcp);
+    nn_refInit = height(expCTData.(filedataExp.Key).refInit.pcp);
 
     % CT final ref
     refFinalFolderPathCT = fullfile(refFinalFolderContent.folder, refFinalFolderName);
         % pcp
         refFinalpcpFiles = dir(fullfile(refFinalFolderPathCT, '*.pcp'));
-        expCTData.(filedataExp.Key(i)).refFinal.pcp = importPCP(refFinalpcpFiles);
+        expCTData.(filedataExp.Key).refFinal.pcp = importPCP(refFinalpcpFiles);
         refFinalimgFiles = dir(fullfile(refFinalFolderPathCT, '*.tif'));
 
-    nn_refFinal = height(expCTData.(filedataExp.Key(i)).refFinal.pcp);
+    nn_refFinal = height(expCTData.(filedataExp.Key).refFinal.pcp);
 
     % HDF5 file
-    HDF5filename = fullfile(pathExportAll, filedataExp.Key(i) + ".h5");
+    HDF5filename = fullfile(pathExportAll, filedataExp.Key + ".h5");
     if isfile(HDF5filename)
         delete(HDF5filename);
     end
 
-    cropLogFile = fullfile(pathExportAll, "cropCoords_" + filedataExp.Key(i) + ".txt");
+    cropLogFile = fullfile(pathExportAll, "cropCoords_" + filedataExp.Key + ".txt");
     fidCrop = fopen(cropLogFile, 'w');
     fprintf(fidCrop, '%s\t%s\t%s\t%s\n', 'j', 'k', 'xmin', 'xmax');
 
-    for j = 1%:length(expFolderName)
+    for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
             % pca
             exppcaFiles = dir(fullfile(expFolderPathCT, '*.pca'));
-            expCTData.(filedataExp.Key(i)).exp.(run_name).pca = importPCA(exppcaFiles);
+            expCTData.(filedataExp.Key).exp.(run_name).pca = importPCA(exppcaFiles);
             % pcj 
             exppcjFiles = dir(fullfile(expFolderPathCT, '*.pcj'));
-            expCTData.(filedataExp.Key(i)).exp.(run_name).pcj = importPCJ(exppcjFiles);
+            expCTData.(filedataExp.Key).exp.(run_name).pcj = importPCJ(exppcjFiles);
             % pcp
             exppcpFiles = dir(fullfile(expFolderPathCT, '*.pcp'));
-            expCTData.(filedataExp.Key(i)).exp.(run_name).pcp = importPCP(exppcpFiles);
+            expCTData.(filedataExp.Key).exp.(run_name).pcp = importPCP(exppcpFiles);
             expimgFiles = dir(fullfile(expFolderPathCT, '*.tif'));
 
-        nn_exp = height(expCTData.(filedataExp.Key(i)).exp.(run_name).pcp); % per run
+        nn_exp = height(expCTData.(filedataExp.Key).exp.(run_name).pcp); % per run
 
         % Check number of imaging in reference and exp are same
         if nn_refInit ~= nn_refFinal
@@ -188,15 +175,13 @@ for i = 1:length(filedataExp.Key)
         % core for every projection, since the rotation axis is not
         % centered in the frame and the core's x-position shifts as it
         % rotates.
-        pixDist = 70;
-        partsScanned = 5; % Parts scanned: from left to middle: air, CH. water,sleeve, core
-        cropWidth = 1400;
-        DimY = expCTData.(filedataExp.Key(i)).refInit.pca.Image.DimY;  
+        DimY = expCTData.(filedataExp.Key).refInit.pca.Image.DimY;  
         crop_yCoords = [1;DimY]; 
 
         HDF5created = false; % flag
         HDF5dataPath = ['/exp/' char(run_name) '/conc'];  % structured path
-
+        
+        % % Uncomment to see intanstaneous movie
         % fig = figure('Color','w','Position',[50 50 700 800]);
         % ax  = axes(fig);
         % v = VideoWriter(fullfile(pathExportAll, "conc_" + filedataExp.Key(i) + "_" + run_name), 'MPEG-4');
@@ -216,14 +201,6 @@ for i = 1:length(filedataExp.Key)
             [crop_xCoords_k, pv_sort_parts_k] = findCropWindow_xAxis(refInitrawImage, pixDist, partsScanned-1, cropWidth);
             fprintf('  k=%d: crop_xCoords_k = [%d %d]\n', k, crop_xCoords_k(1), crop_xCoords_k(2));
             fprintf(fidCrop, '%d\t%d\t%d\t%d\n', j, k, crop_xCoords_k(1), crop_xCoords_k(2));
-            
-            if k == 1
-                figProfile = plotCropProfile(refInitrawImage, crop_xCoords_k, pv_sort_parts_k, ...
-                    partsScanned-1, '');   % '' = no title, typical for a paper figure
-                baseName = fullfile(pathExportAll, sprintf('cropProfile_%s_%s', char(filedataExp.Key(i)), run_name));
-                exportgraphics(figProfile, baseName + ".png", 'Resolution', 600);
-                savefig(figProfile, baseName + ".fig");
-            end
 
             refInitcroppedImage = cropImage(refInitrawImage,crop_xCoords_k, crop_yCoords); % minImage
             
@@ -240,6 +217,7 @@ for i = 1:length(filedataExp.Key)
             expcroppedImage = cropImage(exprawImage,crop_xCoords_k, crop_yCoords);
             concImage = satImage(expcroppedImage,refInitcroppedImage,refFinalcroppedImage); % arguments (exp, min,max)
             
+            % % Uncomment to see intanstaneous movie
             % cla(ax)
             % imagesc(ax, concImage)            % columns -> x pixel, rows -> y pixel
             % axis(ax, 'image')
@@ -252,21 +230,62 @@ for i = 1:length(filedataExp.Key)
             % drawnow
             % writeVideo(v, getframe(fig));
 
-            % % HDF5 params
-            % [nx, ny] = size(concImage);
-            % 
-            % if ~HDF5created 
-            %     h5create(HDF5filename, HDF5dataPath, [nx ny nn_exp], ...
-            %         'Datatype', 'single', ...
-            %         'ChunkSize', [nx ny 1], ...
-            %         'Deflate', 5);
-            %     HDF5created = true;
-            % end
-            % 
-            % h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);       
+            % HDF5 params
+            [nx, ny] = size(concImage);
+
+            if ~HDF5created 
+                h5create(HDF5filename, HDF5dataPath, [nx ny nn_exp], ...
+                    'Datatype', 'single', ...
+                    'ChunkSize', [nx ny 1], ...
+                    'Deflate', 5);
+                HDF5created = true;
+            end
+
+            h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);       
         end
         % close(v)
     end
     fclose(fidCrop);
 end
 
+%% PLOT crop profile (j = 1, k = 1) for each experiment - no HDF5
+% Run the "IMPORT input" section first, then run this section on its own.
+
+filedataExp = import_inputCTExp(filenameExp);
+
+jPlot = 1;             % run used in the file name
+kPlot = 1;             % projection to plot
+
+for i = 1%:nExp
+
+    filenameExp = inputFileConfig.inputFileName{i};
+    pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
+    % Create directory for output
+    if ~isfolder(pathExportAll)
+        mkdir(pathExportAll);
+    end
+    
+    filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
+    key = char(filedataExp.Key);
+
+    % Xe reference folder for THIS experiment
+    refInitFolderContent = dir(filedataExp.path + filedataExp.CT_data_ref_init);
+    refInitFolderContent = refInitFolderContent([refInitFolderContent.isdir] & ...
+        ~startsWith({refInitFolderContent.name}, '.'));
+    refInitimgFiles = dir(fullfile(refInitFolderContent.folder, refInitFolderContent.name, '*.tif'));
+
+    % Detect crop on the Xe reference image kPlot
+    refInitrawImage = normImage(importImages(refInitimgFiles, kPlot));
+    [crop_xCoords_k, pv_sort_parts_k] = findCropWindow_xAxis(refInitrawImage, ...
+        pixDist, partsScanned-1, cropWidth);
+    fprintf('%s  j=%d k=%d: crop = [%d %d]\n', key, jPlot, kPlot, ...
+        crop_xCoords_k(1), crop_xCoords_k(2));
+
+    % Plot and save
+    figProfile = plotCropProfile(refInitrawImage, crop_xCoords_k, pv_sort_parts_k, ...
+        partsScanned-1, '');
+    baseName = fullfile(pathExportAll, sprintf('cropProfile_%s_run_%02d_k%03d', key, jPlot, kPlot));
+    exportgraphics(figProfile, baseName + ".png", 'Resolution', 600);
+    exportgraphics(figProfile, baseName + ".pdf", 'ContentType', 'vector');
+    savefig(figProfile, baseName + ".fig");
+end
