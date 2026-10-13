@@ -157,6 +157,10 @@ for i = 1:length(filedataExp.Key)
         delete(HDF5filename);
     end
 
+    cropLogFile = fullfile(pathExportAll, "cropCoords_" + filedataExp.Key(i) + ".txt");
+    fidCrop = fopen(cropLogFile, 'w');
+    fprintf(fidCrop, '%s\t%s\t%s\t%s\n', 'j', 'k', 'xmin', 'xmax');
+
     for j = 1%:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
@@ -193,11 +197,11 @@ for i = 1:length(filedataExp.Key)
         HDF5created = false; % flag
         HDF5dataPath = ['/exp/' char(run_name) '/conc'];  % structured path
 
-        fig = figure('Color','w','Position',[50 50 700 800]);
-        ax  = axes(fig);
-        v = VideoWriter(fullfile(pathExportAll, "conc_" + filedataExp.Key(i) + "_" + run_name), 'MPEG-4');
-        v.FrameRate = 20;
-        open(v);
+        % fig = figure('Color','w','Position',[50 50 700 800]);
+        % ax  = axes(fig);
+        % v = VideoWriter(fullfile(pathExportAll, "conc_" + filedataExp.Key(i) + "_" + run_name), 'MPEG-4');
+        % v.FrameRate = 20;
+        % open(v);
         for k = 1:nn_exp
             % Collect each image and save it in HDF5 one by one
 
@@ -211,6 +215,7 @@ for i = 1:length(filedataExp.Key)
             % same angle index k, so the same window applies to all three
             [crop_xCoords_k, pv_sort_parts_k] = findCropWindow_xAxis(refInitrawImage, pixDist, partsScanned-1, cropWidth);
             fprintf('  k=%d: crop_xCoords_k = [%d %d]\n', k, crop_xCoords_k(1), crop_xCoords_k(2));
+            fprintf(fidCrop, '%d\t%d\t%d\t%d\n', j, k, crop_xCoords_k(1), crop_xCoords_k(2));
             
             if k == 1
                 figProfile = plotCropProfile(refInitrawImage, crop_xCoords_k, pv_sort_parts_k, ...
@@ -235,17 +240,17 @@ for i = 1:length(filedataExp.Key)
             expcroppedImage = cropImage(exprawImage,crop_xCoords_k, crop_yCoords);
             concImage = satImage(expcroppedImage,refInitcroppedImage,refFinalcroppedImage); % arguments (exp, min,max)
             
-            cla(ax)
-            imagesc(ax, concImage)            % columns -> x pixel, rows -> y pixel
-            axis(ax, 'image')
-            colormap(ax, turbo)
-            clim(ax, [0 1])
-            colorbar(ax)
-            xlabel(ax, 'x (pixel)')
-            ylabel(ax, 'y (pixel)')
-            title(ax, sprintf('%s %s  image %03d', filedataExp.Key(i), run_name, k), 'Interpreter','none')
-            drawnow
-            writeVideo(v, getframe(fig));
+            % cla(ax)
+            % imagesc(ax, concImage)            % columns -> x pixel, rows -> y pixel
+            % axis(ax, 'image')
+            % colormap(ax, turbo)
+            % clim(ax, [0 1])
+            % colorbar(ax)
+            % xlabel(ax, 'x (pixel)')
+            % ylabel(ax, 'y (pixel)')
+            % title(ax, sprintf('%s %s  image %03d', filedataExp.Key(i), run_name, k), 'Interpreter','none')
+            % drawnow
+            % writeVideo(v, getframe(fig));
 
             % % HDF5 params
             % [nx, ny] = size(concImage);
@@ -260,7 +265,8 @@ for i = 1:length(filedataExp.Key)
             % 
             % h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);       
         end
-        close(v)
+        % close(v)
     end
+    fclose(fidCrop);
 end
 
