@@ -613,11 +613,9 @@ saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
 
 %% add plot KL/D0 vs Pe v*L/KL for all : MFM UHS, MFM analog, BTC CT, profile average CT
-% check BTC lines coming from a different zD
 % plot all measured width and front position with time (no theoretical)
 % consider KL_CT from tD around 0.5 (more complete curve), the one to obtain KL from fronts
 % add degree in tilt graphs
-% consider a 3D contour graph, contours advance every tD given and with colours
 % velocity field map for same angles scanned
 % add btc all parts of the core different experiments (initial mid and
 % last)
