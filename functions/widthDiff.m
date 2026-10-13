@@ -1,4 +1,4 @@
-function width = widthDiff(D, t, C1, C2)
+function [k,width] = widthDiff(D, t, C1, C2)
 % THEORETICALWIDTH  Ogata-Banks erfc-based mixing-zone width between two
 % concentration levels C1 < C2, at dispersion coefficient D and time t.
 %
