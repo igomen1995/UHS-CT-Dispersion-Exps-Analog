@@ -286,6 +286,5 @@ for i = 1%:nExp
         partsScanned-1, '');
     baseName = fullfile(pathExportAll, sprintf('cropProfile_%s_run_%02d_k%03d', key, jPlot, kPlot));
     exportgraphics(figProfile, baseName + ".png", 'Resolution', 600);
-    exportgraphics(figProfile, baseName + ".pdf", 'ContentType', 'vector');
     savefig(figProfile, baseName + ".fig");
 end
