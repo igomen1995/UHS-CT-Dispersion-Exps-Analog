@@ -157,7 +157,7 @@ for i = 1:length(filedataExp.Key)
         delete(HDF5filename);
     end
 
-    for j = 1:length(expFolderName)
+    for j = 2%1:ength(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
             % pca
@@ -180,18 +180,13 @@ for i = 1:length(filedataExp.Key)
             error("Mismatch: initial reference (%d) vs experiment run_%02d (%d) projections", nn_refInit, j, nn_exp);
         end
 
-        % Create function to take parameters to crop!!!
-        % rawImage = importImages(imgFiles);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
-        % croppedImage = cell(size(rawImage));
-        % % Crop params
-        % imageRefCrop = rawImage{1};
-        % pixDist = 70;
-        % partsScanned = 5; % Parts scanned: from left to middle: air, CH. water,sleeve, core
-        % % crop_xCoords = findcropCore_xAxis(imageRefCrop,pixDist,partsScanned-1);
-        % % crop_xCoords = [crop_xCoords(1)+60;crop_xCoords(2)-60];
-        % load(pathImportAll+ "crop_xCoords.mat");
-        % crop_yCoords = [1;length(imageRefCrop)];    
-        load(pathImportAll+ "crop_xCoords.mat");
+        % Crop params: fixed width, but the window is re-centered on the
+        % core for every projection, since the rotation axis is not
+        % centered in the frame and the core's x-position shifts as it
+        % rotates.
+        pixDist = 70;
+        partsScanned = 5; % Parts scanned: from left to middle: air, CH. water,sleeve, core
+        cropWidth = 1400;
         DimY = expCTData.(filedataExp.Key(i)).refInit.pca.Image.DimY;  
         crop_yCoords = [1;DimY]; 
 
@@ -205,19 +200,35 @@ for i = 1:length(filedataExp.Key)
             % Raw, normalized and cropped CT images
             refInitrawImage = importImages(refInitimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
             refInitrawImage = normImage(refInitrawImage);
-            refInitcroppedImage = cropImage(refInitrawImage,crop_xCoords, crop_yCoords); % minImage
+            
+            % Per-projection crop window, centered on the core as it
+            % appears at THIS rotation angle; refInit/refFinal share the
+            % same angle index k, so the same window applies to all three
+            [crop_xCoords_k, pv_sort_parts_k] = findCropWindow_xAxis(refInitrawImage, pixDist, partsScanned-1, cropWidth);
+            fprintf('  k=%d: crop_xCoords_k = [%d %d]\n', k, crop_xCoords_k(1), crop_xCoords_k(2));
+            
+            if k == 1
+                figProfile = plotCropProfile(refInitrawImage, crop_xCoords_k, pv_sort_parts_k, ...
+                    partsScanned-1, '');   % '' = no title, typical for a paper figure
+                baseName = fullfile(pathExportAll, sprintf('cropProfile_%s_%s', char(filedataExp.Key(i)), run_name));
+                exportgraphics(figProfile, baseName + ".pdf", 'ContentType', 'vector');
+                exportgraphics(figProfile, baseName + ".png", 'Resolution', 600);
+                savefig(figProfile, baseName + ".fig");
+            end
 
+            refInitcroppedImage = cropImage(refInitrawImage,crop_xCoords_k, crop_yCoords); % minImage
+            
             % refFinal
             % Raw, normalized and cropped CT images
             refFinalrawImage = importImages(refFinalimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
             refFinalrawImage = normImage(refFinalrawImage);
-            refFinalcroppedImage = cropImage(refFinalrawImage,crop_xCoords, crop_yCoords); % maxImage
+            refFinalcroppedImage = cropImage(refFinalrawImage,crop_xCoords_k, crop_yCoords); % maxImage
 
             % exp run k
             % Raw, normalized and cropped CT images
             exprawImage = importImages(expimgFiles,k);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
             exprawImage = normImage(exprawImage);
-            expcroppedImage = cropImage(exprawImage,crop_xCoords, crop_yCoords);
+            expcroppedImage = cropImage(exprawImage,crop_xCoords_k, crop_yCoords);
             concImage = satImage(expcroppedImage,refInitcroppedImage,refFinalcroppedImage); % arguments (exp, min,max)
 
             % HDF5 params

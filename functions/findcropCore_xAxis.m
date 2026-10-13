@@ -1,4 +1,4 @@
-function out = findcropCore_xAxis(image,pixDistTol,partsNoCore)
+function [out,pv_sort_parts] = findcropCore_xAxis(image,pixDistTol,partsNoCore)
 
 %FINDCROPCORE_XAXIS Identify core boundaries along the x-axis.
 %
@@ -63,10 +63,12 @@ pv_y_sort = pv_y(idx_sort);
 pv_sort = [pv_x_sort,pv_y_sort];
 
 % Distance between consecutive features
-dx_sort = pv_x_sort(2:end)-pv_x_sort(1:end-1);
+dx_fwd = [pv_sort(2:end,1)-pv_sort(1:end-1,1);Inf];
+dx_bwd = [Inf; pv_sort(2:end,1) - pv_sort(1:end-1,1)];
 
 % Retain only well-separated transition
-pv_sort_parts = pv_sort(dx_sort > pixDistTol,:);
+keep = (dx_fwd > pixDistTol) | (dx_bwd > pixDistTol);
+pv_sort_parts = pv_sort(keep,:);
 
 % Remove external non-core regions
 out = pv_sort_parts(partsNoCore:(end-partsNoCore+1),:);
