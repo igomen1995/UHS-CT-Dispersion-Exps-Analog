@@ -94,7 +94,7 @@ inputFileConfigName = 'inputCTExpConfig.xlsx';
 inputFileConfig = readtable(inputFileConfigName);
 exportPath = 'results/';
 
-dataSource = 'conc';   % 'conc' or 'rhoNorm' — applies to ALL comparisons in this script
+dataSource = inputFileConfig.dataSource;
 if ~ismember(dataSource, {'rhoNorm','conc'})
     error('dataSource must be "rhoNorm" or "conc", got "%s"', dataSource);
 end
@@ -541,8 +541,8 @@ for i = 1:nExp
     filedataExp = filedataExpAll{i};
     vars = expCTDataAll{i}.varsAll.(dataSource);
 
-    valid = ~isnan(vars.KL_CT);
-    plot(vars.tDtotal(valid), vars.KL_CT(valid), 'o-', 'LineWidth',1.5, ...
+    valid = ~isnan(vars.KL_CT_sigma);
+    plot(vars.tDtotal(valid), vars.KL_CT_sigma(valid), 'o-', 'LineWidth',1.5, ...
         'Color',colours{i}, 'MarkerSize',4, 'DisplayName', char(filedataExp.Key) + " (front moments)")
 
     % KL from BTC fit at the outlet (zD=1.0), from fitBTC_KL_allMethods
@@ -562,10 +562,11 @@ end
 
 xlabel('t_D [-]','FontSize',14)
 ylabel('K_L [cm^2/min]','FontSize',14)
+ylim([0,10])
 set(gca,'FontSize',14)
 grid on
 legend('Interpreter','none','FontSize',7,'Location','best','NumColumns',2)
-title(sprintf('K_L: front moments vs BTC_{CT} vs MFM analog/UHS (%s)', dataSource),'Interpreter','tex')
+title(sprintf('K_L from front moments vs BTC_CT vs MFM analog/UHS (%s)', dataSource),'Interpreter','none')
 
 fname = sprintf('KL_compare_%s_tD', dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
@@ -604,9 +605,9 @@ yticks(1:height(inputFileConfig))
 yticklabels(yLabels)
 set(gca, 'TickLabelInterpreter', 'none')
 ylim([0.5, height(inputFileConfig)+0.5])
-xlim([0,1.5])
+xlim([0,2.0])
 grid on
-title(sprintf('Outlet BTC width (16-84%%), centered on tD=0.5 (%s)', dataSource),'Interpreter','none')
+title(sprintf('Outlet BTC width (16-84%%), centered on tD at 50%% (%s)', dataSource),'Interpreter','none')
 
 fname = sprintf('BTCwidth_outlet_%s_tD', dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
@@ -619,3 +620,5 @@ saveas(fig, fullfile(exportPath, fname), 'fig');
 % velocity field map for same angles scanned
 % add btc all parts of the core different experiments (initial mid and
 % last)
+
+% add kl from measuered width too in graph KL
