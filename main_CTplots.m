@@ -94,21 +94,22 @@ inputFileConfigName = 'inputCTExpConfig.xlsx';
 inputFileConfig = readtable(inputFileConfigName);
 exportPath = 'results/';
 
-dataSource = inputFileConfig.dataSource;
-if ~ismember(dataSource, {'rhoNorm','conc'})
-    error('dataSource must be "rhoNorm" or "conc", got "%s"', dataSource);
-end
-
 %% Load data
 nExp = height(inputFileConfig);
 filedataExpAll = cell(nExp,1);
 expCTDataAll   = cell(nExp,1);
 MFM_CT_DataAll     = cell(nExp,1);
 MFM_UHS_DataAll    = cell(nExp,1);
+dataSourceAll = cell(nExp,1);
 
 for i = 1:nExp
     filenameExp   = inputFileConfig.inputFileName{i};
     pathExportAll = inputFileConfig.exportPath{i};
+
+    dataSourceAll{i} = inputFileConfig.dataSource{i};
+    if ~ismember(dataSourceAll{i}, {'rhoNorm','conc'})
+        error('dataSource must be "rhoNorm" or "conc", got "%s"', dataSourceAll{i});
+    end
 
     filedataExpAll{i} = import_inputCTExp(filenameExp);
     
@@ -151,6 +152,7 @@ legendEntries = cell(1, height(inputFileConfig));
 
 for i = 1:nExp
     filedataExp = filedataExpAll{i};
+    dataSource = dataSourceAll{i};
     vars = expCTDataAll{i}.varsAll.(dataSource);
 
     best_dist = inf;
@@ -215,7 +217,8 @@ for m=1:length(tD_target)
     legendEntries = cell(1, height(inputFileConfig));
     
     for i = 1:height(inputFileConfig)
-        filedataExp = filedataExpAll{i};   
+        filedataExp = filedataExpAll{i};
+        dataSource = dataSourceAll{i};
         vars = expCTDataAll{i}.varsAll.(dataSource);
     
         % find the scan (row) whose tDtotal is closest to target
@@ -265,6 +268,7 @@ legendEntries = cell(1, height(inputFileConfig));
 
 for i = 1:height(inputFileConfig)
     filedataExp = filedataExpAll{i}; 
+    dataSource = dataSourceAll{i};
     vars = expCTDataAll{i}.varsAll.(dataSource);
     CfieldOutlet = 'CD1_zD1p0';
 
@@ -293,6 +297,7 @@ legendEntries = cell(1, height(inputFileConfig));
 
 for i = 1:height(inputFileConfig)
     filedataExp = filedataExpAll{i}; 
+    dataSource = dataSourceAll{i};
     vars = expCTDataAll{i}.varsAll.(dataSource);
     CfieldOutlet = 'CD1_zD1p0';
 
@@ -413,6 +418,7 @@ for p = 1:length(widthPairs)
     fig = figure('Position',[100 100 1000 650]);
     for i = 1:height(inputFileConfig)
         filedataExp = filedataExpAll{i};
+        dataSource = dataSourceAll{i};
         vars = expCTDataAll{i}.varsAll.(dataSource);
 
         scatter(vars.tDtotal, vars.(measField),6, 'filled',...
@@ -451,6 +457,7 @@ for p = 1:length(widthPairs)
     for i = 1:height(inputFileConfig)
         fig = figure('Position',[100 100 1000 650]); hold on
         filedataExp = filedataExpAll{i};
+        dataSource = dataSourceAll{i};
         vars = expCTDataAll{i}.varsAll.(dataSource);
 
         tD = vars.tDtotal;
@@ -497,27 +504,43 @@ end
 %% Front tilt and shape diagnostics vs tD
 
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
+fig = figure('Position',[100 100 650 2200]);
 
-fig = figure('Position',[100 100 650 1200]);
-
-subplot(2,1,1); hold on
+subplot(4,1,1); hold on
 for i = 1:nExp
     filedataExp = filedataExpAll{i};
     vars = expCTDataAll{i}.varsAll.(dataSource);
-    plot(vars.tDtotal, vars.frontTiltSlope, 'o-', 'LineWidth',1.5, 'Color',colours{i}, ...
+    scatter(vars.tDtotal, vars.frontTiltSlope, 5,'filled', ...
+        'MarkerFaceColor',colours{i},'MarkerEdgeColor',colours{i}, ...
         'DisplayName', char(filedataExp.Key))
 end
 xlabel('t_D [-]','FontSize',12)
 ylabel('front tilt slope [z_D/x_D]','FontSize',12)
 title('Front tilt vs t_D','FontSize',12)
 grid on
-legend('Interpreter','none','FontSize',8,'Location','northeast')
+legend('Interpreter','none','FontSize',8,'Location','northwest')
 
-subplot(2,1,2); hold on
+subplot(4,1,2); hold on
 for i = 1:nExp
     filedataExp = filedataExpAll{i};
     vars = expCTDataAll{i}.varsAll.(dataSource);
-    plot(vars.tDtotal, vars.frontArcLengthRatio, 's-', 'LineWidth',1.5, 'Color',colours{i}, ...
+    scatter(vars.rotPos, vars.frontTiltSlope, 5,'filled', ...
+        'MarkerFaceColor',colours{i},'MarkerEdgeColor',colours{i}, ...
+        'DisplayName', char(filedataExp.Key))
+end
+xlim([0,360])
+xlabel('rotation position [\circ]','FontSize',12)
+ylabel('front tilt slope [z_D/x_D]','FontSize',12)
+title('Front tilt vs rotation position','FontSize',12)
+grid on
+legend('Interpreter','none','FontSize',8,'Location','northwest')
+
+subplot(4,1,3); hold on
+for i = 1:nExp
+    filedataExp = filedataExpAll{i};
+    vars = expCTDataAll{i}.varsAll.(dataSource);
+    scatter(vars.tDtotal, vars.frontArcLengthRatio, 5,'filled', ...
+        'MarkerFaceColor',colours{i},'MarkerEdgeColor',colours{i}, ...
         'DisplayName', char(filedataExp.Key))
 end
 yline(1, ':k', 'LineWidth',1, 'DisplayName','perfectly flat')
@@ -525,7 +548,23 @@ xlabel('t_D [-]','FontSize',12)
 ylabel('arc length ratio [-]','FontSize',12)
 title('Front non-planarity (shape-agnostic) vs t_D','FontSize',12)
 grid on
-legend('Interpreter','none','FontSize',8,'Location','northeast')
+legend('Interpreter','none','FontSize',8,'Location','northwest')
+
+subplot(4,1,4); hold on
+for i = 1:nExp
+    filedataExp = filedataExpAll{i};
+    vars = expCTDataAll{i}.varsAll.(dataSource);
+    scatter(vars.rotPos, vars.frontArcLengthRatio, 5,'filled', ...
+        'MarkerFaceColor',colours{i},'MarkerEdgeColor',colours{i}, ...
+        'DisplayName', char(filedataExp.Key))
+end
+yline(1, ':k', 'LineWidth',1, 'DisplayName','perfectly flat')
+xlim([0,360])
+xlabel('rotation position [\circ]','FontSize',12)
+ylabel('arc length ratio [-]','FontSize',12)
+title('Front non-planarity (shape-agnostic) vs rotation position','FontSize',12)
+grid on
+legend('Interpreter','none','FontSize',8,'Location','northwest')
 
 sgtitle(sprintf('Front planarity diagnostics (%s)', dataSource),'Interpreter','none')
 fname = sprintf('frontTiltShape_%s_tD', dataSource);
