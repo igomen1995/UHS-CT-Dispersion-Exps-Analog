@@ -261,7 +261,7 @@ for i = 1:height(inputFileConfig)
         zDBTC_conc{m} = table();
     end
 
-    for j = 1%:length(expFolderName)
+    for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
             % pca
@@ -283,7 +283,7 @@ for i = 1:height(inputFileConfig)
         ny = dims(2);
         nz = dims(3);
 
-        kRange = 160:181;   % 1:nn_exp for full run
+        kRange = 1:nn_exp;
         for k = kRange
             % Concentration profiles and histograms of normalized images
             imgNr = expCTData.(filedataExp.Key).exp.(run_name).pcp.ImgNr(k);
@@ -423,5 +423,5 @@ for i = 1:height(inputFileConfig)
     % save expCTData
     expCT_name = pathExportAll + filedataExp.Key;
     expCTDataSave = expCTData.(filedataExp.Key);
-    % save(expCT_name + '.mat','expCTDataSave','-v7.3')
+    save(expCT_name + '.mat','expCTDataSave','-v7.3')
 end
