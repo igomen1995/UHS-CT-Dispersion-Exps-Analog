@@ -147,7 +147,7 @@ CD_found = [];
 idx_found = [];
 l_found = [];
 
-figure
+fig = figure;
 legendEntries = cell(1, height(inputFileConfig));
 
 for i = 1:nExp
@@ -189,7 +189,7 @@ for i = 1:nExp
     % what profile to plot
     C1Profile_plot = vars.C1Profile{l_found(i)};
     tD = vars.tDtotal(l_found(i));
-    legendEntries{i} = filedataExp.Key;
+    legendEntries{i} = sprintf('%s_tD_%.1f',filedataExp.Key,tD);
 
     % plot
     plot(C1Profile_plot.zDimLess, C1Profile_plot.CVert,'LineWidth',3,'Color',colours{:,i})
@@ -201,6 +201,10 @@ for i = 1:nExp
 
 end
 legend(legendEntries, 'Interpreter','none','FontSize',9.8)
+zDStr = strrep(sprintf('%.1f', ZD_target), '.', 'p');  % e.g. 0.50 -> 0p50
+CDStr = strrep(sprintf('%.1f', CD_target), '.', 'p');  % e.g. 0.50 -> 0p50
+fname = sprintf('CT_profile_zD_%s_CD_%s_%s',zDStr,CDStr,dataSource);
+saveas(fig, fullfile(exportPath, fname), 'png');
 
 %% Find where to plot profile
 % Plot Z Profile at fixed tD
@@ -233,7 +237,7 @@ for m=1:length(tD_target)
     
         % plot that scan's spatial profile
         C1Profile_plot = vars.C1Profile{l};
-        legendEntries{i} = char(filedataExp.Key) + sprintf(" (t_D=%.2f)", tD_found(i));
+        legendEntries{i} = char(filedataExp.Key) + sprintf(" (tD=%.1f)", tD_found(i));
     
         % plot
         plot(C1Profile_plot.zDimLess, C1Profile_plot.CVert,'LineWidth',3,'Color',colours{:,i})
