@@ -652,6 +652,31 @@ fname = sprintf('BTCwidth_outlet_%s_tD', dataSource);
 saveas(fig, fullfile(exportPath, fname), 'png');
 saveas(fig, fullfile(exportPath, fname), 'fig');
 
+%% Front tilt vs rotation position, colored by t_D
+fig = figure('Position',[100 100 1000 850]);
+
+for i = 1:nExp
+    filedataExp = filedataExpAll{i};
+    vars = expCTDataAll{i}.varsAll.(dataSource);
+
+    subplot(2,2,i)
+    scatter(vars.rotPos, vars.frontTiltSlope, 25, vars.tDtotal, 'filled')
+    colormap(parula)
+    cb = colorbar;
+    cb.Label.String = 't_D [-]';
+    clim([0 1.5])
+    xlabel('rotation position [\circ]','FontSize',11)
+    ylabel('front tilt slope [z_D/x_D]','FontSize',11)
+    title(char(filedataExp.Key), 'Interpreter','none','FontSize',11)
+    grid on
+    xlim([0 360])
+end
+
+sgtitle(sprintf('Front tilt vs rotation position, colored by t_D (%s)', dataSource),'Interpreter','none')
+fname = sprintf('frontTilt_rotPos_tDcolor_%s', dataSource);
+saveas(fig, fullfile(exportPath, fname), 'png');
+saveas(fig, fullfile(exportPath, fname), 'fig');
+
 %% add plot KL/D0 vs Pe v*L/KL for all : MFM UHS, MFM analog, BTC CT, profile average CT
 % plot all measured width and front position with time (no theoretical)
 % consider KL_CT from tD around 0.5 (more complete curve), the one to obtain KL from fronts
