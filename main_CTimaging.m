@@ -272,7 +272,9 @@ for i = 1:nExp
             ax4.YAxisLocation = 'right';
     
             % plot image ax3
-            rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac,filedataExp.Fluid1, ...
+                filedataExp.Fluid2, filedataExp.T, filedataExp.P);
             if strcmp(dataSource,'conc')
                 plotImage = interpFcn(rhoNormImage);
             else
@@ -554,7 +556,9 @@ for i = 1:nExp
             tD = vars.tDtotal;
             theta = deg2rad(vars.rotPos);
     
-            rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac,filedataExp.Fluid1, ...
+                filedataExp.Fluid2, filedataExp.T, filedataExp.P);
             if strcmp(dataSource,'conc')
                 plotImage = interpFcn(rhoNormImage);
             else
@@ -687,7 +691,9 @@ for i = 1:nExp
             vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
             tD = vars.tDtotal;
 
-            rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac,filedataExp.Fluid1, ...
+                filedataExp.Fluid2, filedataExp.T, filedataExp.P);
             if strcmp(dataSource,'conc')
                 plotImage = interpFcn(rhoNormImage);
             else
@@ -824,6 +830,7 @@ for i = 1:nExp
     setappdata(fig,'pathExportAll',pathExportAll);
     setappdata(fig,'selectedIdx',[]);
     setappdata(fig,'dataSource',dataSource);
+    setappdata(fig,'filedataExp',filedataExp);
 
     for idx = 1:numel(frames)
         saveFrame(fig, idx);
@@ -951,7 +958,9 @@ for i = 1:nExp
                 vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
                 tD = vars.tDtotal;
 
-                rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+                rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+                rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac,filedataExp.Fluid1, ...
+                    filedataExp.Fluid2, filedataExp.T, filedataExp.P);
                 if strcmp(dataSource,'conc')
                     plotImage = interpFcn(rhoNormImage);
                 else
@@ -1160,7 +1169,9 @@ for i = 1:nExp
             info = h5info(HDF5filename, HDF5dataPath);
             dims = info.Dataspace.Size;
             nx = dims(1); ny = dims(2);
-            rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 fr.k], [nx ny 1]);
+            rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 fr.k], [nx ny 1]);
+            rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac,filedataExp.Fluid1, ...
+                filedataExp.Fluid2, filedataExp.T, filedataExp.P);
             if strcmp(dataSource,'conc')
                 plotImage = interpFcn(rhoNormImage);
             else
@@ -1309,7 +1320,9 @@ for i = 1:nExp
             tD = vars.tDtotal;
     
             % ax1
-            rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac,filedataExp.Fluid1, ...
+                filedataExp.Fluid2, filedataExp.T, filedataExp.P);
             if strcmp(dataSource,'conc')
                 plotImage = interpFcn(rhoNormImage);
             else
@@ -1459,6 +1472,7 @@ for i = 1:nExp
     setappdata(fig,'pathExportAll',pathExportAll);
     setappdata(fig,'selectedIdx',[]);
     setappdata(fig,'dataSource',dataSource);
+    setappdata(fig,'filedataExp',filedataExp);
     
     ax1.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax1, 'ax1');
     ax4.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax4, 'ax4');
@@ -1553,7 +1567,8 @@ function updateSelection(fig, idx)
     hTitle        = getappdata(fig,'hTitle');
     keyName       = getappdata(fig,'keyName');
     pathExportAll = getappdata(fig,'pathExportAll');
-    dataSource = getappdata(fig,'dataSource');
+    dataSource    = getappdata(fig,'dataSource');
+    filedataExp   = getappdata(fig,'filedataExp');
 
     % restore previous highlight
     if ~isempty(prevIdx) && prevIdx <= numel(frames)
@@ -1570,7 +1585,9 @@ function updateSelection(fig, idx)
     info = h5info(HDF5filename, HDF5dataPath);
     dims = info.Dataspace.Size;
     nx = dims(1); ny = dims(2);
-    rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 frames(idx).k], [nx ny 1]);
+    rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 frames(idx).k], [nx ny 1]);
+    rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac,filedataExp.Fluid1, ...
+        filedataExp.Fluid2, filedataExp.T, filedataExp.P);
     if strcmp(dataSource,'conc')
         plotImage = interpFcn(rhoNormImage);
     else
