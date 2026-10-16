@@ -60,8 +60,11 @@ climNorm     = [];      % grey-scale limits for (a)-(c); [] = 0.5-99.5 percentil
 showInfo     = true;    % t_D and angle in the figure title (needs <Key>.mat)
 
 % Figure 3 (I vs ln I)
-rowGapPx     = 80;      % vertical gap between the two rows (room for x label + title)
-profWpx      = 320;     % width of the profile axes (height = imgHpx)
+rowGapPx     = 90;      % vertical gap between the two rows (room for x label + title)
+profWpx      = 360;     % width of the profile axes (height = imgHpx)
+profGapPx    = 70;      % extra room left of the profile axes (its y label vs colour bar of panel C)
+fig3Scale    = [];      % [] = scale figure 3 to fit the screen | number = fixed factor (1 = 200 x 500 px images)
+fig3BottomPx = 80;      % fixed room under the bottom row for tick labels + x label (not scaled)
 frontBand    = [0.3 0.7];   % rows counted as "front": vertical profile of rhoNorm (I) in this range
 edgeFrac     = 0.05;    % outer band per side for the wall-excess number
 
@@ -69,7 +72,7 @@ edgeFrac     = 0.05;    % outer band per side for the wall-excess number
 
 iSel = 1;          % experiment row in inputCTExpConfig.xlsx
 jSel = 1;          % run
-kSel = 1;        % projection
+kSel = 91;        % projection
 
 %% IMPORT folders and metadata
 
@@ -207,8 +210,8 @@ else
 end
 baseName = fullfile(pathExportAll, sprintf('paperFig_%s_run_%02d_k%04d_%s', key, jSel, kSel, angStr));
 exportgraphics(fig, baseName + ".png", 'Resolution', 600);
-savefig(fig, baseName + ".fig");
-fprintf('Saved %s.(png|fig)\n', baseName);
+% savefig(fig, baseName + ".fig");
+fprintf('Saved %s.(png)\n', baseName);
 
 %% FIGURE 2
 
@@ -259,8 +262,8 @@ else
 end
 baseName = fullfile(pathExportAll, sprintf('paperFig_%s_run_%02d_k%04d_%s', key, jSel, kSel, angStr));
 exportgraphics(fig, baseName + "_lnI.png", 'Resolution', 600);
-savefig(fig, baseName + "_lnI.fig");
-fprintf('Saved %s_lnI.(png|fig)\n', baseName);
+% savefig(fig, baseName + "_lnI.fig");
+fprintf('Saved %s_lnI.(png)\n', baseName);
 
 %% FIGURE 3: I vs ln(I) - row 1 rhoNorm, row 2 C_molar
 
@@ -279,10 +282,28 @@ rowsQ = { rhoNorm, rhoNormSmooth, rhoNorm_log, rhoNormSmooth_log, '\rho_{norm}',
 fprintf('\nI vs ln(I), %s run %02d k %d   (wall excess = outer %d%% minus centre 40%%, [left right])\n', ...
     key, jSel, kSel, round(100*edgeFrac));
 
-profLeft = leftPx + 3*panelW;
-figW3 = profLeft + profWpx + rightPx + 20;
-figH3 = bottomPx + 2*imgHpx + rowGapPx + topPx;
-fig3  = figure('Units','pixels', 'Position',[50 50 figW3 figH3], 'Color','w');
+% Only the IMAGES are scaled to fit the screen. Margins and gaps that hold text
+% (tick labels, axis labels, titles, colour-bar labels) stay at fixed pixel sizes,
+% because the font does not shrink - otherwise the bottom x axis gets cut off.
+bottom3 = fig3BottomPx;   rowGap3 = rowGapPx;   top3 = topPx;   left3 = leftPx;
+cbGap3  = cbGapPx;        cbW3    = cbWpx;
+fixW = left3 + 3*(cbGap3 + cbW3 + cbLabelPx + hGapPx) + profGapPx + rightPx + 20;   % px not scaled
+fixH = bottom3 + rowGap3 + top3;
+
+scr = get(groot, 'ScreenSize');                                    % [1 1 W H] in pixels
+if isempty(fig3Scale)
+    s3 = min([1, (scr(3)-80-fixW)/(3*imgWpx + profWpx), (scr(4)-90-fixH)/(2*imgHpx)]);
+else
+    s3 = fig3Scale;
+end
+imgW3   = round(s3*imgWpx);   imgH3 = round(s3*imgHpx);   profW3 = round(s3*profWpx);
+panelW3 = imgW3 + cbGap3 + cbW3 + cbLabelPx + hGapPx;
+profLeft = left3 + 3*panelW3 + profGapPx;
+figW3 = profLeft + profW3 + rightPx + 20;
+figH3 = bottom3 + 2*imgH3 + rowGap3 + top3;
+fprintf('Figure 3: images scaled %.2f -> figure %d x %d px, images %d x %d px\n', s3, figW3, figH3, imgW3, imgH3);
+
+fig3  = figure('Units','pixels', 'Position',[20 50 figW3 figH3], 'Color','w');
 if showInfo && ~isempty(infoStr)
     annotation(fig3, 'textbox', 'Units','pixels', 'Position',[0 figH3-28 figW3 24], ...
         'String', infoStr, 'EdgeColor','none', 'HorizontalAlignment','center', ...
@@ -292,8 +313,8 @@ letters = 'ABCDEFGH';
 cI = [0.85 0.33 0.10];  cL = [0 0.35 0.8];
 
 for r = 1:2
-    yRow = bottomPx + (2-r)*(imgHpx + rowGapPx);                    % row 1 on top
-    pos3 = @(p) [leftPx + (p-1)*panelW, yRow, imgWpx, imgHpx];
+    yRow = bottom3 + (2-r)*(imgH3 + rowGap3);                       % row 1 on top
+    pos3 = @(p) [left3 + (p-1)*panelW3, yRow, imgW3, imgH3];
     imgI = rowsQ{r,1};  smI = rowsQ{r,2};
     imgL = rowsQ{r,3};  smL = rowsQ{r,4};
     nm   = rowsQ{r,5};
@@ -303,13 +324,13 @@ for r = 1:2
     ax = axes(fig3, 'Units','pixels', 'Position', pos3(1));
     plotImageContours(ax, xAx, zAx, imgI, smI, levelsFull, labelContours, fontSize);
     styleAxes(ax, sprintf('(%s) %s, I', letters(L0+1), nm), xLab, zLab, true, fontName, fontSize);
-    addColorbar(ax, [nm ' [-]'], fontName, fontSize, cbGapPx, cbWpx, '%.1f');
+    addColorbar(ax, [nm ' [-]'], fontName, fontSize, cbGap3, cbW3, '%.1f');
 
     % with ln(I)
     ax = axes(fig3, 'Units','pixels', 'Position', pos3(2));
     plotImageContours(ax, xAx, zAx, imgL, smL, levelsFull, labelContours, fontSize);
     styleAxes(ax, sprintf('(%s) %s, ln(I)', letters(L0+2), nm), xLab, zLab, false, fontName, fontSize);
-    addColorbar(ax, [nm ' [-]'], fontName, fontSize, cbGapPx, cbWpx, '%.1f');
+    addColorbar(ax, [nm ' [-]'], fontName, fontSize, cbGap3, cbW3, '%.1f');
 
     % difference ln(I) - I
     d    = imgL - imgI;
@@ -318,10 +339,10 @@ for r = 1:2
     imagesc(ax, xAx, zAx, d);
     styleAxes(ax, sprintf('(%s) ln(I) - I', letters(L0+3)), xLab, zLab, false, fontName, fontSize);
     colormap(ax, redblue(256)); clim(ax, [-dLim dLim]);
-    addColorbar(ax, ['\Delta' nm ' [-]'], fontName, fontSize, cbGapPx, cbWpx, '%.2f');
+    addColorbar(ax, ['\Delta' nm ' [-]'], fontName, fontSize, cbGap3, cbW3, '%.2f');
 
     % horizontal profiles: all rows (solid), front rows (dashed)
-    ax = axes(fig3, 'Units','pixels', 'Position', [profLeft yRow profWpx imgHpx]);
+    ax = axes(fig3, 'Units','pixels', 'Position', [profLeft yRow profW3 imgH3]);
     hold(ax,'on'); grid(ax,'on'); box(ax,'on');
     plot(ax, xAx, colProf(imgI, allRows), '-', 'Color',cI, 'LineWidth',1.2, 'DisplayName','I, all rows');
     plot(ax, xAx, colProf(imgL, allRows), '-', 'Color',cL, 'LineWidth',1.2, 'DisplayName','ln(I), all rows');
@@ -350,8 +371,8 @@ if ~any(frontRows)
 end
 
 exportgraphics(fig3, baseName + "_IvsLnI.png", 'Resolution', 600);
-savefig(fig3, baseName + "_IvsLnI.fig");
-fprintf('Saved %s_IvsLnI.(png|fig)\n', baseName);
+% savefig(fig3, baseName + "_IvsLnI.fig");
+fprintf('Saved %s_IvsLnI.(png)\n', baseName);
 
 %% local functions
 
