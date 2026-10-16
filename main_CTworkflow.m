@@ -1,4 +1,23 @@
-%% CT pipeline, step by step, for ONE image (i, j, k) + wall-artifact checks
+%% CT pipeline step by step for ONE image (i, j, k): OLD vs NEW processing
+%
+% NEW: raw -> median (medWin) -> normImage -> crop full core (cropWidthFull)
+%          -> imgaussfilt(sigmaNew) -> trim pixTrimEdge inside the core each side
+%          -> satImage -> rhoNorm_wVacRef
+% OLD: raw -> normImage -> crop (cropWidthOld) -> satImage -> rhoNorm_wVacRef
+%          (+ imgaussfilt(sigmaOld) only to draw the contours, as in main_CTimaging)
+%
+% REFPROP (conc) is left to the downstream scripts (dataSource rhoNorm / conc).
+%
+% Outputs in <exportPath>/stepByStep_<Key>_run_jj_kkkk/
+%   fig1_steps.png         raw / median / norm + crop / cropped / smoothed + trimmed (3 images)
+%   fig2_rhoNorm_new.png   satImage and rhoNorm of the new pipeline
+%   fig3_old_vs_new.png    image + contours old vs new, vertical and horizontal profiles
+%   stepByStep.mat         intermediate images and crop coordinates
+%
+% Wall channeling check: run this script with kSel at a projection BEFORE the
+% tracer reaches the core (rhoNorm should be flat 0) and one AFTER the core is
+% fully swept (flat 1). A rise at the walls in those two is an artifact of the
+% processing/measurement, not channeling.
 
 clear;
 
@@ -6,517 +25,263 @@ clear;
 
 CT_setupPaths;
 
-% Introduce name of input and desired output folder name
-
 inputFileConfigName = 'inputCTExpConfig.xlsx';
 inputFileConfig = readtable(inputFileConfigName);
 
-% Crop parameters (shared by the plot and processing sections)
-pixDist      = 70;
-partsScanned = 5;      % air, core holder, water, sleeve, core
-cropWidthFull    = 1450;
-pixTrimEdge = 25;
-cropWidth    = cropWidthFull - 2*pixTrimEdge;
+% Crop parameters
+pixDist       = 70;
+partsScanned  = 5;      % air, core holder, water, sleeve, core
+cropWidthFull = 1450;   % full core width (wall to wall)
+pixTrimEdge   = 25;     % removed inside the core on each side after smoothing (>= 3*sigmaNew)
+cropWidth     = cropWidthFull - 2*pixTrimEdge;
 
-nExp = height(inputFileConfig);
+% Filters (new pipeline)
+medWin       = 3;       % median window on the raw images (hot/dead pixels)
+sigmaNew     = 5;       % Gaussian on the cropped full-core images, before satImage
+sigmaContNew = 0;       % extra smoothing ONLY to draw the new contours (0 = none)
+
+% Old pipeline (for comparison)
+cropWidthOld = 1400;
+sigmaOld     = 20;      % Gaussian used for the contours in main_CTimaging
+
+% Contours
+levelsFull = 0:0.1:1;
+levelMain  = [0.5 0.5];
 
 %% USER SELECTION
+
 iSel = 1;          % experiment row in inputCTExpConfig.xlsx
 jSel = 1;          % run
 kSel = 100;        % projection
 
+%% IMPORT folders and metadata
 
-%% IMPORT, NORM and CROP data
+filenameExp   = inputFileConfig.inputFileName{iSel};
+pathExportAll = inputFileConfig.exportPath{iSel};
+filedataExp   = import_inputCTExp(filenameExp);
+key           = char(filedataExp.Key);
 
-for i = 1:iSel%nExp
-
-    filenameExp = inputFileConfig.inputFileName{i};
-    pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
-    % Create directory for output
-    if ~isfolder(pathExportAll)
-        mkdir(pathExportAll);
-    end
-    
-    filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
-    
-    % Capture init ref data folder
-    refInitFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_init); % Xe
-    refInitFolderContent = refInitFolderContent([refInitFolderContent.isdir] & ~startsWith({refInitFolderContent.name},'.'));
-    refInitFolderName = refInitFolderContent.name;
-    
-    % Capture final ref data folder
-    refFinalFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_final); % He
-    refFinalFolderContent = refFinalFolderContent([refFinalFolderContent.isdir] & ~startsWith({refFinalFolderContent.name},'.'));
-    refFinalFolderName = refFinalFolderContent.name;
-    
-    % Capture exp data folder
-    expFolderContent = dir(filedataExp.path+filedataExp.CT_data_exp); % exp
-    expFolderContent = expFolderContent([expFolderContent.isdir] & ~startsWith({expFolderContent.name},'.'));
-    expFolderName = {expFolderContent.name}';
-    expFolderPath = {expFolderContent.folder};
-
-    % CT init ref
-    refInitFolderPathCT = fullfile(refInitFolderContent.folder, refInitFolderName);
-        % pca
-        refInitpcaFiles = dir(fullfile(refInitFolderPathCT, '*.pca'));
-        expCTData.(filedataExp.Key).refInit.pca = importPCA(refInitpcaFiles);
-        % pcp
-        refInitpcpFiles = dir(fullfile(refInitFolderPathCT, '*.pcp'));
-        expCTData.(filedataExp.Key).refInit.pcp = importPCP(refInitpcpFiles);
-        % CTimages folder 
-        refInitimgFiles = dir(fullfile(refInitFolderPathCT, '*.tif'));
-        
-    nn_refInit = height(expCTData.(filedataExp.Key).refInit.pcp);
-
-    % CT final ref
-    refFinalFolderPathCT = fullfile(refFinalFolderContent.folder, refFinalFolderName);
-        % pcp
-        refFinalpcpFiles = dir(fullfile(refFinalFolderPathCT, '*.pcp'));
-        expCTData.(filedataExp.Key).refFinal.pcp = importPCP(refFinalpcpFiles);
-        refFinalimgFiles = dir(fullfile(refFinalFolderPathCT, '*.tif'));
-
-    nn_refFinal = height(expCTData.(filedataExp.Key).refFinal.pcp);
-
-    % % HDF5 file
-    % HDF5filename = fullfile(pathExportAll, filedataExp.Key + ".h5");
-    % if isfile(HDF5filename)
-    %     delete(HDF5filename);
-    % end
-
-    cropLogFile = fullfile(pathExportAll, "cropCoords_" + filedataExp.Key + ".txt");
-    fidCrop = fopen(cropLogFile, 'w');
-    fprintf(fidCrop, '%s\t%s\t%s\t%s\n', 'j', 'k', 'xmin', 'xmax');
-
-    for j = 1:jSel%length(expFolderName)
-        expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
-        run_name = "run_" + sprintf('%02d', j);
-            % pca
-            exppcaFiles = dir(fullfile(expFolderPathCT, '*.pca'));
-            expCTData.(filedataExp.Key).exp.(run_name).pca = importPCA(exppcaFiles);
-            % pcj 
-            exppcjFiles = dir(fullfile(expFolderPathCT, '*.pcj'));
-            expCTData.(filedataExp.Key).exp.(run_name).pcj = importPCJ(exppcjFiles);
-            % pcp
-            exppcpFiles = dir(fullfile(expFolderPathCT, '*.pcp'));
-            expCTData.(filedataExp.Key).exp.(run_name).pcp = importPCP(exppcpFiles);
-            expimgFiles = dir(fullfile(expFolderPathCT, '*.tif'));
-
-        nn_exp = height(expCTData.(filedataExp.Key).exp.(run_name).pcp); % per run
-
-        % Check number of imaging in reference and exp are same
-        if nn_refInit ~= nn_refFinal
-            error("Mismatch: initial reference (%d) vs final references (%d) projections", nn_refInit, nn_refFinal);
-        elseif nn_refInit ~= nn_exp
-            error("Mismatch: initial reference (%d) vs experiment run_%02d (%d) projections", nn_refInit, j, nn_exp);
-        end
-
-        % Crop params: fixed width, but the window is re-centered on the
-        % core for every projection, since the rotation axis is not
-        % centered in the frame and the core's x-position shifts as it
-        % rotates.
-        DimY = expCTData.(filedataExp.Key).refInit.pca.Image.DimY;  
-        crop_yCoords = [1;DimY]; 
-
-        for k = kSel%1:nn_exp
-            % Collect each image and save it in HDF5 one by one
-
-            % refInit
-            % Raw, normalized and cropped CT images
-            refInitrawImage = importImages(refInitimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
-            % apply median to reduce hot and dead pixels in raw images (no
-            % cropped)
-            refInitrawImage_median = medfilt2(refInitrawImage, [3 3], 'symmetric');
-            refInitrawImage_median_norm = normImage(refInitrawImage_median);
-            
-            % Per-projection crop window, centered on the core as it
-            % appears at THIS rotation angle; refInit/refFinal share the
-            % same angle index k, so the same window applies to all three
-            % here put the full width of the core 
-            [crop_xCoords_kFull, pv_sort_parts_kFull] = findCropWindow_xAxis(refInitrawImage_median_norm, pixDist, partsScanned-1, cropWidthFull);
-            [crop_xCoords_k, pv_sort_parts_k] = findCropWindow_xAxis(refInitrawImage_median_norm, pixDist, partsScanned-1, cropWidth);
-            refInitcroppedCoreFullImage = cropImage(refInitrawImage_median_norm,crop_xCoords_kFull, pv_sort_parts_kFull);
-            % gaussian filter to full core
-            refInitcroppedCoreFullImage_smooth = imgaussfilt(refInitcroppedCoreFullImage, 5);
-            % crop smoothed
-            refInitcroppedCoreFullImage_smooth_cropped = cropImage(refInitcroppedCoreFullImage_smooth,crop_xCoords_k, pv_sort_parts_k); % minImage
-
-            fprintf('  k=%d: crop_xCoords_k = [%d %d]\n', k, crop_xCoords_k(1), crop_xCoords_k(2));
-            fprintf(fidCrop, '%d\t%d\t%d\t%d\n', j, k, crop_xCoords_k(1), crop_xCoords_k(2));
-            
-            % refFinal
-            % Raw, normalized and cropped CT images
-            refFinalrawImage = importImages(refFinalimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
-            % median
-            refFinalrawImage_median = medfilt2(refFinalrawImage, [3 3], 'symmetric');
-            % norm
-            refFinalrawImage_median_norm = normImage(refFinalrawImage_median);
-            % crop full
-            refFinalcroppedFullImage = cropImage(refFinalrawImage_median_norm,crop_xCoords_kFull, pv_sort_parts_kFull); 
-            % smooth
-            refFinalcroppedFullImage_smooth = imgaussfilt(refFinalcroppedFullImage, 5);
-            % crop
-            refFinalcroppedFullImage_smooth_cropped = cropImage(refFinalcroppedFullImage_smooth,crop_xCoords_k, pv_sort_parts_k); % maxImage
-
-            % exp run k
-            % Raw, normalized and cropped CT images
-            exprawImage = importImages(expimgFiles,k);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
-            % median
-            exprawImage_median = medfilt2(exprawImage, [3 3], 'symmetric');
-            % norm
-            exprawImage_median_norm = normImage(exprawImage_median);
-            % crop full
-            expcroppedFullImage = cropImage(exprawImage_median_norm,crop_xCoords_kFull, crop_yCoordsFull);
-            % smooth
-            expcroppedFullImage_smooth = imgaussfilt(expcroppedFullImage, 5);
-            % crop
-            expcroppedFullImage_smooth_cropped = cropImage(expcroppedFullImage_smooth,crop_xCoords_k, crop_yCoords);
-            
-            % concentration image
-            rhoNormImageNoCorr = satImage(expcroppedImage,refInitcroppedImage,refFinalcroppedImage); % arguments (exp, min,max)
-
-            rhoNormImage = rhoNorm_wVacRef(rhoNormImageNoCorr,filedataExp.Fluid1, ...
-                filedataExp.Fluid2, filedataExp.T, filedataExp.P);
-
-            interpFcn(rhoNormImage);
-
-        end
-    end
-    fclose(fidCrop);
-end
-
-%% USER SELECTION
-iSel = 1;          % experiment row in inputCTExpConfig.xlsx
-jSel = 1;          % run
-kSel = 100;        % projection
-
-% Flat-state projections for test A. Leave [] to guess automatically.
-j0 = [];  k0 = []; % C should be 0 everywhere (tracer not yet in the core)
-j1 = [];  k1 = []; % C should be 1 everywhere (core fully swept)
-
-medWin   = 3;      % median window (0 or 1 = off)
-sigmaG   = 5;      % Gaussian sigma [px]
-trimPx   = [];     % side trim after Gaussian; [] = max(15, ceil(3*sigma))
-cropMode = 'delta';% 'delta'  : core walls from the Xe-He contrast profile (exact core width)
-                   % 'window' : findCropWindow_xAxis with cropWidth (current method)
-deltaThr = 0.05;   % 'delta': wall = where column-mean contrast < deltaThr * centre value
-wallMarginPx = 0;  % extra px removed inside the detected walls
-
-edgeFrac = 0.05;   % edge band (fraction of width) for the wall-excess metric
-wallWin  = 60;     % half-window [px] around each wall for the shift estimate
-maxLag   = 10;     % max shift searched [px]
-
-% crop parameters of the current method (same as main_CTextract)
-pixDist      = 70;
-partsScanned = 5;
-cropWidth    = 1400;
-sigmaOld     = 20;  % current end-of-pipeline smoothing, for comparison
-
-if isempty(trimPx), trimPx = max(15, ceil(3*sigmaG)); end
-
-%% SETUP
-CT_setupPaths;
-cfg = readtable('inputCTExpConfig.xlsx');
-filedataExp = import_inputCTExp(cfg.inputFileName{iSel});
-key = char(filedataExp.Key);
-
-outDir = fullfile(cfg.exportPath{iSel}, ...
-    sprintf('stepByStep_%s_run_%02d_k%04d', key, jSel, kSel));
+outDir = fullfile(pathExportAll, sprintf('stepByStep_%s_run_%02d_k%04d', key, jSel, kSel));
 if ~isfolder(outDir), mkdir(outDir); end
 
-refInitDirs  = listSubdirs(filedataExp.path + filedataExp.CT_data_ref_init);   % Xe
-refFinalDirs = listSubdirs(filedataExp.path + filedataExp.CT_data_ref_final);  % He
-expDirs      = listSubdirs(filedataExp.path + filedataExp.CT_data_exp);
-F.init  = dir(fullfile(refInitDirs(1).folder,  refInitDirs(1).name,  '*.tif'));
-F.final = dir(fullfile(refFinalDirs(1).folder, refFinalDirs(1).name, '*.tif'));
-expTif  = @(j) dir(fullfile(expDirs(j).folder, expDirs(j).name, '*.tif'));
+% init ref (Xe)
+refInitFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_init);
+refInitFolderContent = refInitFolderContent([refInitFolderContent.isdir] & ~startsWith({refInitFolderContent.name},'.'));
+refInitFolderPathCT  = fullfile(refInitFolderContent.folder, refInitFolderContent.name);
+refInitpca           = importPCA(dir(fullfile(refInitFolderPathCT, '*.pca')));
+refInitimgFiles      = dir(fullfile(refInitFolderPathCT, '*.tif'));
 
-pca = importPCA(dir(fullfile(refInitDirs(1).folder, refInitDirs(1).name, '*.pca')));
-P.cropY = [1; pca.Image.DimY];
-P.pixDist = pixDist;  P.partsScanned = partsScanned;  P.cropWidth = cropWidth;
-P.F1 = filedataExp.Fluid1;  P.F2 = filedataExp.Fluid2;
-P.T  = filedataExp.T;       P.P  = filedataExp.P;
-P.interpFcn = buildInterpolant(P.F1, P.F2, P.T, P.P);
+% final ref (He)
+refFinalFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_final);
+refFinalFolderContent = refFinalFolderContent([refFinalFolderContent.isdir] & ~startsWith({refFinalFolderContent.name},'.'));
+refFinalFolderPathCT  = fullfile(refFinalFolderContent.folder, refFinalFolderContent.name);
+refFinalimgFiles      = dir(fullfile(refFinalFolderPathCT, '*.tif'));
 
-opt = struct('medWin',medWin,'sigma',sigmaG,'trim',trimPx,'cropMode',cropMode, ...
-    'deltaThr',deltaThr,'wallMarginPx',wallMarginPx);
+% exp run jSel
+expFolderContent = dir(filedataExp.path+filedataExp.CT_data_exp);
+expFolderContent = expFolderContent([expFolderContent.isdir] & ~startsWith({expFolderContent.name},'.'));
+expFolderPathCT  = fullfile(expFolderContent(jSel).folder, expFolderContent(jSel).name);
+expimgFiles      = dir(fullfile(expFolderPathCT, '*.tif'));
 
-% guess flat-state projections if not given
-if isempty(k0) || isempty(k1)
-    [g0, g1, how] = guessFlat(cfg, iSel, key, numel(expDirs), expTif);
-    if isempty(k0), j0 = g0(1); k0 = g0(2); end
-    if isempty(k1), j1 = g1(1); k1 = g1(2); end
-    fprintf('Flat-state guess (%s): C=0 -> run %02d k %d,  C=1 -> run %02d k %d\n', how, j0, k0, j1, k1);
-end
-fprintf('=== %s | selected run %02d k %d | median %d, sigma %d, trim %d px, crop ''%s'' ===\n\n', ...
-    key, jSel, kSel, medWin, sigmaG, trimPx, cropMode);
-
-%% PROCESS the three projections
-t0 = tic;
-Ssel = processProjection(F, expTif(jSel), jSel, kSel, P, opt);
-S0   = processProjection(F, expTif(j0),   j0,   k0,   P, opt);
-S1   = processProjection(F, expTif(j1),   j1,   k1,   P, opt);
-Osel = oldPipeline(Ssel.raw, P, sigmaOld);
-fprintf('Processed 3 projections in %.1f s\n', toc(t0));
-
-for S = {Ssel, S0, S1}
-    s = S{1};
-    fprintf('  run %02d k %4d: median changed %d outlier px (exp) | core walls x = [%d %d] (width %d) | findCropWindow = [%d %d]\n', ...
-        s.j, s.k, s.nOutlier.exp, s.coreX(1), s.coreX(2), s.coreX(2)-s.coreX(1)+1, s.winX(1), s.winX(2));
+if numel(refInitimgFiles) ~= numel(refFinalimgFiles) || numel(refInitimgFiles) ~= numel(expimgFiles)
+    error("Mismatch in projections: init %d, final %d, exp run_%02d %d", ...
+        numel(refInitimgFiles), numel(refFinalimgFiles), jSel, numel(expimgFiles));
 end
 
-%% FIG 1 - the steps for the selected projection
-fig1 = figure('Name','Steps','Position',[30 30 1700 850]);
-tl = tiledlayout(2,4,'TileSpacing','compact');
-title(tl, sprintf('%s run %02d k %d - pipeline steps (exp image)', key, jSel, kSel), 'Interpreter','none');
-showImg(nexttile(tl), Ssel.raw.exp, 'raw', []);
-showImg(nexttile(tl), Ssel.raw.exp - Ssel.med.exp, sprintf('removed by median %dx%d', medWin, medWin), []);
-showImg(nexttile(tl), Ssel.norm.exp, 'normalized (normImage)', [0 1]);
-ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
-plot(ax, Ssel.deltaProf, 'k'); xline(ax, Ssel.coreX, 'r', 'LineWidth',1.5); xline(ax, Ssel.winX, 'b--');
-legend(ax, {'column-mean (final - init)','core walls (used)','','findCropWindow',''}, 'Location','best');
-xlabel(ax,'x [px]'); title(ax,'crop: contrast profile and walls');
-showImg(nexttile(tl), Ssel.crop.exp, 'cropped to core walls', [0 1]);
-showImg(nexttile(tl), Ssel.C0.sat,  'sat: median only, no trim', [-0.2 1.2]);
-showImg(nexttile(tl), Ssel.Cs.sat,  sprintf('sat: + gauss %d + trim %d', sigmaG, trimPx), [-0.2 1.2]);
-showImg(nexttile(tl), Ssel.Cs.conc, 'conc (REFPROP)', [0 1]);
-colormap(fig1, turbo);
+DimY = refInitpca.Image.DimY;
+crop_yCoords = [1;DimY];
+
+names    = {'refInit','refFinal','exp'};
+labels   = {'refInit (Xe)','refFinal (He)', sprintf('exp run %02d', jSel)};
+imgFiles = {refInitimgFiles, refFinalimgFiles, expimgFiles};
+
+fprintf('=== %s | run %02d | k %d ===\n', key, jSel, kSel);
+
+%% NEW 1-3: raw -> median -> normalize
+
+for n = 1:3
+    raw.(names{n})    = double(importImages(imgFiles{n}, kSel));
+    med.(names{n})    = medfilt2(raw.(names{n}), [medWin medWin], 'symmetric');
+    nrm.(names{n})    = double(normImage(med.(names{n})));
+    fprintf('  %-8s raw [%.4g %.4g] | hot/dead px removed by median: %d | max used by normImage: %.4g\n', ...
+        names{n}, min(raw.(names{n})(:)), max(raw.(names{n})(:)), countOutliers(raw.(names{n})), max(med.(names{n})(:)));
+end
+
+%% NEW 4: crop full core (window detected on refInit, applied to all three)
+
+[crop_xCoords_kFull, pv_sort_parts_kFull] = findCropWindow_xAxis(nrm.refInit, pixDist, partsScanned-1, cropWidthFull);
+crop_xCoords_kTrim = [crop_xCoords_kFull(1)+pixTrimEdge, crop_xCoords_kFull(2)-pixTrimEdge];
+fprintf('  crop full core x = [%d %d] | after trim x = [%d %d]\n', ...
+    crop_xCoords_kFull(1), crop_xCoords_kFull(2), crop_xCoords_kTrim(1), crop_xCoords_kTrim(2));
+
+for n = 1:3
+    cropFull.(names{n}) = double(cropImage(nrm.(names{n}), crop_xCoords_kFull, crop_yCoords));
+end
+
+%% NEW 5-6: smooth full core, then trim inside the core
+% Trim by index on the already-cropped image (not by findCropWindow again),
+% so the trimmed window is exactly pixTrimEdge inside the full-core crop.
+
+for n = 1:3
+    smoothFull.(names{n}) = imgaussfilt(cropFull.(names{n}), sigmaNew, 'Padding','replicate');
+    trimmed.(names{n})    = smoothFull.(names{n})(:, pixTrimEdge+1:end-pixTrimEdge);
+end
+
+%% NEW 7-8: satImage -> rhoNorm (vacuum corrected)
+
+rhoNormNoCorrNew = double(satImage(trimmed.exp, trimmed.refInit, trimmed.refFinal)); % (exp, min, max)
+rhoNormNew = double(rhoNorm_wVacRef(single(rhoNormNoCorrNew), filedataExp.Fluid1, ...
+    filedataExp.Fluid2, filedataExp.T, filedataExp.P));
+fprintf('  NEW rhoNorm: size %dx%d | mean %.3f | <0: %.1f%% | >1: %.1f%% | NaN %d\n', ...
+    size(rhoNormNew,1), size(rhoNormNew,2), mean(rhoNormNew(:),'omitnan'), ...
+    100*mean(rhoNormNew(:)<0), 100*mean(rhoNormNew(:)>1), nnz(isnan(rhoNormNew)));
+
+%% OLD: raw -> normalize -> crop -> satImage -> rhoNorm (smoothing only for contours)
+
+for n = 1:3
+    nrmOld.(names{n}) = double(normImage(raw.(names{n})));
+end
+crop_xCoords_kOld = findCropWindow_xAxis(nrmOld.refInit, pixDist, partsScanned-1, cropWidthOld);
+for n = 1:3
+    cropOld.(names{n}) = double(cropImage(nrmOld.(names{n}), crop_xCoords_kOld, crop_yCoords));
+end
+rhoNormNoCorrOld = double(satImage(cropOld.exp, cropOld.refInit, cropOld.refFinal));
+rhoNormOld = double(rhoNorm_wVacRef(single(rhoNormNoCorrOld), filedataExp.Fluid1, ...
+    filedataExp.Fluid2, filedataExp.T, filedataExp.P));
+rhoNormOldSmooth = imgaussfilt(rhoNormOld, sigmaOld);
+fprintf('  OLD crop x = [%d %d] | rhoNorm mean %.3f | <0: %.1f%% | >1: %.1f%% | NaN %d\n', ...
+    crop_xCoords_kOld(1), crop_xCoords_kOld(2), mean(rhoNormOld(:),'omitnan'), ...
+    100*mean(rhoNormOld(:)<0), 100*mean(rhoNormOld(:)>1), nnz(isnan(rhoNormOld)));
+
+if sigmaContNew > 0
+    rhoNormNewCont = imgaussfilt(rhoNormNew, sigmaContNew);
+else
+    rhoNormNewCont = rhoNormNew;
+end
+
+%% FIG 1: steps for the three images
+
+fig1 = figure('Name','Steps','Position',[20 20 1800 1000]);
+tl = tiledlayout(3,5,'TileSpacing','compact');
+title(tl, sprintf('%s run %02d k %d - new pipeline steps', key, jSel, kSel), 'Interpreter','none');
+for n = 1:3
+    % raw
+    ax = nexttile(tl);
+    showImg(ax, raw.(names{n}), [labels{n} ' | raw'], []);
+    colormap(ax, turbo); ylabel(colorbar(ax), 'intensity [counts]');
+
+    % what the median removed (symmetric limits, blue = removed bright, red = removed dark)
+    ax = nexttile(tl);
+    dMed = raw.(names{n}) - med.(names{n});
+    lim  = max(prctile(abs(dMed(:)), 99.9), eps);
+    showImg(ax, dMed, sprintf('removed by median %dx%d', medWin, medWin), [-lim lim]);
+    colormap(ax, redblue(256)); ylabel(colorbar(ax), 'raw - median [counts]');
+
+    % normalized with crop and trim lines
+    ax = nexttile(tl);
+    showImg(ax, nrm.(names{n}), 'normalized | red = full core, white = trim', [0 1]);
+    colormap(ax, turbo); ylabel(colorbar(ax), 'I / I_{air} [-]');
+    hold(ax,'on');
+    xline(ax, crop_xCoords_kFull, 'r', 'LineWidth',1.2);
+    xline(ax, crop_xCoords_kTrim, 'w--', 'LineWidth',1.2);
+
+    % cropped full core
+    ax = nexttile(tl);
+    showImg(ax, cropFull.(names{n}), sprintf('cropped full core (%d px)', size(cropFull.(names{n}),2)), [0 1]);
+    colormap(ax, turbo); ylabel(colorbar(ax), 'I / I_{air} [-]');
+    hold(ax,'on'); xline(ax, [pixTrimEdge, size(cropFull.(names{n}),2)-pixTrimEdge], 'w--', 'LineWidth',1.2);
+
+    % smoothed + trimmed
+    ax = nexttile(tl);
+    showImg(ax, trimmed.(names{n}), sprintf('gauss %d + trim %d (%d px)', sigmaNew, pixTrimEdge, ...
+        size(trimmed.(names{n}),2)), [0 1]);
+    colormap(ax, turbo); ylabel(colorbar(ax), 'I / I_{air} [-]');
+end
 saveFig(fig1, outDir, 'fig1_steps');
 
-%% FIG 2 - flat-state images (test A)
-fig2 = figure('Name','Flat states','Position',[30 30 1500 850]);
-tl = tiledlayout(2,3,'TileSpacing','compact');
-title(tl,'Test A - C should be uniform 0 (left) and 1 (middle); any wall structure there is an artifact');
-Sl  = {S0, S1, Ssel};
-lab = {sprintf('C=0 state: run %02d k %d', j0, k0), sprintf('C=1 state: run %02d k %d', j1, k1), ...
-       sprintf('selected: run %02d k %d', jSel, kSel)};
-for v = 1:2
-    for p = 1:3
-        if v == 1, img = Sl{p}.C0.sat; vl = 'median only'; else, img = Sl{p}.Cs.sat; vl = sprintf('gauss %d + trim', sigmaG); end
-        ax = nexttile(tl);
-        showImg(ax, img, sprintf('%s | %s', lab{p}, vl), [-0.2 1.2]);
-        if p == 3, hold(ax,'on'); contour(ax, img, [0.5 0.5], 'k', 'LineWidth', 1.2); end
-    end
-end
-colormap(fig2, turbo);
-saveFig(fig2, outDir, 'fig2_flatImages');
+%% FIG 2: satImage and rhoNorm (new)
 
-%% FIG 3 - column profiles C(x) (tests A-D)
-rmSel = mean(Ssel.Cs.sat(:, centerCols(size(Ssel.Cs.sat,2))), 2, 'omitnan');
-bands = { 'ahead of front (0.05-0.3)', rmSel > 0.05 & rmSel < 0.3; ...
-          'in front (0.3-0.7)',        rmSel >= 0.3 & rmSel <= 0.7; ...
-          'behind front (>0.7)',       rmSel > 0.7 };
-allRows = @(S) true(size(S.C0.sat,1),1);
-
-fig3 = figure('Name','Column profiles','Position',[30 30 1700 850]);
-tl = tiledlayout(2,3,'TileSpacing','compact');
-title(tl, {'Column-averaged C(x), x from left core wall.  grey = median only (to the wall), blue = gauss+trim, red dashed = log-attenuation', ...
-           'dotted black (right axis) = contrast \Delta(x)/max: where it is low, C is unreliable'});
-plotColProfiles(nexttile(tl), S0,   allRows(S0), 0, lab{1});
-plotColProfiles(nexttile(tl), S1,   allRows(S1), 1, lab{2});
-plotColProfiles(nexttile(tl), Ssel, allRows(Ssel), [], [lab{3} ' (all rows)']);
-for b = 1:3
-    plotColProfiles(nexttile(tl), Ssel, bands{b,2}, [], sprintf('selected, %s, %d rows', bands{b,1}, nnz(bands{b,2})));
-end
-saveFig(fig3, outDir, 'fig3_columnProfiles');
-
-%% FIG 4 - misalignment at the walls (test E)
-fig4 = figure('Name','Wall shift','Position',[30 30 1500 450]);
+fig2 = figure('Name','rhoNorm new','Position',[20 20 1400 600]);
 tl = tiledlayout(1,3,'TileSpacing','compact');
-title(tl, sprintf('Test E - shift vs init at the core walls (run %02d k %d)', jSel, kSel));
-shifts = struct();
-wallName = {'left','right'};
-for w = 1:2
-    xc = Ssel.coreX(w);
-    xr = max(1, xc-wallWin):min(size(Ssel.norm.init,2), xc+wallWin);
-    pI = mean(Ssel.norm.init(:,xr), 1, 'omitnan');
-    pF = mean(Ssel.norm.final(:,xr),1, 'omitnan');
-    pE = mean(Ssel.norm.exp(:,xr),  1, 'omitnan');
-    shifts.(wallName{w}).exp   = profileShift(pI, pE, maxLag);
-    shifts.(wallName{w}).final = profileShift(pI, pF, maxLag);
-    ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
-    plot(ax, xr, gradient(pI), 'k', xr, gradient(pF), 'b', xr, gradient(pE), 'r');
-    xline(ax, xc, 'k:');
-    legend(ax, {'init','final','exp'}, 'Location','best');
-    xlabel(ax,'x [px]'); ylabel(ax,'d(intensity)/dx');
-    title(ax, sprintf('%s wall: shift exp %+.2f px, final %+.2f px', wallName{w}, ...
-        shifts.(wallName{w}).exp, shifts.(wallName{w}).final));
-end
-% vertical shift over the core columns (only meaningful if the image has z features)
-cc = Ssel.coreX(1):Ssel.coreX(2);
-zI = mean(Ssel.norm.init(:,cc),2,'omitnan');
-shifts.z.exp   = profileShift(zI, mean(Ssel.norm.exp(:,cc),2,'omitnan'),   maxLag);
-shifts.z.final = profileShift(zI, mean(Ssel.norm.final(:,cc),2,'omitnan'), maxLag);
+title(tl, sprintf('%s run %02d k %d - new pipeline output', key, jSel, kSel), 'Interpreter','none');
+showImg(nexttile(tl), rhoNormNoCorrNew, 'satImage (rhoNorm, no vacuum corr.)', [0 1]);
+showImg(nexttile(tl), rhoNormNew, 'rhoNorm (vacuum corrected)', [0 1]);
 ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
-plot(ax, gradient(zI), 'k'); plot(ax, gradient(mean(Ssel.norm.exp(:,cc),2,'omitnan')), 'r');
-xlabel(ax,'z [px]'); legend(ax,{'init','exp'});
-title(ax, sprintf('vertical: shift exp %+.2f px, final %+.2f px', shifts.z.exp, shifts.z.final));
-saveFig(fig4, outDir, 'fig4_wallShift');
-fprintf('\nTest E - shift vs init [px]: left wall exp %+.2f final %+.2f | right wall exp %+.2f final %+.2f | z exp %+.2f final %+.2f\n', ...
-    shifts.left.exp, shifts.left.final, shifts.right.exp, shifts.right.final, shifts.z.exp, shifts.z.final);
-fprintf('  Opposite signs at the two walls = the core looks wider/narrower (magnification);\n');
-fprintf('  same sign = sideways shift. Anything above ~0.3 px will show up at the walls.\n');
+histogram(ax, rhoNormNoCorrNew(:), linspace(-0.2,1.2,141), 'EdgeColor','none', 'DisplayName','no corr.');
+histogram(ax, rhoNormNew(:),       linspace(-0.2,1.2,141), 'EdgeColor','none', 'DisplayName','vacuum corr.');
+xlabel(ax,'rhoNorm [-]'); ylabel(ax,'counts'); legend(ax,'Location','best'); title(ax,'histogram');
+colormap(fig2, turbo);
+saveFig(fig2, outDir, 'fig2_rhoNorm_new');
 
-%% FIG 5 - current vs new pipeline, selected projection
-fig5 = figure('Name','Old vs new','Position',[30 30 1700 500]);
+%% FIG 3: old vs new, image + contours and profiles
+
+fig3 = figure('Name','Old vs new','Position',[20 20 1800 800]);
 tl = tiledlayout(1,4,'TileSpacing','compact');
-title(tl, sprintf('Current vs new pipeline, run %02d k %d (conc)', jSel, kSel));
-showImg(nexttile(tl), Osel.conc, sprintf('current: crop %d, gauss %d at end', cropWidth, sigmaOld), [0 1]);
-showImg(nexttile(tl), Ssel.Cs.conc, sprintf('new: median %d, gauss %d before sat, trim %d', medWin, sigmaG, trimPx), [0 1]);
-showImg(nexttile(tl), Ssel.C0.conc, 'new, median only (no gauss, no trim)', [0 1]);
+title(tl, sprintf('%s run %02d k %d - rhoNorm, OLD vs NEW', key, jSel, kSel), 'Interpreter','none');
+
+plotImageContour(nexttile(tl), rhoNormOld, rhoNormOldSmooth, levelsFull, levelMain, ...
+    sprintf('OLD: crop %d, no median, contours gauss %d', cropWidthOld, sigmaOld));
+plotImageContour(nexttile(tl), rhoNormNew, rhoNormNewCont, levelsFull, levelMain, ...
+    sprintf('NEW: median %d, crop %d, gauss %d, trim %d', medWin, cropWidthFull, sigmaNew, pixTrimEdge));
+
+% vertical profile (central 40 % of columns), x axis = z_D
 ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
-plot(ax, mean(Osel.conc(:, centerCols(size(Osel.conc,2))),2,'omitnan'), 'k', 'DisplayName','current');
-plot(ax, mean(Ssel.Cs.conc(:, centerCols(size(Ssel.Cs.conc,2))),2,'omitnan'), 'b', 'LineWidth',1.5, 'DisplayName','new');
-plot(ax, mean(Ssel.C0.conc(:, centerCols(size(Ssel.C0.conc,2))),2,'omitnan'), 'Color',[.6 .6 .6], 'DisplayName','median only');
-xlabel(ax,'z [px]'); ylabel(ax,'C (central 40 % of columns)'); legend(ax,'Location','best'); ylim(ax,[-0.1 1.1]);
-title(ax,'vertical profile');
-colormap(fig5, turbo);
-saveFig(fig5, outDir, 'fig5_oldVsNew');
+pOld = mean(rhoNormOld(:, centerCols(size(rhoNormOld,2))), 2, 'omitnan');
+pNew = mean(rhoNormNew(:, centerCols(size(rhoNormNew,2))), 2, 'omitnan');
+plot(ax, (1:numel(pOld))/numel(pOld), pOld, 'Color',[.6 .6 .6], 'DisplayName','old');
+plot(ax, (1:numel(pNew))/numel(pNew), pNew, 'b', 'LineWidth',1.5, 'DisplayName','new');
+xlabel(ax,'z_D [-]'); ylabel(ax,'rhoNorm (central 40 % of columns)'); ylim(ax,[-0.1 1.1]);
+legend(ax,'Location','best'); title(ax,'vertical profile');
 
-%% SUMMARY TABLE
-rows = {};
-proj = {S0, 'C=0 state', 0; S1, 'C=1 state', 1; Ssel, 'selected', NaN};
-for p = 1:3
-    S = proj{p,1};
-    rows = [rows; metricsRow(proj{p,2}, S, 'median only (sat)',        S.C0.sat,    edgeFrac, proj{p,3})]; %#ok<AGROW>
-    rows = [rows; metricsRow(proj{p,2}, S, 'gauss+trim (sat)',         S.Cs.sat,    edgeFrac, proj{p,3})]; %#ok<AGROW>
-    rows = [rows; metricsRow(proj{p,2}, S, 'gauss+trim, log (sat)',    S.Cs.satLog, edgeFrac, proj{p,3})]; %#ok<AGROW>
-    rows = [rows; metricsRow(proj{p,2}, S, 'gauss+trim (conc)',        S.Cs.conc,   edgeFrac, proj{p,3})]; %#ok<AGROW>
+% horizontal profile (wall channeling): all rows and the front rows of the new image
+ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
+frontRows = pNew >= 0.3 & pNew <= 0.7;
+xOld = (1:size(rhoNormOld,2)) - (crop_xCoords_kFull(1)+pixTrimEdge - crop_xCoords_kOld(1)); % align to new trimmed frame
+plot(ax, xOld, mean(rhoNormOld,1,'omitnan'), 'Color',[.6 .6 .6], 'DisplayName','old, all rows');
+plot(ax, 1:size(rhoNormNew,2), mean(rhoNormNew,1,'omitnan'), 'b', 'LineWidth',1.5, 'DisplayName','new, all rows');
+if any(frontRows)
+    plot(ax, 1:size(rhoNormNew,2), mean(rhoNormNew(frontRows,:),1,'omitnan'), 'r', 'LineWidth',1.5, ...
+        'DisplayName', sprintf('new, front rows (%d)', nnz(frontRows)));
 end
-T = cell2table(rows, 'VariableNames', {'projection','run','k','variant','expected', ...
-    'mean','bias','stdAll','stdCenter','edgeExcessLeft','edgeExcessRight','frontWidth_px','nNaN'});
-disp(T);
-writetable(T, fullfile(outDir, 'summary.csv'));
+xlabel(ax,'x [px] (new trimmed frame)'); ylabel(ax,'rhoNorm (row mean)'); ylim(ax,[-0.1 1.1]);
+legend(ax,'Location','best'); title(ax,'horizontal profile (wall channeling)');
+saveFig(fig3, outDir, 'fig3_old_vs_new');
 
-fprintf(['\nHow to read it:\n' ...
- '  * C=0 / C=1 rows: bias and edgeExcess should be ~0. A wall excess here = ARTIFACT.\n' ...
- '  * stdCenter in the C=0 / C=1 rows = true noise of C (no front in the way).\n' ...
- '  * median only vs gauss+trim: similar edgeExcess -> smoothing is not the cause.\n' ...
- '  * intensity vs log: excess shrinks with log -> Beer-Lambert nonlinearity.\n' ...
- '  * channeling is real only if the selected projection shows a wall excess (fig3, ahead/in front)\n' ...
- '    that the C=0 and C=1 projections do NOT show, at both walls.\n']);
+%% SAVE
 
-% %% SAVE
-% save(fullfile(outDir,'stepByStep.mat'), 'T', 'shifts', 'opt', 'j0','k0','j1','k1', ...
-%     'jSel','kSel', '-v7.3');
-% saveC = @(S) struct('C0sat',single(S.C0.sat),'Cssat',single(S.Cs.sat),'CssatLog',single(S.Cs.satLog), ...
-%     'Csconc',single(S.Cs.conc),'C0Delta',single(S.C0.Delta),'coreX',S.coreX);
-% imgs.sel = saveC(Ssel); imgs.flat0 = saveC(S0); imgs.flat1 = saveC(S1); %#ok<STRNU>
-% save(fullfile(outDir,'stepByStep.mat'), 'imgs', '-append');
-% fprintf('\nDone in %.1f s. Output: %s\n', toc(t0), outDir);
+save(fullfile(outDir,'stepByStep.mat'), 'rhoNormNew','rhoNormNoCorrNew','rhoNormOld', ...
+    'crop_xCoords_kFull','crop_xCoords_kTrim','crop_xCoords_kOld', ...
+    'medWin','sigmaNew','pixTrimEdge','cropWidthFull','cropWidthOld','sigmaOld', ...
+    'iSel','jSel','kSel','-v7.3');
+fprintf('Saved to %s\n', outDir);
 
-%% ======================= local functions =======================
+%% local functions
 
-function S = processProjection(F, expFiles, j, k, P, opt)
-% New pipeline for one projection index k (init/final at k, exp of the given run at k)
-    fl = {'init','final','exp'};
-    files = {F.init, F.final, expFiles};
-    S.k = k;
-    S.j = j;
-    for f = 1:3
-        raw = double(importImages(files{f}, k));
-        S.raw.(fl{f}) = raw;
-        S.nOutlier.(fl{f}) = countOutliers(raw);
-        if opt.medWin > 1
-            med = medfilt2(raw, [opt.medWin opt.medWin], 'symmetric');
-        else
-            med = raw;
-        end
-        S.med.(fl{f})  = med;
-        S.norm.(fl{f}) = double(normImage(med));
-    end
-    % crop window: current method (for reference) and core walls
-    [S.winX, S.pv] = findCropWindow_xAxis(S.norm.init, P.pixDist, P.partsScanned-1, P.cropWidth);
-    S.deltaProf = mean(S.norm.final - S.norm.init, 1, 'omitnan');
-    switch opt.cropMode
-        case 'delta'
-            xw = wallsFromDelta(S.deltaProf, opt.deltaThr, opt.wallMarginPx);
-        case 'window'
-            xw = double(S.winX(:)');
-        otherwise
-            error('cropMode must be ''delta'' or ''window''');
-    end
-    S.coreX = round(xw);
-    cropX = reshape(S.coreX, size(S.winX));
-    for f = 1:3
-        S.crop.(fl{f}) = double(cropImage(S.norm.(fl{f}), cropX, P.cropY));
-    end
-    S.C0 = computeC(S.crop, P, 0, 0);                  % median only, to the wall
-    S.Cs = computeC(S.crop, P, opt.sigma, opt.trim);   % processed
+function plotImageContour(ax, img, imgCont, levelsFull, levelMain, ttl)
+    imagesc(ax, img); axis(ax,'image');
+    colormap(ax, turbo); clim(ax,[0 1]);
+    cb = colorbar(ax); cb.Label.String = 'rhoNorm [-]';
+    hold(ax,'on');
+    contour(ax, imgCont, levelsFull, 'LineColor','k', 'LineWidth',0.8, ...
+        'ShowText',true, 'LabelFormat','%0.1f');
+    contour(ax, imgCont, levelMain, 'LineColor','k', 'LineWidth',2.5);
+    xlabel(ax,'x [px]'); ylabel(ax,'z [px]');
+    title(ax, ttl, 'FontSize',9, 'Interpreter','none');
 end
 
-function C = computeC(Cr, P, sigma, trim)
-    fl = {'init','final','exp'};
-    for f = 1:3
-        I = Cr.(fl{f});
-        if sigma > 0, I = imgaussfilt(I, sigma, 'Padding','replicate'); end
-        if trim  > 0, I = I(:, trim+1:end-trim); end
-        X.(fl{f}) = I;
-    end
-    L = @(x) log(max(x, 1e-6));
-    C.trim   = trim;
-    C.Delta  = X.final - X.init;
-    C.sat    = double(satImage(X.exp, X.init, X.final));
-    C.satLog = (L(X.init) - L(X.exp)) ./ (L(X.init) - L(X.final));   % Beer-Lambert version
-    C.rho    = double(rhoNorm_wVacRef(single(C.sat), P.F1, P.F2, P.T, P.P));
-    C.conc   = double(P.interpFcn(C.rho));
+function showImg(ax, img, ttl, cl)
+    imagesc(ax, img); axis(ax,'image'); colorbar(ax);
+    if ~isempty(cl), clim(ax, cl); end
+    title(ax, ttl, 'FontSize',8, 'Interpreter','none');
 end
 
-function O = oldPipeline(R, P, sigmaOld)
-% Current pipeline: normImage(raw) -> findCropWindow (fixed width) -> satImage
-%                   -> rhoNorm -> REFPROP -> Gaussian at the end
-    fl = {'init','final','exp'};
-    for f = 1:3, N.(fl{f}) = double(normImage(R.(fl{f}))); end
-    winX = findCropWindow_xAxis(N.init, P.pixDist, P.partsScanned-1, P.cropWidth);
-    for f = 1:3, X.(fl{f}) = double(cropImage(N.(fl{f}), winX, P.cropY)); end
-    sat    = double(satImage(X.exp, X.init, X.final));
-    rho    = double(rhoNorm_wVacRef(single(sat), P.F1, P.F2, P.T, P.P));
-    O.conc = imgaussfilt(double(P.interpFcn(rho)), sigmaOld);
-end
-
-function x = wallsFromDelta(p, thr, margin)
-% Core walls from the Xe-He contrast: only the gas-filled core changes between
-% the two references, so the column-mean of (final - init) is ~0 outside it.
-    p = smoothdata(p(:)', 'movmedian', 15);
-    [~, im] = max(abs(p));
-    p = p * sign(p(im));
-    [pk, ic] = max(p);
-    lo = thr * pk;
-    xL = find(p(1:ic) < lo, 1, 'last');
-    xR = find(p(ic:end) < lo, 1, 'first');
-    if isempty(xL), xL = 1; else, xL = xL + 1; end
-    if isempty(xR), xR = numel(p); else, xR = ic + xR - 2; end
-    x = [xL + margin, xR - margin];
-end
-
-function [g0, g1, how] = guessFlat(cfg, iSel, key, nRuns, expTif)
-% C=0: projection with the lowest mean of inlet/mid/outlet C; C=1: the highest.
-% Uses the processed .mat from the current pipeline if it exists.
-    g0 = [1 1];
-    g1 = [nRuns numel(expTif(nRuns))];
-    how = 'fallback: first projection of run 1 / last projection of last run';
-    try
-        matFile = fullfile(cfg.exportPath{iSel}, key + ".mat");
-        if ~isfile(matFile), return; end
-        M = load(matFile, 'expCTDataSave');
-        ds = 'conc';
-        if ismember('dataSource', cfg.Properties.VariableNames), ds = cfg.dataSource{iSel}; end
-        best0 = Inf; best1 = -Inf;
-        for j = 1:nRuns
-            v = M.expCTDataSave.exp.(sprintf('run_%02d', j)).vars.(ds);
-            m = ([v.CD1_zD0p0] + [v.CD1_zD0p5] + [v.CD1_zD1p0]) / 3;
-            [mn, kn] = min(m);  [mx, kx] = max(m);
-            if mn < best0, best0 = mn; g0 = [j kn]; end
-            if mx > best1, best1 = mx; g1 = [j kx]; end
-        end
-        how = sprintf('from %s.mat, mean C = %.3f / %.3f', key, best0, best1);
-    catch ME
-        warning('Flat-state guess from .mat failed (%s); using fallback.', ME.message);
-    end
-end
-
-function d = listSubdirs(p)
-    d = dir(p);
-    d = d([d.isdir] & ~startsWith({d.name},'.'));
+function cmap = redblue(m)
+% diverging blue-white-red colormap (no toolbox needed)
+    if nargin < 1, m = 256; end
+    h = floor(m/2);
+    up   = linspace(0,1,h)';
+    down = linspace(1,0,m-h)';
+    cmap = [[up; ones(m-h,1)], [up; down], [ones(h,1); down]];
 end
 
 function n = countOutliers(img)
@@ -528,90 +293,6 @@ end
 
 function c = centerCols(nx)
     c = max(1,round(0.3*nx)):round(0.7*nx);
-end
-
-function prof = colProfile(img, rows)
-    img = img(rows, :);
-    img(~isfinite(img)) = NaN;
-    img = min(max(img, -1), 2);          % keep near-wall blow-ups from dominating the mean
-    prof = mean(img, 1, 'omitnan');
-end
-
-function r = metricsRow(label, S, variant, img, edgeFrac, expected)
-    nx  = size(img,2);
-    ctr = centerCols(nx);
-    eb  = max(3, round(edgeFrac*nx));
-    cp  = colProfile(img, true(size(img,1),1));
-    v   = img(isfinite(img));
-    vc  = img(:, ctr); vc = vc(isfinite(vc));
-    fw  = NaN;
-    if isnan(expected), fw = frontWidth(mean(img(:,ctr),2,'omitnan')); end
-    r = {label, S.j, S.k, variant, expected, mean(v), mean(v) - expected, std(v), std(vc), ...
-         mean(cp(1:eb),'omitnan') - mean(cp(ctr),'omitnan'), ...
-         mean(cp(end-eb+1:end),'omitnan') - mean(cp(ctr),'omitnan'), fw, nnz(isnan(img))};
-end
-
-function plotColProfiles(ax, S, rows, expected, ttl)
-    if ~any(rows)
-        title(ax, [ttl ' - no rows']); axis(ax,'off'); return
-    end
-    c0 = colProfile(S.C0.sat, rows);
-    cs = colProfile(S.Cs.sat, rows);
-    cl = colProfile(S.Cs.satLog, rows);
-    d  = mean(S.C0.Delta(rows,:), 1, 'omitnan');  d = d / max(d);
-    x0 = 1:numel(c0);
-    xs = S.Cs.trim + (1:numel(cs));
-    yyaxis(ax,'left'); hold(ax,'on'); grid(ax,'on');
-    plot(ax, x0, c0, '-', 'Color',[.6 .6 .6]);
-    plot(ax, xs, cs, 'b-', 'LineWidth',1.5);
-    plot(ax, xs, cl, 'r--', 'LineWidth',1.2);
-    if ~isempty(expected), yline(ax, expected, 'k-'); end
-    xline(ax, [S.Cs.trim, numel(c0)-S.Cs.trim], 'k--');
-    ylim(ax, [-0.3 1.3]); ylabel(ax, 'C (column mean)');
-    yyaxis(ax,'right');
-    plot(ax, x0, d, 'k:', 'LineWidth',1.2); ylim(ax,[0 1.1]); ylabel(ax,'\Delta / max');
-    xlabel(ax,'x from left core wall [px]');
-    title(ax, ttl, 'FontSize', 8, 'Interpreter','none');
-end
-
-function dx = profileShift(a, b, maxLag)
-% sub-pixel shift of b relative to a, from the correlation of their gradients
-    ga = gradient(a(:));  gb = gradient(b(:));
-    n = numel(ga);
-    lags = -maxLag:maxLag;
-    cc = nan(size(lags));
-    for t = 1:numel(lags)
-        L  = lags(t);
-        ia = max(1, 1-L):min(n, n-L);
-        x = ga(ia) - mean(ga(ia));  y = gb(ia+L) - mean(gb(ia+L));
-        cc(t) = sum(x.*y) / sqrt(sum(x.^2) * sum(y.^2));
-    end
-    [~, im] = max(cc);
-    dx = lags(im);
-    if im > 1 && im < numel(lags)
-        y1 = cc(im-1); y2 = cc(im); y3 = cc(im+1);
-        dx = dx + 0.5*(y1 - y3)/(y1 - 2*y2 + y3);
-    end
-end
-
-function w = frontWidth(prof)
-% distance [px] between C = 0.9 and C = 0.1 on a column-averaged profile
-    w = NaN;
-    prof = prof(:);
-    if mean(prof(1:10),'omitnan') < mean(prof(end-9:end),'omitnan')
-        prof = flipud(prof);
-    end
-    z90 = find(prof < 0.9, 1, 'first');
-    z10 = find(prof < 0.1, 1, 'first');
-    if ~isempty(z90) && ~isempty(z10) && z10 > z90
-        w = z10 - z90;
-    end
-end
-
-function showImg(ax, img, ttl, cl)
-    imagesc(ax, img); axis(ax,'image'); colorbar(ax);
-    if ~isempty(cl), clim(ax, cl); end
-    title(ax, ttl, 'FontSize', 8, 'Interpreter','none');
 end
 
 function saveFig(fig, outDir, name)
