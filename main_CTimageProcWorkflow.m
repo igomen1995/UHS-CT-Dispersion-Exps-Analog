@@ -39,7 +39,7 @@ labelContours = true;   % numbers on the thin contours
 % Figure layout, in pixels (same approach as main_CTimaging: fixed axes positions)
 imgWpx       = 200;     % width of each image axes
 imgHpx       = 500;     % height of each image axes
-cbGapPx      = 6;       % gap image -> colour bar
+cbGapPx      = 18;      % gap image -> colour bar
 cbWpx        = 12;      % colour-bar width
 cbLabelPx    = 48;      % room for colour-bar ticks + label
 hGapPx       = 22;      % extra gap before the next panel
@@ -57,7 +57,7 @@ showInfo     = true;    % t_D and angle in the figure title (needs <Key>.mat)
 
 iSel = 1;          % experiment row in inputCTExpConfig.xlsx
 jSel = 1;          % run
-kSel = 100;        % projection
+kSel = 91;        % projection
 
 %% IMPORT folders and metadata
 
@@ -153,24 +153,24 @@ if showInfo
 end
 
 normImgs   = {refInitCropped, refFinalCropped, expCropped};
-normTitles = {'(a) Xe reference', '(b) He reference', '(c) Experiment'};
+normTitles = {'(A) Xe reference', '(B) He reference', '(B) Experiment'};
 for p = 1:3
     ax = axes(fig, 'Units','pixels', 'Position', axPos(p));
     imagesc(ax, xAx, zAx, normImgs{p});
     styleAxes(ax, normTitles{p}, xLab, zLab, p == 1, fontName, fontSize);
     colormap(ax, gray); clim(ax, climNorm);
-    addColorbar(ax, 'CT normalized [-]', fontName, fontSize, cbGapPx, cbWpx);
+    addColorbar(ax, 'CT normalized [-]', fontName, fontSize, cbGapPx, cbWpx, '%.2f');
 end
 
 ax = axes(fig, 'Units','pixels', 'Position', axPos(4));
 plotImageContours(ax, xAx, zAx, rhoNorm, rhoNormSmooth, levelsFull, labelContours, fontSize);
-styleAxes(ax, '(d) \rho_{norm}', xLab, zLab, false, fontName, fontSize);
-addColorbar(ax, '\rho_{norm} [-]', fontName, fontSize, cbGapPx, cbWpx);
+styleAxes(ax, '(D) \rho_{norm}', xLab, zLab, false, fontName, fontSize);
+addColorbar(ax, '\rho_{norm} [-]', fontName, fontSize, cbGapPx, cbWpx, '%.1f');
 
 ax = axes(fig, 'Units','pixels', 'Position', axPos(5));
 plotImageContours(ax, xAx, zAx, Cmolar, CmolarSmooth, levelsFull, labelContours, fontSize);
-styleAxes(ax, '(e) C_{molar}', xLab, zLab, false, fontName, fontSize);
-addColorbar(ax, 'C_{molar} [-]', fontName, fontSize, cbGapPx, cbWpx);
+styleAxes(ax, '(E) C_{molar}', xLab, zLab, false, fontName, fontSize);
+addColorbar(ax, 'C_{molar} [-]', fontName, fontSize, cbGapPx, cbWpx, '%.1f');
 
 %% EXPORT
 
@@ -200,7 +200,7 @@ function plotImageContours(ax, xAx, zAx, img, imgCont, levelsFull, labelContours
     hold(ax, 'off');
 end
 
-function addColorbar(ax, lbl, fontName, fontSize, cbGapPx, cbWpx)
+function addColorbar(ax, lbl, fontName, fontSize, cbGapPx, cbWpx, tickFmt)
 % colour bar pinned next to the image; the image axes keeps its exact size
     pos = ax.Position;                       % pixels
     cb = colorbar(ax);
@@ -209,7 +209,7 @@ function addColorbar(ax, lbl, fontName, fontSize, cbGapPx, cbWpx)
     cb.Position = [pos(1)+pos(3)+cbGapPx, pos(2), cbWpx, pos(4)];
     cb.Label.String = lbl;
     cb.FontName = fontName; cb.FontSize = fontSize; cb.TickDirection = 'out';
-    cb.Ruler.TickLabelFormat = '%.2f';    % 0.xx, never 0.xxx
+    cb.Ruler.TickLabelFormat = tickFmt;   % '%.2f' for CT normalized, '%.1f' for rhoNorm / C_molar
 end
 
 function styleAxes(ax, ttl, xLab, zLab, showZ, fontName, fontSize)
