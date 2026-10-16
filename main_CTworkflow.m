@@ -14,7 +14,9 @@ inputFileConfig = readtable(inputFileConfigName);
 % Crop parameters (shared by the plot and processing sections)
 pixDist      = 70;
 partsScanned = 5;      % air, core holder, water, sleeve, core
-cropWidth    = 1400;
+cropWidthFull    = 1450;
+pixTrimEdge = 25;
+cropWidth    = cropWidthFull - 2*pixTrimEdge;
 
 nExp = height(inputFileConfig);
 
@@ -115,72 +117,69 @@ for i = 1:iSel%nExp
         DimY = expCTData.(filedataExp.Key).refInit.pca.Image.DimY;  
         crop_yCoords = [1;DimY]; 
 
-        % HDF5created = false; % flag
-        % HDF5dataPath = ['/exp/' char(run_name) '/conc'];  % structured path
-        
-        % % Uncomment to see intanstaneous movie
-        % fig = figure('Color','w','Position',[50 50 700 800]);
-        % ax  = axes(fig);
-        % v = VideoWriter(fullfile(pathExportAll, "conc_" + filedataExp.Key(i) + "_" + run_name), 'MPEG-4');
-        % v.FrameRate = 20;
-        % open(v);
         for k = kSel%1:nn_exp
             % Collect each image and save it in HDF5 one by one
 
             % refInit
             % Raw, normalized and cropped CT images
             refInitrawImage = importImages(refInitimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
-            refInitrawImage = normImage(refInitrawImage);
+            % apply median to reduce hot and dead pixels in raw images (no
+            % cropped)
+            refInitrawImage_median = medfilt2(refInitrawImage, [3 3], 'symmetric');
+            refInitrawImage_median_norm = normImage(refInitrawImage_median);
             
             % Per-projection crop window, centered on the core as it
             % appears at THIS rotation angle; refInit/refFinal share the
             % same angle index k, so the same window applies to all three
-            [crop_xCoords_k, pv_sort_parts_k] = findCropWindow_xAxis(refInitrawImage, pixDist, partsScanned-1, cropWidth);
+            % here put the full width of the core 
+            [crop_xCoords_kFull, pv_sort_parts_kFull] = findCropWindow_xAxis(refInitrawImage_median_norm, pixDist, partsScanned-1, cropWidthFull);
+            [crop_xCoords_k, pv_sort_parts_k] = findCropWindow_xAxis(refInitrawImage_median_norm, pixDist, partsScanned-1, cropWidth);
+            refInitcroppedCoreFullImage = cropImage(refInitrawImage_median_norm,crop_xCoords_kFull, pv_sort_parts_kFull);
+            % gaussian filter to full core
+            refInitcroppedCoreFullImage_smooth = imgaussfilt(refInitcroppedCoreFullImage, 5);
+            % crop smoothed
+            refInitcroppedCoreFullImage_smooth_cropped = cropImage(refInitcroppedCoreFullImage_smooth,crop_xCoords_k, pv_sort_parts_k); % minImage
+
             fprintf('  k=%d: crop_xCoords_k = [%d %d]\n', k, crop_xCoords_k(1), crop_xCoords_k(2));
             fprintf(fidCrop, '%d\t%d\t%d\t%d\n', j, k, crop_xCoords_k(1), crop_xCoords_k(2));
-
-            refInitcroppedImage = cropImage(refInitrawImage,crop_xCoords_k, crop_yCoords); % minImage
             
             % refFinal
             % Raw, normalized and cropped CT images
             refFinalrawImage = importImages(refFinalimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
-            refFinalrawImage = normImage(refFinalrawImage);
-            refFinalcroppedImage = cropImage(refFinalrawImage,crop_xCoords_k, crop_yCoords); % maxImage
+            % median
+            refFinalrawImage_median = medfilt2(refFinalrawImage, [3 3], 'symmetric');
+            % norm
+            refFinalrawImage_median_norm = normImage(refFinalrawImage_median);
+            % crop full
+            refFinalcroppedFullImage = cropImage(refFinalrawImage_median_norm,crop_xCoords_kFull, pv_sort_parts_kFull); 
+            % smooth
+            refFinalcroppedFullImage_smooth = imgaussfilt(refFinalcroppedFullImage, 5);
+            % crop
+            refFinalcroppedFullImage_smooth_cropped = cropImage(refFinalcroppedFullImage_smooth,crop_xCoords_k, pv_sort_parts_k); % maxImage
 
             % exp run k
             % Raw, normalized and cropped CT images
             exprawImage = importImages(expimgFiles,k);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
-            exprawImage = normImage(exprawImage);
-            expcroppedImage = cropImage(exprawImage,crop_xCoords_k, crop_yCoords);
-            concImage = satImage(expcroppedImage,refInitcroppedImage,refFinalcroppedImage); % arguments (exp, min,max)
+            % median
+            exprawImage_median = medfilt2(exprawImage, [3 3], 'symmetric');
+            % norm
+            exprawImage_median_norm = normImage(exprawImage_median);
+            % crop full
+            expcroppedFullImage = cropImage(exprawImage_median_norm,crop_xCoords_kFull, crop_yCoordsFull);
+            % smooth
+            expcroppedFullImage_smooth = imgaussfilt(expcroppedFullImage, 5);
+            % crop
+            expcroppedFullImage_smooth_cropped = cropImage(expcroppedFullImage_smooth,crop_xCoords_k, crop_yCoords);
             
-            % % Uncomment to see intanstaneous movie
-            % cla(ax)
-            % imagesc(ax, concImage)            % columns -> x pixel, rows -> y pixel
-            % axis(ax, 'image')
-            % colormap(ax, turbo)
-            % clim(ax, [0 1])
-            % colorbar(ax)
-            % xlabel(ax, 'x (pixel)')
-            % ylabel(ax, 'y (pixel)')
-            % title(ax, sprintf('%s %s  image %03d', filedataExp.Key(i), run_name, k), 'Interpreter','none')
-            % drawnow
-            % writeVideo(v, getframe(fig));
+            % concentration image
+            rhoNormImageNoCorr = satImage(expcroppedImage,refInitcroppedImage,refFinalcroppedImage); % arguments (exp, min,max)
 
-            % % HDF5 params
-            % [nx, ny] = size(concImage);
-            % 
-            % if ~HDF5created 
-            %     h5create(HDF5filename, HDF5dataPath, [nx ny nn_exp], ...
-            %         'Datatype', 'single', ...
-            %         'ChunkSize', [nx ny 1], ...
-            %         'Deflate', 5);
-            %     HDF5created = true;
-            % end
-            % 
-            % h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);       
+            rhoNormImage = rhoNorm_wVacRef(rhoNormImageNoCorr,filedataExp.Fluid1, ...
+                filedataExp.Fluid2, filedataExp.T, filedataExp.P);
+
+            interpFcn(rhoNormImage);
+
         end
-        % close(v)
     end
     fclose(fidCrop);
 end
