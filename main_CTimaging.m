@@ -280,7 +280,7 @@ for i = 1:nExp
             else
                 plotImage = rhoNormImage;
             end
-            imgSmooth = imgaussfilt(plotImage, 20);
+            % imgSmooth = imgaussfilt(plotImage, 20);
             resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
             resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
             xcm = (1:ny)*resXmm/10;
@@ -652,11 +652,11 @@ for i = 1:nExp
 
     cmap = flipud(winter(256));
     varsAll = expCTData.(filedataExp.Key).varsAll.(dataSource);
-    varsAll = varsAll(varsAll.tDtotal < 1,:);
+    varsAll = varsAll(varsAll.tDtotal < tDmax,:);
 
     tDAll = varsAll.tDtotal;
     tDminContours = 0;
-    tDmaxContours = 1;
+    tDmaxContours = tDmax;
     levels = [0.5 0.5];
     levelsFull = 0:0.1:1;
 
@@ -675,7 +675,7 @@ for i = 1:nExp
 
         varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
         tDRun = [varsRun.tDtotal];
-        varsRun = varsRun(tDRun < 1);
+        varsRun = varsRun(tDRun < tDmax);
         tDstep = 0.1;
         tDtargets = min([varsRun.tDtotal]):tDstep:max([varsRun.tDtotal]);
         kPlot = zeros(length(tDtargets),1);
@@ -1292,11 +1292,11 @@ for i = 1:nExp
     
     cmap = flipud(winter(256));
     varsAll = expCTData.(filedataExp.Key).varsAll.(dataSource);
-    varsAll = varsAll(varsAll.tDtotal < 1,:);
+    varsAll = varsAll(varsAll.tDtotal < tDmax,:);
     
     tDAll = varsAll.tDtotal;
     tDminContours = 0;
-    tDmaxContours = 1;
+    tDmaxContours = tDmax;
     levels = [0.5 0.5];   % contour level, reused for both ax1 and ax2
     levelsFull = 0:0.1:1;  
     
@@ -1316,7 +1316,7 @@ for i = 1:nExp
     
         varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
         tDRun = [varsRun.tDtotal];
-        varsRun = varsRun(tDRun < 1);
+        varsRun = varsRun(tDRun < tDmax);
         tDstep = 0.1;
         tDtargets = min([varsRun.tDtotal]):tDstep:max([varsRun.tDtotal]);
         kPlot = zeros(length(tDtargets),1);
@@ -1491,7 +1491,7 @@ for i = 1:nExp
     ax4.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax4, 'ax4');
 end
 
-% local functions
+%% local functions
 
 function alignAxesColorbar(ax, cb, axPos, cbGap, cbWidth, side)
     if nargin < 6
