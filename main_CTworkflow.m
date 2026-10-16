@@ -6,12 +6,15 @@
 % OLD: raw -> normImage -> crop (cropWidthOld) -> satImage -> rhoNorm_wVacRef
 %          (+ imgaussfilt(sigmaOld) only to draw the contours, as in main_CTimaging)
 %
-% REFPROP (conc) is left to the downstream scripts (dataSource rhoNorm / conc).
+% REFPROP (conc) is left to the downstream scripts; here it is computed only for
+% the old-vs-new comparison in fig4.
 %
 % Outputs in <exportPath>/stepByStep_<Key>_run_jj_kkkk/
-%   fig1_steps.png         raw / median / norm + crop / cropped / smoothed + trimmed (3 images)
+%   fig1a_steps_new.png    NEW: raw / median / norm + crop / cropped / smoothed + trimmed, satImage, rhoNorm
+%   fig1b_steps_old.png    OLD: same panels (steps not applied are marked)
 %   fig2_rhoNorm_new.png   satImage and rhoNorm of the new pipeline
 %   fig3_old_vs_new.png    image + contours old vs new, vertical and horizontal profiles
+%   fig4_final_old_vs_new.png  rhoNorm (vac. corr.) and REFPROP conc, old vs new, with profiles
 %   stepByStep.mat         intermediate images and crop coordinates
 %
 % Wall channeling check: run this script with kSel at a projection BEFORE the
@@ -159,45 +162,58 @@ else
     rhoNormNewCont = rhoNormNew;
 end
 
-%% FIG 1: steps for the three images
+%% FIG 1a / 1b: step panels for NEW and OLD pipelines
+% Rows 1-3: refInit, refFinal, exp. Rows 4-5 (last column): satImage without
+% and with vacuum correction. Colour limits per image (0.5-99.5 percentiles).
 
-fig1 = figure('Name','Steps','Position',[20 20 1800 1000]);
-tl = tiledlayout(3,5,'TileSpacing','compact');
-title(tl, sprintf('%s run %02d k %d - new pipeline steps', key, jSel, kSel), 'Interpreter','none');
+satStats = @(x) sprintf('mean %.3f | <0: %.1f%% | >1: %.1f%%', mean(x(:),'omitnan'), ...
+    100*mean(x(:)<0), 100*mean(x(:)>1));
+
+% ---- NEW
+colTitlesNew = {'raw', sprintf('removed by median %dx%d', medWin, medWin), ...
+    'normalized | red = full core, white = trim', 'cropped full core', ...
+    sprintf('gauss %d + trim %d', sigmaNew, pixTrimEdge)};
+colModes = {'seq','div','seq','seq','seq'};
+cbLabels = {'intensity [counts]','raw - median [counts]','I / I_{air} [-]','I / I_{air} [-]','I / I_{air} [-]'};
+imgsNew = cell(3,5); ovNew = cell(3,5);
 for n = 1:3
-    % raw
-    ax = nexttile(tl);
-    showImg(ax, raw.(names{n}), [labels{n} ' | raw'], []);
-    colormap(ax, turbo); ylabel(colorbar(ax), 'intensity [counts]');
-
-    % what the median removed (symmetric limits, blue = removed bright, red = removed dark)
-    ax = nexttile(tl);
-    dMed = raw.(names{n}) - med.(names{n});
-    lim  = max(prctile(abs(dMed(:)), 99.9), eps);
-    showImg(ax, dMed, sprintf('removed by median %dx%d', medWin, medWin), [-lim lim]);
-    colormap(ax, redblue(256)); ylabel(colorbar(ax), 'raw - median [counts]');
-
-    % normalized with crop and trim lines
-    ax = nexttile(tl);
-    showImg(ax, nrm.(names{n}), 'normalized | red = full core, white = trim', [0 1]);
-    colormap(ax, turbo); ylabel(colorbar(ax), 'I / I_{air} [-]');
-    hold(ax,'on');
-    xline(ax, crop_xCoords_kFull, 'r', 'LineWidth',1.2);
-    xline(ax, crop_xCoords_kTrim, 'w--', 'LineWidth',1.2);
-
-    % cropped full core
-    ax = nexttile(tl);
-    showImg(ax, cropFull.(names{n}), sprintf('cropped full core (%d px)', size(cropFull.(names{n}),2)), [0 1]);
-    colormap(ax, turbo); ylabel(colorbar(ax), 'I / I_{air} [-]');
-    hold(ax,'on'); xline(ax, [pixTrimEdge, size(cropFull.(names{n}),2)-pixTrimEdge], 'w--', 'LineWidth',1.2);
-
-    % smoothed + trimmed
-    ax = nexttile(tl);
-    showImg(ax, trimmed.(names{n}), sprintf('gauss %d + trim %d (%d px)', sigmaNew, pixTrimEdge, ...
-        size(trimmed.(names{n}),2)), [0 1]);
-    colormap(ax, turbo); ylabel(colorbar(ax), 'I / I_{air} [-]');
+    imgsNew(n,:) = {raw.(names{n}), raw.(names{n}) - med.(names{n}), nrm.(names{n}), ...
+        cropFull.(names{n}), trimmed.(names{n})};
+    ovNew{n,3} = [struct('x',crop_xCoords_kFull(:)','spec','r'), struct('x',crop_xCoords_kTrim(:)','spec','w--')];
+    ovNew{n,4} = struct('x',[pixTrimEdge, size(cropFull.(names{n}),2)-pixTrimEdge],'spec','w--');
 end
-saveFig(fig1, outDir, 'fig1_steps');
+notesNew = repmat({''},1,5);
+txtNoCorrNew = {'\bfsatImage (no vacuum correction)\rm', ...
+    'rhoNorm_{noCorr} = (exp - refInit) / (refFinal - refInit)', ...
+    'from the smoothed + trimmed images of column 5', satStats(rhoNormNoCorrNew)};
+txtCorrNew = {'\bfrhoNorm\_wVacRef (vacuum corrected)\rm', ...
+    'rhoNorm = rhoNorm\_wVacRef(rhoNorm_{noCorr}, Fluid1, Fluid2, T, P)', ...
+    'reference changed from He (refFinal) to vacuum', satStats(rhoNormNew)};
+fig1a = plotStepFigure(sprintf('%s run %02d k %d - NEW pipeline steps', key, jSel, kSel), ...
+    labels, colTitlesNew, colModes, cbLabels, imgsNew, ovNew, notesNew, ...
+    rhoNormNoCorrNew, rhoNormNew, txtNoCorrNew, txtCorrNew);
+saveFig(fig1a, outDir, 'fig1a_steps_new');
+
+% ---- OLD
+colTitlesOld = {'raw', 'median', 'normalized | red = crop', ...
+    sprintf('cropped (%d px)', cropWidthOld), 'smoothing + trim'};
+imgsOld = cell(3,5); ovOld = cell(3,5);
+for n = 1:3
+    imgsOld(n,:) = {raw.(names{n}), [], nrmOld.(names{n}), cropOld.(names{n}), []};
+    ovOld{n,3} = struct('x',crop_xCoords_kOld(:)','spec','r');
+end
+notesOld = {'', 'not applied in the old pipeline', '', '', ...
+    sprintf('none before satImage\n(gauss %d applied only to draw contours)', sigmaOld)};
+txtNoCorrOld = {'\bfsatImage (no vacuum correction)\rm', ...
+    'rhoNorm_{noCorr} = (exp - refInit) / (refFinal - refInit)', ...
+    'from the cropped images of column 4 (no median, no smoothing)', satStats(rhoNormNoCorrOld)};
+txtCorrOld = {'\bfrhoNorm\_wVacRef (vacuum corrected)\rm', ...
+    'rhoNorm = rhoNorm\_wVacRef(rhoNorm_{noCorr}, Fluid1, Fluid2, T, P)', ...
+    'reference changed from He (refFinal) to vacuum', satStats(rhoNormOld)};
+fig1b = plotStepFigure(sprintf('%s run %02d k %d - OLD pipeline steps', key, jSel, kSel), ...
+    labels, colTitlesOld, colModes, cbLabels, imgsOld, ovOld, notesOld, ...
+    rhoNormNoCorrOld, rhoNormOld, txtNoCorrOld, txtCorrOld);
+saveFig(fig1b, outDir, 'fig1b_steps_old');
 
 %% FIG 2: satImage and rhoNorm (new)
 
@@ -247,9 +263,54 @@ xlabel(ax,'x [px] (new trimmed frame)'); ylabel(ax,'rhoNorm (row mean)'); ylim(a
 legend(ax,'Location','best'); title(ax,'horizontal profile (wall channeling)');
 saveFig(fig3, outDir, 'fig3_old_vs_new');
 
+%% FIG 4: final result OLD vs NEW - rhoNorm (vacuum corr.) and REFPROP conc
+
+interpFcn = buildInterpolant(filedataExp.Fluid1, filedataExp.Fluid2, filedataExp.T, filedataExp.P);
+concOld = double(interpFcn(rhoNormOld));
+concNew = double(interpFcn(rhoNormNew));
+fprintf('  conc OLD: mean %.3f | NaN %d   conc NEW: mean %.3f | NaN %d\n', ...
+    mean(concOld(:),'omitnan'), nnz(isnan(concOld)), mean(concNew(:),'omitnan'), nnz(isnan(concNew)));
+
+% x in full-frame pixels, so old and new crops line up
+xGlobOld = crop_xCoords_kOld(1)  + (0:size(rhoNormOld,2)-1);
+xGlobNew = crop_xCoords_kTrim(1) + (0:size(rhoNormNew,2)-1);
+cOld = [0.55 0.55 0.55];  cNew = [0 0.35 0.8];
+
+fig4 = figure('Name','Final old vs new','Position',[20 20 1800 1100]);
+tl = tiledlayout(2,4,'TileSpacing','compact');
+title(tl, sprintf('%s run %02d k %d - final result OLD vs NEW (same colour limits [0 1])', key, jSel, kSel), ...
+    'Interpreter','none');
+
+Q = {rhoNormOld, rhoNormNew, 'rhoNorm (vacuum corr.)', 'rhoNorm [-]'; ...
+     concOld,    concNew,    'conc (REFPROP from rhoNorm corr.)', 'molar fraction [-]'};
+for q = 1:2
+    ax = nexttile(tl);
+    showImg(ax, Q{q,1}, ['OLD | ' Q{q,3}], [0 1]); colormap(ax, turbo); ylabel(colorbar(ax), Q{q,4});
+    ax = nexttile(tl);
+    showImg(ax, Q{q,2}, ['NEW | ' Q{q,3}], [0 1]); colormap(ax, turbo); ylabel(colorbar(ax), Q{q,4});
+
+    % vertical profile, central 40 % of columns
+    ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
+    vO = mean(Q{q,1}(:, centerCols(size(Q{q,1},2))), 2, 'omitnan');
+    vN = mean(Q{q,2}(:, centerCols(size(Q{q,2},2))), 2, 'omitnan');
+    plot(ax, (1:numel(vO))/numel(vO), vO, 'Color',cOld, 'DisplayName','old');
+    plot(ax, (1:numel(vN))/numel(vN), vN, 'Color',cNew, 'LineWidth',1.5, 'DisplayName','new');
+    xlabel(ax,'z_D [-]'); ylabel(ax, Q{q,4}); ylim(ax,[-0.1 1.1]);
+    legend(ax,'Location','best'); title(ax, ['vertical profile | ' Q{q,3}], 'FontSize',9);
+
+    % horizontal profile, all rows
+    ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
+    plot(ax, xGlobOld, mean(Q{q,1},1,'omitnan'), 'Color',cOld, 'DisplayName','old');
+    plot(ax, xGlobNew, mean(Q{q,2},1,'omitnan'), 'Color',cNew, 'LineWidth',1.5, 'DisplayName','new');
+    xlabel(ax,'x [px, full frame]'); ylabel(ax, Q{q,4}); ylim(ax,[-0.1 1.1]);
+    legend(ax,'Location','best'); title(ax, ['horizontal profile | ' Q{q,3}], 'FontSize',9);
+end
+saveFig(fig4, outDir, 'fig4_final_old_vs_new');
+
 %% SAVE
 
-save(fullfile(outDir,'stepByStep.mat'), 'rhoNormNew','rhoNormNoCorrNew','rhoNormOld', ...
+save(fullfile(outDir,'stepByStep.mat'), 'rhoNormNew','rhoNormNoCorrNew','rhoNormOld','rhoNormNoCorrOld', ...
+    'concNew','concOld', ...
     'crop_xCoords_kFull','crop_xCoords_kTrim','crop_xCoords_kOld', ...
     'medWin','sigmaNew','pixTrimEdge','cropWidthFull','cropWidthOld','sigmaOld', ...
     'iSel','jSel','kSel','-v7.3');
@@ -264,15 +325,79 @@ function plotImageContour(ax, img, imgCont, levelsFull, levelMain, ttl)
     hold(ax,'on');
     contour(ax, imgCont, levelsFull, 'LineColor','k', 'LineWidth',0.8, ...
         'ShowText',true, 'LabelFormat','%0.1f');
-    contour(ax, imgCont, levelMain, 'LineColor','k', 'LineWidth',2.5);
+    % contour(ax, imgCont, levelMain, 'LineColor','k', 'LineWidth',2.5);
     xlabel(ax,'x [px]'); ylabel(ax,'z [px]');
     title(ax, ttl, 'FontSize',9, 'Interpreter','none');
+end
+
+function fig = plotStepFigure(figTitle, rowLabels, colTitles, colModes, cbLabels, ...
+        imgs, overlays, notes, satNoCorr, satCorr, txtNoCorr, txtCorr)
+% 5 x nCols panel figure: rows 1-3 = refInit / refFinal / exp through the steps,
+% rows 4-5 (last column) = satImage without / with vacuum correction.
+% Empty image -> the tile shows notes{c} ("not applied ...").
+    nCols = numel(colTitles);
+    fig = figure('Name',figTitle,'Position',[20 20 1800 1600]);
+    tl = tiledlayout(5, nCols, 'TileSpacing','compact');
+    title(tl, figTitle, 'Interpreter','none');
+    tileIdx = @(r,c) (r-1)*nCols + c;
+
+    for r = 1:3
+        for c = 1:nCols
+            ax = nexttile(tl, tileIdx(r,c));
+            img = imgs{r,c};
+            ttl = colTitles{c};
+            if c == 1, ttl = [rowLabels{r} ' | ' ttl]; end
+            if isempty(img)
+                axis(ax,'off');
+                text(ax, 0.5, 0.5, notes{c}, 'HorizontalAlignment','center', ...
+                    'FontSize',9, 'Color',[0.4 0.4 0.4], 'Interpreter','none');
+                title(ax, ttl, 'FontSize',8, 'Interpreter','none');
+                continue
+            end
+            ttl = sprintf('%s (%dx%d)', ttl, size(img,1), size(img,2));
+            if strcmp(colModes{c}, 'div')
+                lim = max(prctile(abs(img(:)), 99.9), eps);
+                showImg(ax, img, ttl, [-lim lim]); colormap(ax, redblue(256));
+            else
+                showImg(ax, img, ttl, robustLim(img)); colormap(ax, turbo);
+            end
+            ylabel(colorbar(ax), cbLabels{c});
+            ov = overlays{r,c};
+            if ~isempty(ov)
+                hold(ax,'on');
+                for o = 1:numel(ov)
+                    xline(ax, ov(o).x, ov(o).spec, 'LineWidth',1.2);
+                end
+            end
+        end
+    end
+
+    rowImgs = {satNoCorr, satCorr};
+    rowTxt  = {txtNoCorr, txtCorr};
+    rowTtl  = {'satImage (no vacuum corr.)', 'rhoNorm (vacuum corrected)'};
+    rowCb   = {'rhoNorm_{noCorr} [-]', 'rhoNorm [-]'};
+    for r = 4:5
+        ax = nexttile(tl, tileIdx(r,1), [1 nCols-1]); axis(ax,'off');
+        text(ax, 0.98, 0.5, rowTxt{r-3}, 'HorizontalAlignment','right', ...
+            'VerticalAlignment','middle', 'FontSize',11, 'Interpreter','tex');
+        ax = nexttile(tl, tileIdx(r,nCols));
+        showImg(ax, rowImgs{r-3}, rowTtl{r-3}, robustLim(rowImgs{r-3}));
+        colormap(ax, turbo); ylabel(colorbar(ax), rowCb{r-3});
+    end
 end
 
 function showImg(ax, img, ttl, cl)
     imagesc(ax, img); axis(ax,'image'); colorbar(ax);
     if ~isempty(cl), clim(ax, cl); end
     title(ax, ttl, 'FontSize',8, 'Interpreter','none');
+end
+
+function cl = robustLim(img)
+% colour limits from the image's own 0.5-99.5 percentiles (ignores NaN/Inf and outliers)
+    v = img(isfinite(img));
+    if isempty(v), cl = [0 1]; return, end
+    cl = double(prctile(v, [0.5 99.5]));
+    if cl(2) <= cl(1), cl = cl(1) + [-1 1]*max(abs(cl(1))*1e-3, eps); end
 end
 
 function cmap = redblue(m)
