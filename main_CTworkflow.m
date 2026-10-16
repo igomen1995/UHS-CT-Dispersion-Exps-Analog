@@ -1,4 +1,4 @@
-%% CT pipeline step by step for ONE image (i, j, k): OLD vs NEW processing
+%% CT pipeline step by step for ONE image (i, j, k): OLD vs NEW processing (test)
 %
 % NEW: raw -> median (medWin) -> normImage -> crop full core (cropWidthFull)
 %          -> imgaussfilt(sigmaNew) -> trim pixTrimEdge inside the core each side
