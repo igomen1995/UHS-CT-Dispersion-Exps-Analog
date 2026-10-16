@@ -242,9 +242,9 @@ plotImageContour(nexttile(tl), rhoNormNew, rhoNormNewCont, levelsFull, levelMain
 
 % vertical profile (central 40 % of columns), x axis = z_D
 ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
-pOld = mean(rhoNormOld(:, centerCols(size(rhoNormOld,2))), 2, 'omitnan');
+pOld = mean(rhoNormOldSmooth(:, centerCols(size(rhoNormOldSmooth,2))), 2, 'omitnan');
 pNew = mean(rhoNormNew(:, centerCols(size(rhoNormNew,2))), 2, 'omitnan');
-plot(ax, (1:numel(pOld))/numel(pOld), pOld, 'Color',[.6 .6 .6], 'DisplayName','old');
+plot(ax, (1:numel(pOld))/numel(pOld), pOld, 'Color',[.6 .6 .6], 'DisplayName',sprintf('old (gauss %d)', sigmaOld));
 plot(ax, (1:numel(pNew))/numel(pNew), pNew, 'b', 'LineWidth',1.5, 'DisplayName','new');
 xlabel(ax,'z_D [-]'); ylabel(ax,'rhoNorm (central 40 % of columns)'); ylim(ax,[-0.1 1.1]);
 legend(ax,'Location','best'); title(ax,'vertical profile');
@@ -253,7 +253,7 @@ legend(ax,'Location','best'); title(ax,'vertical profile');
 ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
 frontRows = pNew >= 0.3 & pNew <= 0.7;
 xOld = (1:size(rhoNormOld,2)) - (crop_xCoords_kFull(1)+pixTrimEdge - crop_xCoords_kOld(1)); % align to new trimmed frame
-plot(ax, xOld, mean(rhoNormOld,1,'omitnan'), 'Color',[.6 .6 .6], 'DisplayName','old, all rows');
+plot(ax, xOld, mean(rhoNormOldSmooth,1,'omitnan'), 'Color',[.6 .6 .6], 'DisplayName',sprintf('old (gauss %d), all rows', sigmaOld));
 plot(ax, 1:size(rhoNormNew,2), mean(rhoNormNew,1,'omitnan'), 'b', 'LineWidth',1.5, 'DisplayName','new, all rows');
 if any(frontRows)
     plot(ax, 1:size(rhoNormNew,2), mean(rhoNormNew(frontRows,:),1,'omitnan'), 'r', 'LineWidth',1.5, ...
@@ -264,53 +264,74 @@ legend(ax,'Location','best'); title(ax,'horizontal profile (wall channeling)');
 saveFig(fig3, outDir, 'fig3_old_vs_new');
 
 %% FIG 4: final result OLD vs NEW - rhoNorm (vacuum corr.) and REFPROP conc
+% Columns: OLD as plotted (unsmoothed image + gauss sigmaOld contours) |
+%          OLD smoothed field that feeds the contours (gauss sigmaOld) |
+%          NEW (image + contours from the same image) | vertical profile | horizontal profile
+% As in main_CTimaging, for conc the old smoothing is applied AFTER REFPROP.
 
 interpFcn = buildInterpolant(filedataExp.Fluid1, filedataExp.Fluid2, filedataExp.T, filedataExp.P);
-concOld = double(interpFcn(rhoNormOld));
-concNew = double(interpFcn(rhoNormNew));
-fprintf('  conc OLD: mean %.3f | NaN %d   conc NEW: mean %.3f | NaN %d\n', ...
-    mean(concOld(:),'omitnan'), nnz(isnan(concOld)), mean(concNew(:),'omitnan'), nnz(isnan(concNew)));
+
+concOldRaw      = double(interpFcn(rhoNormOld));                 % old conc, as plotted
+concOldSmooth   = imgaussfilt(concOldRaw, sigmaOld);             % old conc field behind the contours
+rhoNormOldFinal = rhoNormOldSmooth;                              % imgaussfilt(rhoNormOld, sigmaOld)
+concOld         = concOldSmooth;
+concNew         = double(interpFcn(rhoNormNew));
+if sigmaContNew > 0
+    concNewCont = imgaussfilt(concNew, sigmaContNew);
+else
+    concNewCont = concNew;
+end
+fprintf('  conc OLD (as plotted): mean %.3f | NaN %d   OLD gauss %d: NaN %d   NEW: mean %.3f | NaN %d\n', ...
+    mean(concOldRaw(:),'omitnan'), nnz(isnan(concOldRaw)), sigmaOld, nnz(isnan(concOldSmooth)), ...
+    mean(concNew(:),'omitnan'), nnz(isnan(concNew)));
 
 % x in full-frame pixels, so old and new crops line up
 xGlobOld = crop_xCoords_kOld(1)  + (0:size(rhoNormOld,2)-1);
 xGlobNew = crop_xCoords_kTrim(1) + (0:size(rhoNormNew,2)-1);
-cOld = [0.55 0.55 0.55];  cNew = [0 0.35 0.8];
+cOldRaw = [0.70 0.70 0.70];  cOldSm = [0.25 0.25 0.25];  cNew = [0 0.35 0.8];
 
-fig4 = figure('Name','Final old vs new','Position',[20 20 1800 1100]);
-tl = tiledlayout(2,4,'TileSpacing','compact');
-title(tl, sprintf('%s run %02d k %d - final result OLD vs NEW (same colour limits [0 1])', key, jSel, kSel), ...
+fig4 = figure('Name','Final old vs new','Position',[20 20 2100 1150]);
+tl = tiledlayout(2,5,'TileSpacing','compact');
+title(tl, sprintf('%s run %02d k %d - final result OLD vs NEW (colour limits [0 1])', key, jSel, kSel), ...
     'Interpreter','none');
 
-Q = {rhoNormOld, rhoNormNew, 'rhoNorm (vacuum corr.)', 'rhoNorm [-]'; ...
-     concOld,    concNew,    'conc (REFPROP from rhoNorm corr.)', 'molar fraction [-]'};
+%      old as plotted, old smoothed (contours), new image, new contour field, name, unit
+Q = {rhoNormOld, rhoNormOldSmooth, rhoNormNew, rhoNormNewCont, 'rhoNorm (vacuum corr.)', 'rhoNorm [-]'; ...
+     concOldRaw, concOldSmooth,    concNew,    concNewCont,    'conc (REFPROP)',         'molar fraction [-]'};
+
 for q = 1:2
-    ax = nexttile(tl);
-    showImg(ax, Q{q,1}, ['OLD | ' Q{q,3}], [0 1]); colormap(ax, turbo); ylabel(colorbar(ax), Q{q,4});
-    ax = nexttile(tl);
-    showImg(ax, Q{q,2}, ['NEW | ' Q{q,3}], [0 1]); colormap(ax, turbo); ylabel(colorbar(ax), Q{q,4});
+    plotImageContour(nexttile(tl), Q{q,1}, Q{q,2}, levelsFull, levelMain, ...
+        sprintf('OLD as plotted: unsmoothed + contours gauss %d | %s', sigmaOld, Q{q,5}), Q{q,6});
+    plotImageContour(nexttile(tl), Q{q,2}, Q{q,2}, levelsFull, levelMain, ...
+        sprintf('OLD gauss %d field that feeds the contours | %s', sigmaOld, Q{q,5}), Q{q,6});
+    plotImageContour(nexttile(tl), Q{q,3}, Q{q,4}, levelsFull, levelMain, ...
+        sprintf('NEW: median %d, gauss %d before sat | %s', medWin, sigmaNew, Q{q,5}), Q{q,6});
 
     % vertical profile, central 40 % of columns
     ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
-    vO = mean(Q{q,1}(:, centerCols(size(Q{q,1},2))), 2, 'omitnan');
-    vN = mean(Q{q,2}(:, centerCols(size(Q{q,2},2))), 2, 'omitnan');
-    plot(ax, (1:numel(vO))/numel(vO), vO, 'Color',cOld, 'DisplayName','old');
+    vR = mean(Q{q,1}(:, centerCols(size(Q{q,1},2))), 2, 'omitnan');
+    vS = mean(Q{q,2}(:, centerCols(size(Q{q,2},2))), 2, 'omitnan');
+    vN = mean(Q{q,3}(:, centerCols(size(Q{q,3},2))), 2, 'omitnan');
+    plot(ax, (1:numel(vR))/numel(vR), vR, 'Color',cOldRaw, 'DisplayName','old, unsmoothed');
+    plot(ax, (1:numel(vS))/numel(vS), vS, 'Color',cOldSm, 'LineWidth',1.5, 'DisplayName',sprintf('old, gauss %d', sigmaOld));
     plot(ax, (1:numel(vN))/numel(vN), vN, 'Color',cNew, 'LineWidth',1.5, 'DisplayName','new');
-    xlabel(ax,'z_D [-]'); ylabel(ax, Q{q,4}); ylim(ax,[-0.1 1.1]);
-    legend(ax,'Location','best'); title(ax, ['vertical profile | ' Q{q,3}], 'FontSize',9);
+    xlabel(ax,'z_D [-]'); ylabel(ax, Q{q,6}); ylim(ax,[-0.1 1.1]);
+    legend(ax,'Location','best'); title(ax, ['vertical profile | ' Q{q,5}], 'FontSize',9);
 
     % horizontal profile, all rows
     ax = nexttile(tl); hold(ax,'on'); grid(ax,'on');
-    plot(ax, xGlobOld, mean(Q{q,1},1,'omitnan'), 'Color',cOld, 'DisplayName','old');
-    plot(ax, xGlobNew, mean(Q{q,2},1,'omitnan'), 'Color',cNew, 'LineWidth',1.5, 'DisplayName','new');
-    xlabel(ax,'x [px, full frame]'); ylabel(ax, Q{q,4}); ylim(ax,[-0.1 1.1]);
-    legend(ax,'Location','best'); title(ax, ['horizontal profile | ' Q{q,3}], 'FontSize',9);
+    plot(ax, xGlobOld, mean(Q{q,1},1,'omitnan'), 'Color',cOldRaw, 'DisplayName','old, unsmoothed');
+    plot(ax, xGlobOld, mean(Q{q,2},1,'omitnan'), 'Color',cOldSm, 'LineWidth',1.5, 'DisplayName',sprintf('old, gauss %d', sigmaOld));
+    plot(ax, xGlobNew, mean(Q{q,3},1,'omitnan'), 'Color',cNew, 'LineWidth',1.5, 'DisplayName','new');
+    xlabel(ax,'x [px, full frame]'); ylabel(ax, Q{q,6}); ylim(ax,[-0.1 1.1]);
+    legend(ax,'Location','best'); title(ax, ['horizontal profile | ' Q{q,5}], 'FontSize',9);
 end
 saveFig(fig4, outDir, 'fig4_final_old_vs_new');
 
 %% SAVE
 
-save(fullfile(outDir,'stepByStep.mat'), 'rhoNormNew','rhoNormNoCorrNew','rhoNormOld','rhoNormNoCorrOld', ...
-    'concNew','concOld', ...
+save(fullfile(outDir,'stepByStep.mat'), 'rhoNormNew','rhoNormNoCorrNew','rhoNormOld','rhoNormOldFinal','rhoNormNoCorrOld', ...
+    'concNew','concOld','concOldRaw', ...
     'crop_xCoords_kFull','crop_xCoords_kTrim','crop_xCoords_kOld', ...
     'medWin','sigmaNew','pixTrimEdge','cropWidthFull','cropWidthOld','sigmaOld', ...
     'iSel','jSel','kSel','-v7.3');
@@ -318,14 +339,15 @@ fprintf('Saved to %s\n', outDir);
 
 %% local functions
 
-function plotImageContour(ax, img, imgCont, levelsFull, levelMain, ttl)
+function plotImageContour(ax, img, imgCont, levelsFull, levelMain, ttl, cbLabel)
+    if nargin < 7, cbLabel = 'rhoNorm [-]'; end
     imagesc(ax, img); axis(ax,'image');
     colormap(ax, turbo); clim(ax,[0 1]);
-    cb = colorbar(ax); cb.Label.String = 'rhoNorm [-]';
+    cb = colorbar(ax); cb.Label.String = cbLabel;
     hold(ax,'on');
     contour(ax, imgCont, levelsFull, 'LineColor','k', 'LineWidth',0.8, ...
         'ShowText',true, 'LabelFormat','%0.1f');
-    % contour(ax, imgCont, levelMain, 'LineColor','k', 'LineWidth',2.5);
+    contour(ax, imgCont, levelMain, 'LineColor','k', 'LineWidth',2.5);
     xlabel(ax,'x [px]'); ylabel(ax,'z [px]');
     title(ax, ttl, 'FontSize',9, 'Interpreter','none');
 end
