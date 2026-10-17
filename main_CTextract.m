@@ -92,7 +92,7 @@ layerOpts  = struct();     % options of findLayerBoundaries_xAxis, e.g. struct('
 
 %% IMPORT, NORM and CROP data
 
-for i = 1%:nExp
+for i = 1:nExp
 
     filenameExp = inputFileConfig.inputFileName{i};
     pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
@@ -141,17 +141,17 @@ for i = 1%:nExp
 
     nn_refFinal = height(expCTData.(filedataExp.Key).refFinal.pcp);
 
-    % % HDF5 file
-    % HDF5filename = fullfile(pathExportAll, filedataExp.Key + ".h5");
-    % if isfile(HDF5filename)
-    %     delete(HDF5filename);
-    % end
+    % HDF5 file
+    HDF5filename = fullfile(pathExportAll, filedataExp.Key + ".h5");
+    if isfile(HDF5filename)
+        delete(HDF5filename);
+    end
 
     cropLogFile = fullfile(pathExportAll, "cropCoords_" + filedataExp.Key + ".txt");
     fidCrop = fopen(cropLogFile, 'w');
     fprintf(fidCrop, '%s\t%s\t%s\t%s\n', 'j', 'k', 'xmin', 'xmax');
 
-    for j = 1%:length(expFolderName)
+    for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
             % pca
@@ -181,8 +181,8 @@ for i = 1%:nExp
         DimY = expCTData.(filedataExp.Key).refInit.pca.Image.DimY;  
         crop_yCoords = [1;DimY]; 
 
-        % HDF5created = false; % flag
-        % HDF5dataPath = ['/exp/' char(run_name) '/conc'];  % structured path
+        HDF5created = false; % flag
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];  % structured path
         
         % % Uncomment to see intanstaneous movie
         % fig = figure('Color','w','Position',[50 50 700 800]);
@@ -218,23 +218,30 @@ for i = 1%:nExp
             fprintf(fidCrop, '%d\t%d\t%d\t%d\n', j, k, crop_xCoords_k(1), crop_xCoords_k(2));
 
             refInitcroppedImage = cropImage(refInitrawImage,crop_xCoords_k, crop_yCoords); % minImage
-            
+            refInitcroppedLog  = -log(max(refInitcroppedImage,  eps));
+
             % refFinal
             % Raw, normalized and cropped CT images
             refFinalrawImage = importImages(refFinalimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
             refFinalrawImage = normImage(refFinalrawImage,Iair_refFinal);
             refFinalcroppedImage = cropImage(refFinalrawImage,crop_xCoords_k, crop_yCoords); % maxImage
+            refFinalcroppedLog = -log(max(refFinalcroppedImage, eps));
 
             % exp run k
             % Raw, normalized and cropped CT images
             exprawImage = importImages(expimgFiles,k);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
             exprawImage = normImage(exprawImage,Iair_exp);
             expcroppedImage = cropImage(exprawImage,crop_xCoords_k, crop_yCoords);
-            concImage = satImage(expcroppedImage,refInitcroppedImage,refFinalcroppedImage); % arguments (exp, min,max)
+            expcroppedLog      = -log(max(expcroppedImage,      eps));
+            
+            % uncomment to estimate satimage (no log)
+            % concImage = satImage(expcroppedImage,refInitcroppedImage,refFinalcroppedImage); % arguments (exp, min,max)
+            concImage_log = satImage(expcroppedLog, refInitcroppedLog, refFinalcroppedLog); % (exp, Xe, He)
             
             % % Uncomment to see intanstaneous movie
             % cla(ax)
-            % imagesc(ax, concImage)            % columns -> x pixel, rows -> y pixel
+            % % imagesc(ax, concImage)            % columns -> x pixel, rows -> y pixel
+            % imagesc(ax, concImage_log)
             % axis(ax, 'image')
             % colormap(ax, turbo)
             % clim(ax, [0 1])
@@ -245,18 +252,22 @@ for i = 1%:nExp
             % drawnow
             % writeVideo(v, getframe(fig));
 
-            % % HDF5 params
+            % HDF5 params
+            % uncomment to save satimage (no log)
             % [nx, ny] = size(concImage);
-            % 
-            % if ~HDF5created 
-            %     h5create(HDF5filename, HDF5dataPath, [nx ny nn_exp], ...
-            %         'Datatype', 'single', ...
-            %         'ChunkSize', [nx ny 1], ...
-            %         'Deflate', 5);
-            %     HDF5created = true;
-            % end
-            % 
-            % h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);       
+            [nx, ny] = size(concImage_log);
+
+            if ~HDF5created 
+                h5create(HDF5filename, HDF5dataPath, [nx ny nn_exp], ...
+                    'Datatype', 'single', ...
+                    'ChunkSize', [nx ny 1], ...
+                    'Deflate', 5);
+                HDF5created = true;
+            end
+
+            % uncomment to save satimage (no log)
+            % h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);    
+            h5write(HDF5filename, HDF5dataPath, single(concImage_log), [1 1 k], [nx ny 1]);
         end
         % close(v)
     end
