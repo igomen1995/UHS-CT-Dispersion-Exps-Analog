@@ -92,7 +92,7 @@ layerOpts  = struct();     % options of findLayerBoundaries_xAxis, e.g. struct('
 
 %% IMPORT, NORM and CROP data
 
-for i = 1:nExp
+for i = 1%:nExp
 
     filenameExp = inputFileConfig.inputFileName{i};
     pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
@@ -141,17 +141,17 @@ for i = 1:nExp
 
     nn_refFinal = height(expCTData.(filedataExp.Key).refFinal.pcp);
 
-    % HDF5 file
-    HDF5filename = fullfile(pathExportAll, filedataExp.Key + ".h5");
-    if isfile(HDF5filename)
-        delete(HDF5filename);
-    end
+    % % HDF5 file
+    % HDF5filename = fullfile(pathExportAll, filedataExp.Key + ".h5");
+    % if isfile(HDF5filename)
+    %     delete(HDF5filename);
+    % end
 
     cropLogFile = fullfile(pathExportAll, "cropCoords_" + filedataExp.Key + ".txt");
     fidCrop = fopen(cropLogFile, 'w');
     fprintf(fidCrop, '%s\t%s\t%s\t%s\n', 'j', 'k', 'xmin', 'xmax');
 
-    for j = 1:length(expFolderName)
+    for j = 1%:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
             % pca
@@ -181,8 +181,8 @@ for i = 1:nExp
         DimY = expCTData.(filedataExp.Key).refInit.pca.Image.DimY;  
         crop_yCoords = [1;DimY]; 
 
-        HDF5created = false; % flag
-        HDF5dataPath = ['/exp/' char(run_name) '/conc'];  % structured path
+        % HDF5created = false; % flag
+        % HDF5dataPath = ['/exp/' char(run_name) '/conc'];  % structured path
         
         % % Uncomment to see intanstaneous movie
         % fig = figure('Color','w','Position',[50 50 700 800]);
@@ -202,7 +202,7 @@ for i = 1:nExp
             % appears at THIS rotation angle; refInit/refFinal share the
             % same angle index k, so the same window applies to all three
             if strcmp(cropMethod, 'layers')
-                                [crop_xCoords_k, ~, coreTrans_k] = findCropWindow_layers(refInitrawImage, cropWidth, layerOpts);
+                [crop_xCoords_k, ~, coreTrans_k] = findCropWindow_layers(refInitrawImage, cropWidth, layerOpts);
             else
                 [crop_xCoords_k, pv_sort_parts_k] = findCropWindow_xAxis(refInitrawImage, pixDist, partsScanned-1, cropWidth);
             end
@@ -237,18 +237,18 @@ for i = 1:nExp
             % drawnow
             % writeVideo(v, getframe(fig));
 
-            % HDF5 params
-            [nx, ny] = size(concImage);
-
-            if ~HDF5created 
-                h5create(HDF5filename, HDF5dataPath, [nx ny nn_exp], ...
-                    'Datatype', 'single', ...
-                    'ChunkSize', [nx ny 1], ...
-                    'Deflate', 5);
-                HDF5created = true;
-            end
-
-            h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);       
+            % % HDF5 params
+            % [nx, ny] = size(concImage);
+            % 
+            % if ~HDF5created 
+            %     h5create(HDF5filename, HDF5dataPath, [nx ny nn_exp], ...
+            %         'Datatype', 'single', ...
+            %         'ChunkSize', [nx ny 1], ...
+            %         'Deflate', 5);
+            %     HDF5created = true;
+            % end
+            % 
+            % h5write(HDF5filename, HDF5dataPath, single(concImage), [1 1 k], [nx ny 1]);       
         end
         % close(v)
     end
