@@ -190,13 +190,21 @@ for i = 1%:nExp
         % v = VideoWriter(fullfile(pathExportAll, "conc_" + filedataExp.Key(i) + "_" + run_name), 'MPEG-4');
         % v.FrameRate = 20;
         % open(v);
+
+        Iair_refInit  = findIair(importImages(refInitimgFiles,  1));
+        Iair_refFinal = findIair(importImages(refFinalimgFiles, 1));
+        Iair_exp = findIair(importImages(expimgFiles, 1));     % I0 of THIS run
+        
+        fprintf('%s %s  I0: refInit %.4g | refFinal %.4g | exp %.4g\n', ...
+            filedataExp.Key, run_name, Iair_refInit, Iair_refFinal, Iair_exp);
+
         for k = 1:nn_exp
             % Collect each image and save it in HDF5 one by one
 
             % refInit
             % Raw, normalized and cropped CT images
             refInitrawImage = importImages(refInitimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
-            refInitrawImage = normImage(refInitrawImage);
+            refInitrawImage = normImage(refInitrawImage,Iair_refInit);
             
             % Per-projection crop window, centered on the core as it
             % appears at THIS rotation angle; refInit/refFinal share the
@@ -214,13 +222,13 @@ for i = 1%:nExp
             % refFinal
             % Raw, normalized and cropped CT images
             refFinalrawImage = importImages(refFinalimgFiles,k);  % expCTData.(filedataExp.Key(i)).refInit.RawCT = importImages(imgFiles);
-            refFinalrawImage = normImage(refFinalrawImage);
+            refFinalrawImage = normImage(refFinalrawImage,Iair_refFinal);
             refFinalcroppedImage = cropImage(refFinalrawImage,crop_xCoords_k, crop_yCoords); % maxImage
 
             % exp run k
             % Raw, normalized and cropped CT images
             exprawImage = importImages(expimgFiles,k);  % expCTData.(filedataExp.Key(i)).exp.(run_name).RawCT = importImages(imgFiles);
-            exprawImage = normImage(exprawImage);
+            exprawImage = normImage(exprawImage,Iair_exp);
             expcroppedImage = cropImage(exprawImage,crop_xCoords_k, crop_yCoords);
             concImage = satImage(expcroppedImage,refInitcroppedImage,refFinalcroppedImage); % arguments (exp, min,max)
             
