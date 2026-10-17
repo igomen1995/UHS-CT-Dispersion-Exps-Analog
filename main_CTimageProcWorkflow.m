@@ -102,9 +102,14 @@ crop_yCoords = [1; refInitpca.Image.DimY];
 
 %% WORKFLOW
 
-refInitImage  = double(normImage(importImages(refInitimgFiles,  kSel)));
-refFinalImage = double(normImage(importImages(refFinalimgFiles, kSel)));
-expImage      = double(normImage(importImages(expimgFiles,      kSel)));
+% I0 (air) of each scan = max of its own frame k = 1 (air visible at the left edge)
+refInitImage_Iair  = findIair(importImages(refInitimgFiles,  1));
+refFinalImage_Iair = findIair(importImages(refFinalimgFiles, 1));
+expImage_Iair      = findIair(importImages(expimgFiles,      1));
+
+refInitImage  = normImage(importImages(refInitimgFiles,  kSel), refInitImage_Iair);
+refFinalImage = normImage(importImages(refFinalimgFiles, kSel), refFinalImage_Iair);
+expImage      = normImage(importImages(expimgFiles,      kSel), expImage_Iair);
 
 crop_xCoords_k = findCropWindow_xAxis(refInitImage, pixDist, partsScanned-1, cropWidth);
 fprintf('%s run %02d k %d: crop x = [%d %d]\n', key, jSel, kSel, crop_xCoords_k(1), crop_xCoords_k(2));

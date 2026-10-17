@@ -118,10 +118,11 @@ fprintf('=== %s | run %02d | k %d ===\n', key, jSel, kSel);
 
 for n = 1:3
     raw.(names{n})    = double(importImages(imgFiles{n}, kSel));
+    Iair.(names{n})   = findIair(double(importImages(imgFiles{n}, 1)));
     med.(names{n})    = medfilt2(raw.(names{n}), [medWin medWin], 'symmetric');
-    nrm.(names{n})    = double(normImage(med.(names{n})));
-    fprintf('  %-8s raw [%.4g %.4g] | hot/dead px removed by median: %d | max used by normImage: %.4g\n', ...
-        names{n}, min(raw.(names{n})(:)), max(raw.(names{n})(:)), countOutliers(raw.(names{n})), max(med.(names{n})(:)));
+    nrm.(names{n})    = double(normImage(med.(names{n}),Iair.(names{n})));
+    fprintf('  %-8s raw [%.4g %.4g] | hot/dead px removed by median: %d | I0 = Iair (max of k = 1): %.4g\n', ...
+        names{n}, min(raw.(names{n})(:)), max(raw.(names{n})(:)), countOutliers(raw.(names{n})), Iair.(names{n}));
 end
 
 %% NEW 4: crop full core (window detected on refInit, applied to all three)
@@ -163,7 +164,7 @@ end
 %% OLD: raw -> normalize -> crop -> satImage -> rhoNorm (smoothing only for contours)
 
 for n = 1:3
-    nrmOld.(names{n}) = double(normImage(raw.(names{n})));
+    nrmOld.(names{n}) = normImage(raw.(names{n}), Iair.(names{n}));   % same I0 as NEW
 end
 crop_xCoords_kOld = findCropWindow_xAxis(nrmOld.refInit, pixDist, partsScanned-1, cropWidthOld);
 for n = 1:3
