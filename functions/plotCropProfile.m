@@ -1,148 +1,105 @@
-function fig = plotCropProfile(image, cropx, pv_sort_parts, partsNoCore, titleStr, regionNames)
-%PLOTCROPPROFILE Paper figure of the x-axis profile used for cropping.
+function [fig, B] = plotCropProfile(image, cropx, coreTrans, ttl, opts)
+%PLOTCROPPROFILE Column profile of a projection with the material layers shaded.
 %
-%   fig = plotCropProfile(image, cropx, pv_sort_parts, partsNoCore, titleStr)
-%   fig = plotCropProfile(..., regionNames)
+%   [fig, B] = plotCropProfile(image, cropx, coreTrans, ttl, opts) plots the
+%   column-mean profile of the projection (raw and smoothed), shades the layers
+%   crossed by the X-rays (outside -> in)
 %
-%   Recomputes the same smoothed mean-intensity profile that
-%   findcropCore_xAxis uses and plots it with:
-%       - every material region shaded and labelled, colored by MATERIAL
-%         (left and right air share a color, etc.), with everything
-%         between the two core boundaries merged into one "Core" region
-%       - markers ONLY at the material boundaries (transitions inside
-%         the core are not shown)
-%       - the final crop window (cropx) as red dashed lines
+%       Air | Carbon fibre | Alumina | Confining fluid | Sleeve | Core
 %
-%   Inputs:
-%       image         - 2-D projection passed to findCropWindow_xAxis.
-%       cropx         - [xmin; xmax] crop window.
-%       pv_sort_parts - full transition list (2nd output of
-%                       findCropWindow_xAxis / findcropCore_xAxis).
-%       partsNoCore   - same value used for detection (e.g. 4).
-%       titleStr      - figure title ('' for none, typical for papers).
-%       regionNames   - (optional) cellstr of partsNoCore+1 names, from
-%                       the outside in, ending with the core. Default:
-%                       {'Air','Core holder','Confining fluid','Sleeve','Core'}
+%   on both sides, marks their boundaries and the crop window.
+%   Boundaries come from findLayerBoundaries_xAxis (see there for how each one
+%   is detected). The heat-shrink tube between sleeve and core is not resolved
+%   and is included in the sleeve.
 %
-%   Output:
-%       fig - figure handle. Export for a paper with e.g.
-%             exportgraphics(fig, 'cropProfile.pdf', 'ContentType', 'vector')
+%   Inputs
+%       image     - 2-D projection (normalized, e.g. normImage or I/I0)
+%       cropx     - [xmin; xmax] crop window (findCropWindow_xAxis, 1st output)
+%       coreTrans - core transitions (findCropWindow_xAxis, 3rd output)
+%       ttl       - figure title ('' for none)
+%       opts      - optional, passed to findLayerBoundaries_xAxis
 %
-%   See also: findcropCore_xAxis, findCropWindow_xAxis
+%   Outputs
+%       fig - figure handle
+%       B   - boundary struct from findLayerBoundaries_xAxis
+%
+%   See also: findLayerBoundaries_xAxis, findCropWindow_xAxis
 
-if nargin < 5, titleStr = ''; end
-if nargin < 6 || isempty(regionNames)
-    regionNames = {'Air','Core holder','Confining fluid','Sleeve','Core'};
-end
-regionNames = cellstr(regionNames);
-nMat = partsNoCore + 1;
-if numel(regionNames) ~= nMat
-    error('plotCropProfile:names', ...
-        'regionNames needs partsNoCore+1 = %d entries (outermost -> core).', nMat);
-end
+    if nargin < 4, ttl  = ''; end
+    if nargin < 5, opts = struct(); end
 
-% ---- Same profile as findcropCore_xAxis --------------------------------
-me_y = mean(image, 1);
-nx   = numel(me_y);
-x    = 1:nx;
-sm_y = smooth(me_y, 'sgolay', 3);
+    B  = findLayerBoundaries_xAxis(image, coreTrans, opts);
+    p  = B.profile;
+    N  = numel(p);
+    x  = 1:N;
+    ps = smoothdata(p, 'gaussian', 15);
+    yl = [0, 1.2*max(p)];
 
-% ---- Material boundaries (outer transitions only) -------------------------
-pv = sortrows(pv_sort_parts, 1);
-n  = size(pv, 1);
-if n < 2*partsNoCore
-    error('plotCropProfile:transitions', ...
-        'Only %d transitions detected; need at least %d for %d outer regions per side.', ...
-        n, 2*partsNoCore, partsNoCore);
-end
-bnd = pv([1:partsNoCore, n-partsNoCore+1:n], :);   % boundaries, no core-interior points
-t   = bnd(:,1);
+    cols = [0.93 0.93 0.93;    % air
+            0.72 0.74 0.78;    % carbon fibre
+            0.82 0.86 0.92;    % alumina
+            0.80 0.90 0.98;    % confining fluid
+            0.98 0.90 0.78;    % sleeve
+            0.86 0.94 0.84];   % core
 
-% Region spans: partsNoCore on the left, the core, partsNoCore on the right
-b = [1; t; nx];
-spans = zeros(2*partsNoCore+1, 3);      % [xStart xEnd materialIdx]
-matIdx = [1:partsNoCore, nMat, partsNoCore:-1:1];
-for s = 1:numel(matIdx)
-    spans(s,:) = [b(s) b(s+1) matIdx(s)];
-end
+    fig = figure('Color','w', 'Position',[100 100 1000 430]);
+    ax  = axes(fig); hold(ax,'on'); box(ax,'on');
+    hReg = gobjects(1,6);
 
-% Muted palette, one color per material
-pal = [0.82 0.82 0.82;   % air
-       0.55 0.62 0.72;   % core holder
-       0.62 0.80 0.95;   % confining fluid
-       0.96 0.80 0.55;   % sleeve
-       0.72 0.88 0.66];  % core
-if nMat > size(pal,1), pal = lines(nMat); end
-
-% ---- Figure -------------------------------------------------------------
-fig = figure('Color', 'w', 'Units', 'centimeters', 'Position', [2 2 26 11]);
-tl  = tiledlayout(fig, 1, 1, 'Padding', 'compact', 'TileSpacing', 'compact');
-ax  = nexttile(tl);
-hold(ax, 'on');
-
-yl = [min(me_y) max(me_y)];
-yl = yl + [-0.08 0.22] * diff(yl);      % extra headroom for labels
-
-% Shaded material regions (one legend entry per material)
-hMat = gobjects(nMat,1);
-for s = 1:size(spans,1)
-    m = spans(s,3);
-    h = patch(ax, spans(s,[1 2 2 1]), yl([1 1 2 2]), pal(m,:), ...
-        'FaceAlpha', 0.45, 'EdgeColor', 'none');
-    if isa(hMat(m), 'matlab.graphics.GraphicsPlaceholder')
-        h.DisplayName = regionNames{m};
-        hMat(m) = h;
-    else
-        h.HandleVisibility = 'off';
+    % outer layers, both sides
+    for k = 1:5
+        spans = [B.edgesL(k),   B.edgesL(k+1);     % left:  edge -> inward
+                 B.edgesR(k+1), B.edgesR(k)];      % right: inward -> edge
+        for s = 1:2
+            a = spans(s,1);  c = spans(s,2);
+            if any(isnan([a c])) || c - a < 1, continue; end
+            hReg(k) = patch(ax, [a c c a], [yl(1) yl(1) yl(2) yl(2)], cols(k,:), ...
+                'EdgeColor','none', 'DisplayName', B.names{k});
+            labelRegion(ax, a, c, yl, B.names{k}, N);
+        end
+    end
+    % core
+    a = B.edgesL(6);  c = B.edgesR(6);
+    if all(~isnan([a c])) && c > a
+        hReg(6) = patch(ax, [a c c a], [yl(1) yl(1) yl(2) yl(2)], cols(6,:), ...
+            'EdgeColor','none', 'DisplayName', B.names{6});
+        labelRegion(ax, a, c, yl, B.names{6}, N);
     end
 
-    % Region label: vertical for all regions except the core (horizontal)
-    xc = mean(spans(s,1:2));
-    if m == nMat
-        text(ax, xc, yl(2) - 0.03*diff(yl), regionNames{m}, ...
-            'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', ...
-            'FontSize', 8, 'Color', [0.2 0.2 0.2]);
-    else
-        text(ax, xc, yl(2) - 0.02*diff(yl), regionNames{m}, 'Rotation', 90, ...
-            'HorizontalAlignment', 'right', 'VerticalAlignment', 'middle', ...
-            'FontSize', 8, 'Color', [0.2 0.2 0.2]);
+    % profile, boundaries, crop
+    hRaw = plot(ax, x, p,  '-', 'Color',[0.6 0.6 0.6], 'LineWidth',0.5, 'DisplayName','Raw profile');
+    hSm  = plot(ax, x, ps, 'k-', 'LineWidth',1.5, 'DisplayName','Smoothed profile');
+    xb = [B.edgesL(2:end), B.edgesR(2:end)];
+    xb = xb(~isnan(xb) & xb > 1 & xb < N);
+    hB = plot(ax, xb, interp1(x, ps, xb), 'o', 'MarkerSize',6, 'MarkerFaceColor','w', ...
+        'MarkerEdgeColor','k', 'DisplayName','Layer boundaries');
+    hC = xline(ax, cropx, '--', 'Color',[0.9 0.1 0.1], 'LineWidth',1.5, ...
+        'DisplayName', sprintf('Crop window (%d px)', cropx(2)-cropx(1)+1));
+
+    xlim(ax, [1 N]); ylim(ax, yl);
+    xlabel(ax, 'x (pixel)','FontSize',12); 
+    ylabel(ax, 'Normalized intensity','FontSize',12);
+    set(ax, 'Layer','top', 'TickDir','out');
+    if ~isempty(ttl), title(ax, ttl, 'Interpreter','none'); end
+
+    hLeg = [hReg(isgraphics(hReg)), hRaw, hSm, hB, hC(1)];
+    legend(ax, hLeg, 'Location','southoutside', 'NumColumns',5, 'Box','off','FontSize',12);
+    hold(ax,'off');
+
+    if any(isnan([B.edgesL B.edgesR]))
+        warning('plotCropProfile:boundaryNotFound', ...
+            'Some layer boundaries were not found (NaN); those regions are not shaded.');
     end
 end
 
-% Thin separators at the material boundaries only
-for tt = t(:)'
-    xline(ax, tt, ':', 'Color', [0.45 0.45 0.45], 'LineWidth', 0.5, ...
-        'HandleVisibility', 'off');
-end
-
-% Profiles
-plot(ax, x, me_y, 'Color', [0.6 0.6 0.6], 'LineWidth', 0.6, 'DisplayName', 'Raw profile');
-plot(ax, x, sm_y, 'k-', 'LineWidth', 1.4, 'DisplayName', 'Smoothed profile');
-
-% Material boundaries
-plot(ax, bnd(:,1), bnd(:,2), 'o', 'Color', 'k', ...
-    'MarkerFaceColor', 'w', 'MarkerSize', 4.5, 'LineWidth', 0.8, ...
-    'DisplayName', 'Material boundaries');
-
-% Crop window
-xline(ax, cropx(1), 'r--', 'LineWidth', 1.8, ...
-    'DisplayName', sprintf('Crop window (%d px)', cropx(2)-cropx(1)+1));
-xline(ax, cropx(2), 'r--', 'LineWidth', 1.8, 'HandleVisibility', 'off');
-
-hold(ax, 'off');
-
-% ---- Styling ------------------------------------------------------------
-xlim(ax, [1 nx]);
-ylim(ax, yl);
-xlabel(ax, 'x (pixel)');
-ylabel(ax, 'Mean normalized intensity');
-if ~isempty(titleStr), title(ax, titleStr, 'Interpreter', 'none'); end
-set(ax, 'FontSize', 9, 'TickDir', 'out', 'LineWidth', 0.8, 'Layer', 'top');
-box(ax, 'on');
-
-% Legend placed in the tiled layout's south tile so it always fits inside
-% the figure (the layout shrinks the axes to make room)
-lgd = legend(ax, 'Orientation', 'horizontal', 'NumColumns', 5, ...
-    'Box', 'off', 'FontSize', 8);
-lgd.Layout.Tile = 'south';
+function labelRegion(ax, a, c, yl, name, N)
+% vertical label for narrow regions, horizontal for wide ones (e.g. the core)
+    xm = (a + c)/2;
+    if (c - a) < 0.15*N
+        text(ax, xm, yl(2) - 0.02*diff(yl), name, 'Rotation',90, ...
+            'HorizontalAlignment','right', 'VerticalAlignment','middle', 'FontSize',12);
+    else
+        text(ax, xm, yl(2) - 0.05*diff(yl), name, ...
+            'HorizontalAlignment','center', 'VerticalAlignment','top', 'FontSize',12);
+    end
 end

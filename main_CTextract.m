@@ -250,41 +250,78 @@ end
 
 %% PLOT crop profile (j = 1, k = 1) for each experiment - no HDF5
 % Run the "IMPORT input" section first, then run this section on its own.
+% The crop window does not depend on the run: it is detected on the Xe reference
+% (refInit) at projection kPlot. jPlot only goes into the file name.
+% Layers at k = 1 (outside -> in): air (thin, left) | carbon fibre | alumina |
+% confining fluid | sleeve | (heat-shrink, not resolved) | core
+%
+% Figure 1: plotTransitionStages - EVERY peak/valley findcropCore_xAxis finds and
+%           what happens to it (removed by spacing, merged, outer part removed
+%           by partsNoCore, core). Numbers = rows of pv_sort_parts.
+% Figure 2: plotCropProfile - layers shaded and crop window.
+% Try several pixDistTol values in pixDistTest to see which transitions survive.
 
-filedataExp = import_inputCTExp(filenameExp);
+jPlot = 1;                 % run used in the file name
+kPlot = 1;                 % projection to plot
+pixDistTest = pixDist;     % e.g. [pixDist, 20, 50, 100] to compare spacing filters
+partsTest   = partsScanned-1;   % partsNoCore passed to findCropWindow_xAxis
 
-jPlot = 1;             % run used in the file name
-kPlot = 1;             % projection to plot
-
-for i = 1%:nExp
-
-    filenameExp = inputFileConfig.inputFileName{i};
-    pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
-    % Create directory for output
+for i = 1:nExp
+    filenameExp   = inputFileConfig.inputFileName{i};
+    pathExportAll = inputFileConfig.exportPath{i};            % path for OUTPUT
     if ~isfolder(pathExportAll)
         mkdir(pathExportAll);
     end
-    
-    filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
+
+    filedataExp = import_inputCTExp(filenameExp);             % input of THIS experiment
     key = char(filedataExp.Key);
 
     % Xe reference folder for THIS experiment
     refInitFolderContent = dir(filedataExp.path + filedataExp.CT_data_ref_init);
     refInitFolderContent = refInitFolderContent([refInitFolderContent.isdir] & ...
         ~startsWith({refInitFolderContent.name}, '.'));
-    refInitimgFiles = dir(fullfile(refInitFolderContent.folder, refInitFolderContent.name, '*.tif'));
+    if isempty(refInitFolderContent)
+        warning('%s: no Xe reference folder found, skipped.', key);
+        continue
+    elseif numel(refInitFolderContent) > 1
+        warning('%s: %d Xe reference folders found, using "%s".', key, ...
+            numel(refInitFolderContent), refInitFolderContent(1).name);
+    end
+    refInitimgFiles = dir(fullfile(refInitFolderContent(1).folder, refInitFolderContent(1).name, '*.tif'));
+    if kPlot > numel(refInitimgFiles)
+        warning('%s: kPlot = %d but only %d projections, skipped.', key, kPlot, numel(refInitimgFiles));
+        continue
+    end
 
-    % Detect crop on the Xe reference image kPlot
-    refInitrawImage = normImage(importImages(refInitimgFiles, kPlot));
-    [crop_xCoords_k, pv_sort_parts_k] = findCropWindow_xAxis(refInitrawImage, ...
-        pixDist, partsScanned-1, cropWidth);
-    fprintf('%s  j=%d k=%d: crop = [%d %d]\n', key, jPlot, kPlot, ...
-        crop_xCoords_k(1), crop_xCoords_k(2));
+    % Normalize with I0 = max of frame k = 1 (air at the left edge)
+    Iair_k1      = findIair(importImages(refInitimgFiles, 1));
+    refInitImage = normImage(importImages(refInitimgFiles, kPlot), Iair_k1);
 
-    % Plot and save
-    figProfile = plotCropProfile(refInitrawImage, crop_xCoords_k, pv_sort_parts_k, ...
-        partsScanned-1, '');
+    for pd = pixDistTest
+        % Detect crop (4th output = all detection stages)
+        [crop_xCoords_k, pv_sort_parts_k, coreTrans_k, dbg_k] = ...
+            findCropWindow_xAxis(refInitImage, pd, partsTest, cropWidth);
+        fprintf('\n%s  j=%d k=%d  pixDistTol=%g  partsNoCore=%d: crop = [%d %d], %d peaks/valleys -> %d parts -> %d core\n', ...
+            key, jPlot, kPlot, pd, partsTest, crop_xCoords_k(1), crop_xCoords_k(2), ...
+            size(dbg_k.pv_sort,1), size(pv_sort_parts_k,1), size(coreTrans_k,1));
+
+        % Figure 1: every transition and its fate
+        ttl = sprintf('%s  k = %d  pixDistTol = %g  partsNoCore = %d', key, kPlot, pd, partsTest);
+        [figStages, T] = plotTransitionStages(refInitImage, dbg_k, crop_xCoords_k, ttl);
+        disp(T(T.part > 0, :));              % surviving transitions (disp(T) for all)
+
+        baseName = fullfile(pathExportAll, sprintf('cropStages_%s_run_%02d_k%03d_pd%03d', ...
+            key, jPlot, kPlot, round(pd)));
+        exportgraphics(figStages, baseName + ".png", 'Resolution', 300);
+        % savefig(figStages, baseName + ".fig");
+    end
+
+    % Figure 2: layers and crop window (last pixDistTol tested)
+    [figProfile, B] = plotCropProfile(refInitImage, crop_xCoords_k, coreTrans_k, '');
+    fprintf('  left  edges (air|CH:CF|CH:Al|ConfFluid|sleeve|core): %s\n', mat2str(round(B.edgesL)));
+    fprintf('  right edges (air|CH:CF|CH:Al|ConfFluid|sleeve|core): %s\n', mat2str(round(B.edgesR)));
+
     baseName = fullfile(pathExportAll, sprintf('cropProfile_%s_run_%02d_k%03d', key, jPlot, kPlot));
     exportgraphics(figProfile, baseName + ".png", 'Resolution', 600);
-    savefig(figProfile, baseName + ".fig");
+    % savefig(figProfile, baseName + ".fig");
 end
