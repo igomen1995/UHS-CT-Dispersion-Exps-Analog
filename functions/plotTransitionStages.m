@@ -68,7 +68,7 @@ function [fig, T] = plotTransitionStages(image, dbg, cropx, ttl, opts)
     % ---- figure -----------------------------------------------------------
     fig = figure('Color','w', 'Position',[80 80 1200 640]);
     tl  = tiledlayout(fig, 3, 1, 'TileSpacing','compact', 'Padding','compact');
-    ax  = nexttile(tl, [2 1]); hold(ax,'on'); box(ax,'on');
+    ax  = nexttile(tl, [2 1]); hold(ax,'on'); box(ax,'off');
     rg  = max(dbg.me_y) - min(dbg.me_y);
     yl  = [min(dbg.me_y) - 0.08*rg, max(dbg.me_y) + 0.15*rg];
 
@@ -89,10 +89,7 @@ function [fig, T] = plotTransitionStages(image, dbg, cropx, ttl, opts)
                     if any(isnan([a c])) || c - a < 1, continue; end
                     patch(ax, [a c c a], yl([1 1 2 2]), cols(k,:), 'EdgeColor','none', ...
                         'HandleVisibility','off');
-                    text(ax, (a+c)/2, yl(2), B.names{k}, 'Rotation', 90*(c-a < 80), ...
-                        'HorizontalAlignment', ifelse(c-a < 80,'right','center'), ...
-                        'VerticalAlignment', ifelse(c-a < 80,'middle','top'), ...
-                        'FontSize', 8, 'Color', [0.35 0.35 0.35]);
+                    labelRegion(ax, a, c, yl, B.names{k}, N);
                 end
             end
         catch me
@@ -125,7 +122,7 @@ function [fig, T] = plotTransitionStages(image, dbg, cropx, ttl, opts)
         isPeak = parts(n,2) >= dbg.sm_y(max(1,parts(n,1)-5)) && ...
                  parts(n,2) >= dbg.sm_y(min(N,parts(n,1)+5));
         text(ax, parts(n,1), parts(n,2) + dy*(2*isPeak-1), num2str(n), ...
-            'HorizontalAlignment','center', 'FontSize',8, 'FontWeight','bold', ...
+            'HorizontalAlignment','center', 'FontSize',10, 'FontWeight','bold', ...
             'Color', ifelse(isCore(n), [0.1 0.5 0.15], [0.7 0.1 0.1]));
     end
 
@@ -134,12 +131,16 @@ function [fig, T] = plotTransitionStages(image, dbg, cropx, ttl, opts)
         xline(ax, cropx(2), 'b--', 'LineWidth',1.2, 'HandleVisibility','off');
     end
     xlim(ax, [1 N]); ylim(ax, yl);
-    ylabel(ax, 'column mean (CT normalized)');
-    if ~isempty(ttl), title(ax, ttl, 'Interpreter','none'); end
-    legend(ax, 'Location','southoutside', 'NumColumns',3, 'Box','off');
+        ylabel(ax, 'Normalized intensity', 'FontSize',12);
+    set(ax, 'Layer','top', 'TickDir','out', 'FontSize',10);
+    plot(ax, [1 N N], [yl(2) yl(2) yl(1)], 'k-', 'LineWidth', ax.LineWidth, ...
+        'Clipping','off', 'HandleVisibility','off');          % top/right frame, no ticks
+    % if ~isempty(ttl), title(ax, ttl, 'Interpreter','none'); end
+    hL = legend(ax, 'NumColumns',3, 'Box','off', 'FontSize',12);
+    hL.Layout.Tile = 'south';                                  % centered under the figure
 
     % ---- curvature of attenuation ---------------------------------------
-    ax2 = nexttile(tl); hold(ax2,'on'); box(ax2,'on');
+    ax2 = nexttile(tl); hold(ax2,'on'); box(ax2,'off');
     p   = dbg.me_y / max(dbg.me_y);
     A   = -log(max(p, eps));
     As  = smoothdata(A, 'gaussian', opts.curvSmoothPx);
@@ -152,12 +153,28 @@ function [fig, T] = plotTransitionStages(image, dbg, cropx, ttl, opts)
     edge = round(0.02*N);                        % ignore the frame ends for limits
     lim  = max(abs(d2(edge:end-edge)));
     xlim(ax2, [1 N]); ylim(ax2, 1.1*[-lim lim]);
-    xlabel(ax2, 'x (px)'); ylabel(ax2, 'd^2A/dx^2');
-    title(ax2, 'Curvature of attenuation A = -ln(I): spikes = kinks (boundaries without a peak/valley)', ...
-        'FontWeight','normal', 'FontSize',9);
+    xlabel(ax2, 'x (pixel)', 'FontSize',12); ylabel(ax2, 'd^2A/dx^2', 'FontSize',12);
+    set(ax2, 'TickDir','out', 'FontSize',10);
+    plot(ax2, [1 N N], 1.1*[lim lim -lim], 'k-', 'LineWidth', ax2.LineWidth, ...
+        'Clipping','off', 'HandleVisibility','off');          % top/right frame, no ticks
     linkaxes([ax ax2], 'x');
 end
 
 function out = ifelse(c, a, b)
     if c, out = a; else, out = b; end
+end
+
+function labelRegion(ax, a, c, yl, name, N)
+% same labels as plotCropProfile
+    xm = (a + c)/2;
+    if (c - a) < 0.02*N                        % too narrow (air): label outside, at the top
+        text(ax, a-0.5, yl(2), name, 'HorizontalAlignment','right', ...
+            'VerticalAlignment','middle', 'Rotation',90, 'FontSize',12, 'Clipping','off');
+    elseif (c - a) < 0.15*N
+        text(ax, xm, yl(2) - 0.02*diff(yl), name, 'Rotation',90, ...
+            'HorizontalAlignment','right', 'VerticalAlignment','middle', 'FontSize',12);
+    else
+        text(ax, xm, yl(2) - 0.05*diff(yl), name, ...
+            'HorizontalAlignment','center', 'VerticalAlignment','top', 'FontSize',12);
+    end
 end
