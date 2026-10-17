@@ -10,18 +10,15 @@
 % unsmoothed image with contours of the imgaussfilt(sigmaCont) field, exactly
 % as in main_CTimaging (for C_molar the smoothing is applied after REFPROP).
 %
-% Processing:
-%   raw -> I/I0, with ONE I0 per scan (Xe, He, exp run) taken from a frame that shows
-%   air (kAir, default k = 1, air at the left edge) and applied to every projection
-%   of that scan -> findCropWindow_xAxis (cropWidth) on refInit -> cropImage
-%   -> satImage -> rhoNorm_wVacRef -> interpFcn
-%   (useAirNorm = false gives the old normImage, i.e. I/max(I) of each projection)
+% Processing (same as main_CTextract):
+%   raw -> normImage -> findCropWindow_xAxis (cropWidth) on refInit -> cropImage
+%       -> satImage -> rhoNorm_wVacRef -> interpFcn
 %
 % Figure 2: same as figure 1 but the saturation is computed on ln(I).
 % Figure 3: I vs ln(I) side by side - row 1 rhoNorm, row 2 C_molar:
 %   version with I | version with ln(I) | difference ln(I) - I | horizontal profiles
 %
-% Outputs in <exportPath> (base = paperFig_<Key>_run_jj_kkkk_angXXXdeg[_I0k1max]):
+% Outputs in <exportPath> (base = paperFig_<Key>_run_jj_kkkk_angXXXdeg):
 %   <base>.png/.fig         figure 1 (I)
 %   <base>_lnI.png/.fig     figure 2 (ln I)
 %   <base>_IvsLnI.png/.fig  figure 3 (comparison)
@@ -39,15 +36,6 @@ inputFileConfig = readtable(inputFileConfigName);
 pixDist      = 70;
 partsScanned = 5;      % air, core holder, water, sleeve, core
 cropWidth    = 1400;
-
-% I0 (unattenuated intensity): one value per scan, from a frame that shows air
-useAirNorm    = true;      % true = I/I0 of the scan | false = old normImage (I/max of each projection)
-kAir          = 1;         % frame of each scan where air is visible (left edge at k = 1)
-i0Mode        = 'max';     % 'max'   = maximum of frame kAir (after a 3x3 median, so a hot pixel can't set it)
-                           % 'strip' = mean of the air columns airCols of frame kAir
-airCols       = 1:12;      % 'strip': flat air columns at the left edge of frame kAir (check on its profile)
-airPerRow     = false;     % 'strip' only: I0 per detector row (smoothed along z) instead of one value
-airSmoothRows = 51;        % rows in the moving average of the per-row I0
 
 % Contours (same as main_CTimaging)
 sigmaCont  = 20;        % Gaussian used ONLY to compute the contours
@@ -114,24 +102,9 @@ crop_yCoords = [1; refInitpca.Image.DimY];
 
 %% WORKFLOW
 
-imgNames  = {'Xe reference','He reference','Experiment'};
-scanFiles = {refInitimgFiles, refFinalimgFiles, expimgFiles};
-normFull  = cell(1,3);
-for n = 1:3
-    rawImg = double(importImages(scanFiles{n}, kSel));
-    if useAirNorm
-        I0 = scanI0(scanFiles{n}, kAir, i0Mode, airCols, airPerRow, airSmoothRows);   % I0 of this scan
-        normFull{n} = rawImg ./ I0;                                                   % I / I0
-        fprintf('  %-13s I0 (k=%d, %s) = %.1f | this frame (k=%d): max = %.4f x I0\n', ...
-            imgNames{n}, kAir, i0Mode, mean(I0), kSel, max(rawImg(:))/mean(I0));
-    else
-        normFull{n} = double(normImage(rawImg));                                      % old: I / max(I)
-    end
-end
-refInitImage  = normFull{1};
-refFinalImage = normFull{2};
-expImage      = normFull{3};
-if useAirNorm, normTag = "_I0k" + kAir + i0Mode; else, normTag = ""; end
+refInitImage  = double(normImage(importImages(refInitimgFiles,  kSel)));
+refFinalImage = double(normImage(importImages(refFinalimgFiles, kSel)));
+expImage      = double(normImage(importImages(expimgFiles,      kSel)));
 
 crop_xCoords_k = findCropWindow_xAxis(refInitImage, pixDist, partsScanned-1, cropWidth);
 fprintf('%s run %02d k %d: crop x = [%d %d]\n', key, jSel, kSel, crop_xCoords_k(1), crop_xCoords_k(2));
@@ -156,7 +129,7 @@ refInitCropped_log = -log(max(refInitCropped,eps));
 refFinalCropped_log = -log(max(refFinalCropped,eps));
 expCropped_log = -log(max(expCropped,eps));
 
-rhoNormNoCorr_log = satImage(-expCropped_log, -refInitCropped_log, -refFinalCropped_log);       % (exp, min, max)
+rhoNormNoCorr_log = satImage(expCropped_log, refInitCropped_log, refFinalCropped_log);       % (exp, min, max)
 rhoNorm_log = double(rhoNorm_wVacRef(single(rhoNormNoCorr_log), filedataExp.Fluid1, ...
     filedataExp.Fluid2, filedataExp.T, filedataExp.P));
 
@@ -235,7 +208,7 @@ if isnan(rotPos)
 else
     angStr = "ang" + strrep(sprintf('%.1f', rotPos), '.', 'p') + "deg";   % e.g. ang123p5deg
 end
-baseName = fullfile(pathExportAll, sprintf('paperFig_%s_run_%02d_k%04d_%s', key, jSel, kSel, angStr)) + normTag;
+baseName = fullfile(pathExportAll, sprintf('paperFig_%s_run_%02d_k%04d_%s', key, jSel, kSel, angStr));
 exportgraphics(fig, baseName + ".png", 'Resolution', 600);
 % savefig(fig, baseName + ".fig");
 fprintf('Saved %s.(png)\n', baseName);
@@ -287,7 +260,7 @@ if isnan(rotPos)
 else
     angStr = "ang" + strrep(sprintf('%.1f', rotPos), '.', 'p') + "deg";   % e.g. ang123p5deg
 end
-baseName = fullfile(pathExportAll, sprintf('paperFig_%s_run_%02d_k%04d_%s', key, jSel, kSel, angStr)) + normTag;
+baseName = fullfile(pathExportAll, sprintf('paperFig_%s_run_%02d_k%04d_%s', key, jSel, kSel, angStr));
 exportgraphics(fig, baseName + "_lnI.png", 'Resolution', 600);
 % savefig(fig, baseName + "_lnI.fig");
 fprintf('Saved %s_lnI.(png)\n', baseName);
@@ -402,26 +375,6 @@ exportgraphics(fig3, baseName + "_IvsLnI.png", 'Resolution', 600);
 fprintf('Saved %s_IvsLnI.(png)\n', baseName);
 
 %% local functions
-
-function I0 = scanI0(files, kAir, mode, airCols, perRow, smoothRows)
-% Unattenuated intensity I0 of one scan, from frame kAir (a frame that shows air).
-% The same I0 is used for every projection of that scan.
-%   'max'   : maximum of frame kAir after a 3x3 median (removes hot pixels)
-%   'strip' : mean of the air columns airCols of frame kAir (per row if perRow)
-    img = double(importImages(files, kAir));
-    switch mode
-        case 'max'
-            I0 = max(medfilt2(img, [3 3], 'symmetric'), [], 'all');
-        case 'strip'
-            if perRow
-                I0 = smoothdata(mean(img(:, airCols), 2), 'movmean', smoothRows);   % one value per row
-            else
-                I0 = mean(img(:, airCols), 'all');                                  % one value
-            end
-        otherwise
-            error('i0Mode must be ''max'' or ''strip''.');
-    end
-end
 
 function plotImageContours(ax, xAx, zAx, img, imgCont, levelsFull, labelContours, fontSize)
     imagesc(ax, xAx, zAx, img);
