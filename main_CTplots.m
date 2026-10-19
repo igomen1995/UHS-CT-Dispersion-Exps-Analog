@@ -489,7 +489,7 @@ frontVel.ratio_to_theory = frontVel.slope_dzD_dtD;   % theoretical slope is exac
 disp(frontVel)
 writetable(frontVel, fullfile(exportPath, 'frontVelocity_byExp.xlsx'));
 
-%% zD with time all together, with fitted velocity line overlaid
+% zD with time all together, with fitted velocity line overlaid
 
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
 darkFactor = 0.6;
@@ -547,6 +547,118 @@ for p = 1:length(widthPairs)
     saveas(fig, fullfile(exportPath, fname), 'png');
     saveas(fig, fullfile(exportPath, fname), 'fig');
 end
+
+%% Velocity-corrected t_D, pooled across width pairs and experiments, fit N_Pe / K_L
+
+% USER SETTINGS ----
+widthPairDefs = struct( ...
+    'w40_60', [0.40 0.60] );
+pairNames = fieldnames(widthPairDefs);
+
+fitWithIntercept = true;   % allow a small intercept in the regression
+tDcutoff = 0;             % <-- only use points with raw t_D >= this value, everywhere below
+
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
+markerShapes = {'o','s','^','d','v','>'};
+
+% Front velocity per experiment ----
+frontVel = table();
+for i = 1:height(inputFileConfig)
+    filedataExp = filedataExpAll{i};
+    dataSource = dataSourceAll{i};
+    vars = expCTDataAll{i}.varsAll.(dataSource);
+
+    tD = vars.tDtotal;
+    zD = vars.zDFront50;
+
+    valid = isfinite(tD) & isfinite(zD) & zD > 0.03 & zD < 0.97 & tD >= tDcutoff;
+    tDfit = tD(valid); zDfit = zD(valid);
+
+    if nnz(valid) < 5
+        warning('%s: too few points for velocity fit, skipping.', filedataExp.Key);
+        continue
+    end
+
+    X = [ones(size(tDfit)), tDfit];
+    coeffs = X \ zDfit;
+    intercept = coeffs(1); slope = coeffs(2);
+
+    frontVel = [frontVel; table({char(filedataExp.Key)}, intercept, slope, ...
+        'VariableNames', {'Key','intercept','slope'})]; %#ok<AGROW>
+end
+
+% Build pooled table: both raw tD and velocity-corrected tD_corr, same cutoff ----
+pooled = table();   % Key, pairName, tD_raw, tD_corr, normWidth2
+
+for i = 1:height(inputFileConfig)
+    filedataExp = filedataExpAll{i};
+    dataSource = dataSourceAll{i};
+    vars = expCTDataAll{i}.varsAll.(dataSource);
+    key = char(filedataExp.Key);
+
+    velRow = strcmp(frontVel.Key, key);
+    if ~any(velRow), continue; end
+    slope = frontVel.slope(velRow);
+
+    tDfull = vars.tDtotal;
+
+    for p = 1:numel(pairNames)
+        pn = pairNames{p};
+        CdPair = widthPairDefs.(pn);
+        Cd_low = CdPair(1); Cd_high = CdPair(2);
+        k = erfcinv(2*Cd_low) - erfcinv(2*Cd_high);
+
+        suffix = strrep(sprintf('%.0f_%.0f', Cd_low*100, Cd_high*100), '.', '');
+        measField = ['zDWidth_' suffix];
+        if ~ismember(measField, vars.Properties.VariableNames)
+            continue
+        end
+        wfull = vars.(measField);
+
+        validW = isfinite(tDfull) & isfinite(wfull) & wfull > 0 & tDfull >= tDcutoff;
+        if ~any(validW), continue; end
+
+        tDraw = tDfull(validW);
+        w     = wfull(validW);
+
+        tD_arrival = min(tDraw);
+        tD_corr    = (tDraw - tD_arrival) * slope;
+        normWidth2 = w.^2 / (4*k^2);
+
+        keepPos = tD_corr >= 0;
+        n = nnz(keepPos);
+        if n == 0, continue; end
+
+        pooled = [pooled; table(repmat({key},n,1), repmat({pn},n,1), ...
+            tDraw(keepPos), tD_corr(keepPos), normWidth2(keepPos), ...
+            'VariableNames', {'Key','pairName','tD_raw','tD_corr','normWidth2'})]; %#ok<AGROW>
+    end
+end
+
+expKeys = unique(pooled.Key, 'stable');
+
+% Figure 1: velocity-corrected tD_corr ----
+NPeResults_corr = fitAndPlotPooled(pooled, expKeys, 'tD_corr', ...
+    't_D,_{corr} [-]  (time since front arrival, rescaled by measured velocity)', ...
+    sprintf('Velocity-CORRECTED t_{D,corr}  (t_D \\geq %.2g only)', tDcutoff), ...
+    fitWithIntercept, colours, markerShapes, frontVel, filedataExpAll);
+disp('--- tD_corr fit ---'); disp(NPeResults_corr)
+
+NPeResults_raw = fitAndPlotPooled(pooled, expKeys, 'tD_raw', ...
+    't_{D,total} [-]  (raw, uncorrected)', ...
+    sprintf('RAW t_{D,total}, no velocity correction  (t_D \\geq %.2g only)', tDcutoff), ...
+    fitWithIntercept, colours, markerShapes, frontVel, filedataExpAll);
+disp('--- tD_raw fit ---'); disp(NPeResults_raw)
+
+% Save both
+figs = findobj('Type','figure');
+saveas(figs(2), fullfile(exportPath, 'NPe_KL_tDcorr_pooled'), 'png');
+saveas(figs(2), fullfile(exportPath, 'NPe_KL_tDcorr_pooled'), 'fig');
+saveas(figs(1), fullfile(exportPath, 'NPe_KL_tDraw_pooled'), 'png');
+saveas(figs(1), fullfile(exportPath, 'NPe_KL_tDraw_pooled'), 'fig');
+writetable(NPeResults_corr, fullfile(exportPath, 'NPe_KL_tDcorr.xlsx'));
+writetable(NPeResults_raw,  fullfile(exportPath, 'NPe_KL_tDraw.xlsx'));
+
 %% Front envelope: measured (solid) and theoretical (dashed) width, centered on front position
 
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
@@ -792,3 +904,99 @@ saveas(fig, fullfile(exportPath, fname), 'fig');
 % last)
 
 % add kl from measuered width too in graph KL
+
+% Helper to fit+plot one x-variable on its own figure ----
+function results = fitAndPlotPooled(pooled, expKeys, xVar, xLabelStr, titleStr, fitWithIntercept, colours, markerShapes, frontVel, filedataExpAll)
+    results = table();
+    figure('Position',[100 100 1100 750]); hold on; grid on
+
+    for i = 1:numel(expKeys)
+        key = expKeys{i};
+        rows = strcmp(pooled.Key, key);
+        xv = pooled.(xVar)(rows);
+        nw2 = pooled.normWidth2(rows);
+        pairIdx = pooled.pairName(rows);
+
+        if numel(xv) < 6
+            warning('%s: too few points for a quadratic fit, skipping.', key);
+            continue
+        end
+
+        p = polyfit(xv, nw2, 2);
+        c = p(1); b0 = p(2);
+
+        if c == 0
+            warning('%s: quadratic fit is degenerate (linear), using all points.', key);
+            x0 = -inf; useAbove = true;
+        else
+            x0 = -b0 / (2*c);
+            useAbove = c > 0;
+        end
+
+        if useAbove
+            keepMask = xv > x0;
+        else
+            keepMask = xv < x0;
+        end
+
+        if nnz(keepMask) < 5
+            warning('%s: fewer than 5 points on the positive-slope side of the vertex (x0=%.3g), skipping fit.', key, x0);
+            continue
+        end
+
+        xvFit  = xv(keepMask);
+        nw2Fit = nw2(keepMask);
+        pairFit = pairIdx(keepMask);
+
+        if fitWithIntercept
+            X = [ones(size(xvFit)), xvFit];
+        else
+            X = xvFit;
+        end
+        coeffs = X \ nw2Fit;
+        if fitWithIntercept
+            a = coeffs(1); bLin = coeffs(2);
+        else
+            a = 0; bLin = coeffs(1);
+        end
+        nw2hat = X * coeffs;
+        R2 = 1 - sum((nw2Fit - nw2hat).^2) / sum((nw2Fit - mean(nw2Fit)).^2);
+        N_Pe = 1 / bLin;
+
+        % ---- K_L from measured front velocity, same convention as original script ----
+        velRow = strcmp(frontVel.Key, key);
+        filedataExpIdx = find(strcmp(cellfun(@(f) char(f.Key), filedataExpAll, 'UniformOutput', false), key));
+        filedataExp = filedataExpAll{filedataExpIdx};
+        uint_cmmin = filedataExp.Q / (filedataExp.phi * pi * ((filedataExp.D*2.54/2)^2));
+        v_front_cmmin = frontVel.slope(velRow) * uint_cmmin;
+        L_cm = filedataExp.L * 2.54;
+        K_L_cmmin = v_front_cmmin * L_cm / N_Pe;
+
+        results = [results; table({key}, bLin, a, R2, N_Pe, v_front_cmmin, K_L_cmmin, x0, nnz(keepMask), numel(xv), ...
+            'VariableNames', {'Key','slope_1_over_NPe','intercept','R2','N_Pe','v_front_cmmin','K_L_cmmin','x0_vertex','nPtsFit','nPtsTotal'})]; %#ok<AGROW>
+
+        cIdx = mod(i-1, numel(colours)) + 1;
+
+        scatter(xv, nw2, 10, [0.75 0.75 0.75], 'filled', 'HandleVisibility','off')
+
+        xqc = linspace(min(xv), max(xv), 200);
+        plot(xqc, polyval(p, xqc), ':', 'Color', colours{cIdx}, 'LineWidth', 1, 'HandleVisibility','off')
+        xline(x0, ':', 'Color', colours{cIdx}*0.6, 'HandleVisibility','off')
+
+        uPairs = unique(pairFit);
+        for q = 1:numel(uPairs)
+            sel = strcmp(pairFit, uPairs{q});
+            scatter(xvFit(sel), nw2Fit(sel), 18, colours{cIdx}, markerShapes{mod(q-1,numel(markerShapes))+1}, ...
+                'DisplayName', sprintf('%s (%s)', key, uPairs{q}))
+        end
+        [xvFitSorted, fitOrder] = sort(xvFit);
+        plot(xvFitSorted, nw2hat(fitOrder), '-', 'Color', colours{cIdx}*0.6, 'LineWidth', 2, ...
+            'DisplayName', sprintf('%s fit: N_{Pe}=%.3g, K_L=%.3g, R^2=%.3f', key, N_Pe, K_L_cmmin, R2))
+    end
+
+    xlabel(xLabelStr,'FontSize',13)
+    ylabel('\Delta Z_D^2 / (4k^2)  [-]','FontSize',13)
+    title([titleStr ' -- gray = all points, dotted = quadratic fit, colored = points past the vertex'],'FontSize',13)
+    legend('Interpreter','none','FontSize',7,'Location','best','NumColumns',2)
+    grid on
+end
