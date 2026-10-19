@@ -445,6 +445,108 @@ for p = 1:length(widthPairs)
     saveas(fig, fullfile(exportPath, fname), 'png');
     saveas(fig, fullfile(exportPath, fname), 'fig');
 end
+
+%% Front velocity: regress zD vs tD per experiment, print physical velocity
+
+frontVel = table();
+
+for i = 1:height(inputFileConfig)
+    filedataExp = filedataExpAll{i};
+    dataSource = dataSourceAll{i};
+    vars = expCTDataAll{i}.varsAll.(dataSource);
+
+    tD = vars.tDtotal;
+    zD = vars.zDFront50;
+
+    % fit window: skip pre-arrival (zD still 0/NaN) and the outlet plateau
+    % (front has exited the imaged core, not really "moving" anymore)
+    valid = isfinite(tD) & isfinite(zD) & zD > 0.03 & zD < 0.97;
+    tDfit = tD(valid); zDfit = zD(valid);
+
+    if nnz(valid) < 5
+        warning('%s: fewer than 5 points in the 0.03-0.97 zD window, skipping.', filedataExp.Key);
+        continue
+    end
+
+    X = [ones(size(tDfit)), tDfit];
+    coeffs = X \ zDfit;
+    intercept = coeffs(1);
+    slope = coeffs(2);             % dimensionless: d(zD)/d(tD)
+    zDhat = X * coeffs;
+    R2 = 1 - sum((zDfit - zDhat).^2) / sum((zDfit - mean(zDfit)).^2);
+
+    % convert to physical velocity: zD = z/L, tD = t*Q/Vtotal
+    % => dz/dt = slope * (L*Q/Vtotal) = slope * uint_cmmin  (uint_cmmin is
+    % exactly the theoretical interstitial velocity, since Vtotal = phi*A*L)
+    uint_cmmin = filedataExp.Q / (filedataExp.phi * pi * ((filedataExp.D*2.54/2)^2));
+    v_front_cmmin = slope * uint_cmmin;
+
+    frontVel = [frontVel; table({char(filedataExp.Key)}, slope, R2, uint_cmmin, v_front_cmmin, ...
+        'VariableNames', {'Key','slope_dzD_dtD','R2','uint_theory_cmmin','v_front_cmmin'})]; %#ok<AGROW>
+end
+
+frontVel.ratio_to_theory = frontVel.slope_dzD_dtD;   % theoretical slope is exactly 1 by definition of zDFront_theory
+disp(frontVel)
+writetable(frontVel, fullfile(exportPath, 'frontVelocity_byExp.xlsx'));
+
+%% zD with time all together, with fitted velocity line overlaid
+
+colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
+darkFactor = 0.6;
+coloursDark = cellfun(@(c) c*darkFactor, colours, 'UniformOutput', false);
+widthPairs = {'30_70','40_60'};
+
+for p = 1:length(widthPairs)
+    widthPair = widthPairs{p};
+    measField = ['zDWidth_' widthPair];
+
+    fig = figure('Position',[100 100 1000 650]);
+    hold on
+
+    for i = 1:height(inputFileConfig)
+        filedataExp = filedataExpAll{i};
+        dataSource = dataSourceAll{i};
+        vars = expCTDataAll{i}.varsAll.(dataSource);
+
+        tD = vars.tDtotal;
+        centerMeas = vars.zDFront50;
+        halfMeas = vars.(measField) / 2;
+
+        for k = 1:height(vars)
+            if isnan(centerMeas(k)) || isnan(halfMeas(k)), continue; end
+            plot([tD(k) tD(k)], [centerMeas(k)-halfMeas(k), centerMeas(k)+halfMeas(k)], ...
+                '-', 'Color',[colours{i} 0.8], 'LineWidth',1.5, 'HandleVisibility','off')
+        end
+
+        validMeas = ~isnan(centerMeas) & ~isnan(halfMeas);
+        scatter(tD(validMeas), centerMeas(validMeas), 20, coloursDark{i}, 'filled', ...
+            'DisplayName', "meas - " + filedataExp.Key)
+
+        % overlay the fitted velocity line for this experiment
+        row = strcmp(frontVel.Key, char(filedataExp.Key));
+        if any(row)
+            tLine = [0 1.2];
+            zLine = frontVel.slope_dzD_dtD(row)*tLine + ...
+                (mean(centerMeas(validMeas)) - frontVel.slope_dzD_dtD(row)*mean(tD(validMeas)));  % refit intercept not stored above; see note
+            plot(tLine, zLine, '--', 'Color', coloursDark{i}, 'LineWidth', 1.2, 'HandleVisibility','off')
+        end
+    end
+
+    xlabel('t_D [-]','FontSize',14)
+    ylabel('z_D [-]','FontSize',14)
+    set(gca, 'FontSize', 14)
+    ylim([-0.02 1.02])
+    xlim([0,1.2])
+    grid on
+    legend('Interpreter','none','FontSize',8,'Location','southwest','NumColumns',2)
+    title(sprintf('Front envelope (%s): measured, all experiments', ...
+        strrep(widthPair,'_','-')),'Interpreter','none')
+
+    fname = sprintf('zD_CT_vs_tD_allExp_%s', widthPair);
+    if ~isfolder(exportPath), mkdir(exportPath); end
+    saveas(fig, fullfile(exportPath, fname), 'png');
+    saveas(fig, fullfile(exportPath, fname), 'fig');
+end
 %% Front envelope: measured (solid) and theoretical (dashed) width, centered on front position
 
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
