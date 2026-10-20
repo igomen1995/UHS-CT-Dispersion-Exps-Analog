@@ -587,6 +587,72 @@ for i = 1:height(inputFileConfig)
         'VariableNames', {'Key','intercept','slope'})]; %#ok<AGROW>
 end
 
+% Average-width summary per experiment/pair: raw arrival tD, mean+/-std width, N_Pe & K_L from the average
+avgWidthResults = table();
+
+for i = 1:height(inputFileConfig)
+    filedataExp = filedataExpAll{i};
+    dataSource = dataSourceAll{i};
+    vars = expCTDataAll{i}.varsAll.(dataSource);
+    key = char(filedataExp.Key);
+
+    velRow = strcmp(frontVel.Key, key);
+    if ~any(velRow), continue; end
+    slope = frontVel.slope(velRow);   % measured dzD/dtD -- used ONLY to convert N_Pe -> K_L
+
+    tDfull = vars.tDtotal;
+
+    uint_cmmin = filedataExp.Q / (filedataExp.phi * pi * ((filedataExp.D*2.54/2)^2));
+    v_front_cmmin = slope * uint_cmmin;
+    L_cm = filedataExp.L * 2.54;
+
+    for p = 1:numel(pairNames)
+        pn = pairNames{p};
+        CdPair = widthPairDefs.(pn);
+        Cd_low = CdPair(1); Cd_high = CdPair(2);
+        k = erfcinv(2*Cd_low) - erfcinv(2*Cd_high);
+
+        suffix = strrep(sprintf('%.0f_%.0f', Cd_low*100, Cd_high*100), '.', '');
+        measField = ['zDWidth_' suffix];
+        if ~ismember(measField, vars.Properties.VariableNames)
+            continue
+        end
+        wfull = vars.(measField);
+
+        validW = isfinite(tDfull) & isfinite(wfull) & wfull > 0 & tDfull >= tDcutoff;
+        if ~any(validW), continue; end
+
+        tDraw = tDfull(validW);
+        w     = wfull(validW);
+
+        tD_arrival_raw = min(tDraw);     % raw t_D where this front first appears -- NOT velocity-corrected
+
+        w_mean = mean(w);
+        w_std  = std(w);
+
+        tD_mean = mean(tDraw);
+        dt_mean = tD_mean - tD_arrival_raw;        % time since arrival, still in raw t_D units
+
+        normWidth2_mean = (w_mean)^2 / (4*k^2);
+
+        if dt_mean <= 0 || normWidth2_mean <= 0
+            warning('%s (%s): degenerate average, skipping N_Pe.', key, pn);
+            N_Pe_avg = NaN; K_L_avg_cmmin = NaN;
+        else
+            % zero-intercept point estimate from Lake/Johns: ZD_width^2/(4k^2) = tD/N_Pe
+            N_Pe_avg = dt_mean / normWidth2_mean;
+            K_L_avg_cmmin = v_front_cmmin * L_cm / N_Pe_avg;
+        end
+
+        avgWidthResults = [avgWidthResults; table({key}, {pn}, tD_arrival_raw, w_mean, w_std, ...
+            tD_mean, N_Pe_avg, v_front_cmmin, K_L_avg_cmmin, nnz(validW), ...
+            'VariableNames', {'Key','pairName','tD_arrival_raw','width_mean','width_std', ...
+            'tD_mean','N_Pe_avg','v_front_cmmin','K_L_avg_cmmin','nPts'})]; %#ok<AGROW>
+    end
+end
+
+disp(avgWidthResults)
+writetable(avgWidthResults, fullfile(exportPath, 'avgWidth_NPe_KL_summary.xlsx'));
 % Build pooled table: both raw tD and velocity-corrected tD_corr, same cutoff ----
 pooled = table();   % Key, pairName, tD_raw, tD_corr, normWidth2
 
