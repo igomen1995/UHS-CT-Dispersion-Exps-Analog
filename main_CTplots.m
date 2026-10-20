@@ -561,30 +561,34 @@ tDcutoff = 0;             % <-- only use points with raw t_D >= this value, ever
 colours = {[0.318 0.654 0.976],[0.09 0.306 0.525], [0.435 0.753 0.251],[0.059 0.361 0.102]};
 markerShapes = {'o','s','^','d','v','>'};
 
-% Front velocity per experiment ----
+% Front velocity per experiment, directly from physical z (cm) vs physical t (sec) ----
 frontVel = table();
 for i = 1:height(inputFileConfig)
     filedataExp = filedataExpAll{i};
     dataSource = dataSourceAll{i};
     vars = expCTDataAll{i}.varsAll.(dataSource);
 
-    tD = vars.tDtotal;
-    zD = vars.zDFront50;
+    L_cm = filedataExp.L * 2.54;
 
-    valid = isfinite(tD) & isfinite(zD) & zD > 0.03 & zD < 0.97 & tD >= tDcutoff;
-    tDfit = tD(valid); zDfit = zD(valid);
+    t_sec = vars.secondsElapsed;                    % <-- confirm actual field name for physical time
+    z_cm  = vars.zDFront50 * L_cm;          % <-- or vars.<raw z-in-cm field> if one exists
+
+    valid = isfinite(t_sec) & isfinite(z_cm) & vars.zDFront50 > 0.03 & vars.zDFront50 < 0.97;
+    tfit = t_sec(valid); zfit = z_cm(valid);
 
     if nnz(valid) < 5
         warning('%s: too few points for velocity fit, skipping.', filedataExp.Key);
         continue
     end
 
-    X = [ones(size(tDfit)), tDfit];
-    coeffs = X \ zDfit;
-    intercept = coeffs(1); slope = coeffs(2);
+    X = [ones(size(tfit)), tfit];
+    coeffs = X \ zfit;
+    intercept_cm   = coeffs(1);
+    v_front_cmsec  = coeffs(2);            % true measured front velocity, cm/s -- no uint assumption
+    v_front_cmmin  = v_front_cmsec * 60;
 
-    frontVel = [frontVel; table({char(filedataExp.Key)}, intercept, slope, ...
-        'VariableNames', {'Key','intercept','slope'})]; %#ok<AGROW>
+    frontVel = [frontVel; table({char(filedataExp.Key)}, intercept_cm, v_front_cmsec, v_front_cmmin, ...
+        'VariableNames', {'Key','intercept_cm','v_front_cmsec','v_front_cmmin'})]; %#ok<AGROW>
 end
 
 % Average-width summary per experiment/pair: raw arrival tD, mean+/-std width, N_Pe & K_L from the average
@@ -598,12 +602,9 @@ for i = 1:height(inputFileConfig)
 
     velRow = strcmp(frontVel.Key, key);
     if ~any(velRow), continue; end
-    slope = frontVel.slope(velRow);   % measured dzD/dtD -- used ONLY to convert N_Pe -> K_L
-
+    v_front_cmmin = frontVel.v_front_cmmin(velRow);   % measured directly, no uint needed
+    
     tDfull = vars.tDtotal;
-
-    uint_cmmin = filedataExp.Q / (filedataExp.phi * pi * ((filedataExp.D*2.54/2)^2));
-    v_front_cmmin = slope * uint_cmmin;
     L_cm = filedataExp.L * 2.54;
 
     for p = 1:numel(pairNames)
@@ -664,9 +665,11 @@ for i = 1:height(inputFileConfig)
 
     velRow = strcmp(frontVel.Key, key);
     if ~any(velRow), continue; end
-    slope = frontVel.slope(velRow);
+    v_front_cmmin = frontVel.v_front_cmmin(velRow);   % measured directly, no uint needed
+    L_cm = filedataExp.L * 2.54;
 
-    tDfull = vars.tDtotal;
+    tDfull   = vars.tDtotal;
+    tMinFull = vars.secondsElapsed / 60;     % physical time, minutes
 
     for p = 1:numel(pairNames)
         pn = pairNames{p};
@@ -681,14 +684,15 @@ for i = 1:height(inputFileConfig)
         end
         wfull = vars.(measField);
 
-        validW = isfinite(tDfull) & isfinite(wfull) & wfull > 0 & tDfull >= tDcutoff;
+        validW = isfinite(tDfull) & isfinite(tMinFull) & isfinite(wfull) & wfull > 0 & tDfull >= tDcutoff;
         if ~any(validW), continue; end
 
-        tDraw = tDfull(validW);
+        tDraw = tDfull(validW);      % kept only for the tD_raw column / reporting
+        tMin  = tMinFull(validW);
         w     = wfull(validW);
 
-        tD_arrival = min(tDraw);
-        tD_corr    = (tDraw - tD_arrival) * slope;
+        t_arrival_min = min(tMin);                                  % physical arrival time
+        tD_corr = v_front_cmmin * (tMin - t_arrival_min) / L_cm;     % fully physical, no uint anywhere
         normWidth2 = w.^2 / (4*k^2);
 
         keepPos = tD_corr >= 0;
@@ -1029,13 +1033,10 @@ function results = fitAndPlotPooled(pooled, expKeys, xVar, xLabelStr, titleStr, 
         R2 = 1 - sum((nw2Fit - nw2hat).^2) / sum((nw2Fit - mean(nw2Fit)).^2);
         N_Pe = 1 / bLin;
 
-        % ---- K_L from measured front velocity, same convention as original script ----
+        % ---- K_L from directly-measured front velocity (no interstitial-velocity assumption) ----
         velRow = strcmp(frontVel.Key, key);
-        filedataExpIdx = find(strcmp(cellfun(@(f) char(f.Key), filedataExpAll, 'UniformOutput', false), key));
-        filedataExp = filedataExpAll{filedataExpIdx};
-        uint_cmmin = filedataExp.Q / (filedataExp.phi * pi * ((filedataExp.D*2.54/2)^2));
-        v_front_cmmin = frontVel.slope(velRow) * uint_cmmin;
-        L_cm = filedataExp.L * 2.54;
+        v_front_cmmin = frontVel.v_front_cmmin(velRow);
+        L_cm = filedataExpAll{strcmp(cellfun(@(f) char(f.Key), filedataExpAll, 'UniformOutput', false), key)}.L * 2.54;
         K_L_cmmin = v_front_cmmin * L_cm / N_Pe;
 
         results = [results; table({key}, bLin, a, R2, N_Pe, v_front_cmmin, K_L_cmmin, x0, nnz(keepMask), numel(xv), ...
