@@ -192,6 +192,14 @@ for i = 1:height(inputFileConfig)
     L_cm = filedataExp.L*2.54; 
     D = expProcFullData_MFM_CT.exp_params.D12_cm2min;
 
+    % exp params
+    Fluid1 = expProcFullData_MFM_CT.exp_params.Fluid1;
+    Fluid2 = expProcFullData_MFM_CT.exp_params.Fluid2;
+    T_C_avg = expProcFullData_MFM_CT.exp_params.T_mean;
+    dT_C_avg = expProcFullData_MFM_CT.exp_params.T_std;
+    P_psig_avg = expProcFullData_MFM_CT.exp_params.Pavg_avg;
+    dP_psig_avg = expProcFullData_MFM_CT.exp_params.Pavg_std;
+
     % Capture init ref data folder
     refInitFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_init); % Xe
     refInitFolderContent = refInitFolderContent([refInitFolderContent.isdir] & ~startsWith({refInitFolderContent.name},'.'));
@@ -249,8 +257,9 @@ for i = 1:height(inputFileConfig)
     concVarsAll = table();
 
     % interpolant for composition form array 0 to 1 (binary mixture)
-    interpFcn = buildInterpolant(filedataExp.Fluid1, ...
-        filedataExp.Fluid2, filedataExp.T, filedataExp.P);
+    [interpFcn, interpFcn_Tp, interpFcn_Tm, interpFcn_Pp, interpFcn_Pm] = ...
+        buildInterpolant(Fluid1, Fluid2, ...
+        T_C_avg, P_psig_avg, dT_C_avg, dP_psig_avg);
     
     % zD levels for spatially-resolved BTC extraction (zD=0 is BTlinesBefore; zD=1 is outlet BTcore)
     zDlevels = 0:0.1:1.0;
@@ -298,7 +307,18 @@ for i = 1:height(inputFileConfig)
             rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
             rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac,filedataExp.Fluid1, ...
                 filedataExp.Fluid2, filedataExp.T, filedataExp.P);
-            concImage = interpFcn(rhoNormImage);
+            concImage    = interpFcn(rhoNormImage);
+            concImage_Tp = interpFcn_Tp(rhoNormImage);
+            concImage_Tm = interpFcn_Tm(rhoNormImage);
+            concImage_Pp = interpFcn_Pp(rhoNormImage);
+            concImage_Pm = interpFcn_Pm(rhoNormImage);
+
+            dConc_dT   = (concImage_Tp - concImage_Tm)/2;
+            dConc_dP   = (concImage_Pp - concImage_Pm)/2;
+            dConcImage = sqrt(dConc_dT.^2 + dConc_dP.^2);
+
+            dConc_mean_k = mean(dConcImage(:), 'omitnan');
+            dConc_max_k  = max(dConcImage(:));
 
             resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
             resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
@@ -311,6 +331,9 @@ for i = 1:height(inputFileConfig)
             concVars_k = populate_CTframeVars(concImage, resXmm, resYmm, ...
                 imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, ...
                 D, uint_cmmin, filedataExp.Vlinesbefore);
+            concVars_k.dConc_mean = dConc_mean_k;
+            concVars_k.dConc_max  = dConc_max_k;
+
             expCTData.(filedataExp.Key).exp.(run_name).vars.conc(k) = concVars_k;
             
         end
