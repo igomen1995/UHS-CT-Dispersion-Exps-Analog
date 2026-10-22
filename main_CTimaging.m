@@ -143,10 +143,6 @@ for i = 1:nExp
     expCTDataname = fullfile(pathExportAll, filedataExp.Key + ".mat");
     expCTDataTemp = load(expCTDataname);
 
-    % interpolant for composition form array 0 to 1 (binary mixture)
-    interpFcn = buildInterpolant(filedataExp.Fluid1, ...
-        filedataExp.Fluid2, filedataExp.T, filedataExp.P);
-
     pathImport_MFM_CT = inputFileConfig.MFM_BTC_CT_Path{i};   % "../results/exp_He-Xe-T20-V_REFPROP/"
     pathImport_MFM_UHS = inputFileConfig.MFM_BTC_UHS_Path{i};   % "../results/exp_H2-CG-T40-P1160-V_REFPROP/"
     MFM_CT_name = inputFileConfig.MFM_BTC_CT_Key{i};
@@ -157,6 +153,19 @@ for i = 1:nExp
     % load processed MFM data
     MFM_CT_Data = load(MFM_CT_file);
     MFM_UHS_Data = load(MFM_UHS_file);
+
+    % exp params
+    Fluid1 = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.Fluid1;
+    Fluid2 = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.Fluid2;
+    T_C_avg = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.T_mean;
+    dT_C_avg = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.T_std;
+    P_psig_avg = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.Pavg_avg;
+    dP_psig_avg = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.Pavg_std;
+
+    % interpolant for composition form array 0 to 1 (binary mixture)
+    [interpFcn, interpFcn_Tp, interpFcn_Tm, interpFcn_Pp, interpFcn_Pm] = ...
+        buildInterpolant(Fluid1, Fluid2, ...
+        T_C_avg, P_psig_avg, dT_C_avg, dP_psig_avg);
 
     filedataExpAll{i}   = filedataExp;
     expCTDataAll{i}     = expCTDataTemp.expCTDataSave;
