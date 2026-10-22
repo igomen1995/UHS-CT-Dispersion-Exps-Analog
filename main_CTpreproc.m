@@ -319,6 +319,7 @@ for i = 1:height(inputFileConfig)
             dConcImage = sqrt(dConc_dT.^2 + dConc_dP.^2);
 
             dConc_mean_k = mean(dConcImage(:), 'omitnan');
+            dConc_std_k = std(dConcImage(:), 'omitnan');
             dConc_max_k  = max(dConcImage(:));
 
             resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
@@ -333,6 +334,7 @@ for i = 1:height(inputFileConfig)
                 imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, ...
                 D, uint_cmmin, filedataExp.Vlinesbefore);
             concVars_k.dConc_mean = dConc_mean_k;
+            concVars_k.dConc_std = dConc_std_k;
             concVars_k.dConc_max  = dConc_max_k;
 
             expCTData.(filedataExp.Key).exp.(run_name).vars.conc(k) = concVars_k;
