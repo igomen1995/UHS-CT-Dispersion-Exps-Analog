@@ -1,4 +1,5 @@
-%% CT Concentration Analysis and Transport Metrics Extraction
+%% main_CTpreproc.m
+% CT Concentration Analysis and Transport Metrics Extraction
 %
 % This script extracts quantitative transport information from processed
 % concentration images generated from CT experiments.

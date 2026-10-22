@@ -1,5 +1,6 @@
 
-%% Interactive CT Concentration Visualization
+%% main_CTimaging.m
+% Interactive CT Concentration Visualization
 %
 % This script provides an interactive visualization environment for
 % exploring processed CT concentration datasets generated from porous media

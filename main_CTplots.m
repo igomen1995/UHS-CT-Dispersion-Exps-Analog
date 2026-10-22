@@ -1,5 +1,6 @@
 
-%% Comparative Analysis of CT-Derived Concentration Profiles
+%% main_CTplots.m
+% Comparative Analysis of CT-Derived Concentration Profiles
 %
 % This script compares concentration distributions and breakthrough curves
 % from multiple CT experiments. Experimental results are loaded from

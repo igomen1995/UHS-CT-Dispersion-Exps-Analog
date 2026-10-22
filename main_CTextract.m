@@ -1,5 +1,6 @@
 
-%% CT Image Processing and Concentration Map Generation
+%% main_CTextract.m
+% CT Image Processing and Concentration Map Generation
 %
 % This script processes raw CT scan data from tracer/core-flooding
 % experiments and generates normalized concentration maps for each scan.
