@@ -1,22 +1,18 @@
-function KL_width_byPair = fitKL_frontWidth(vars, tCore, variantSuffix, fitWithIntercept, lenScale_cm, KLconv)
-% FITKL_FRONTWIDTH  One best-fit KL per symmetric width pair (with its fit
-% standard error), from a LINEAR FIT of
-%       normWidth2 = (W/lenScale)^2 / (4k^2)   vs   tCore
-% pooled across ALL frames -- erfc growth law normWidth2 = (1/NPe)*tD
-% (dimensionless) or KL*t (physical).
+function KL_width_byPair = fitKL_frontWidth(vars, t_arrival_min, variantSuffix, fitWithIntercept)
+% FITKL_FRONTWIDTH  One KL per symmetric width pair from normWidth2 = W^2/(4k^2)
+% vs t_core_min (time since arrival) -- erfc growth law normWidth2 = KL*t.
 %
-%   tCore        n x 1 time since arrival for every frame (frames with
-%                tCore <= 0 are not fitted): tD [-] or t [min]
-%   lenScale_cm  L_cm for tD (y dimensionless), 1 for t in min (y in cm^2)
-%   KLconv       KL_cm2min = slope*KLconv:  u*L [cm2/min] for tD, 1 for t in min
-%   fitWithIntercept  true: y = b0 + b1*t ; false: y = b1*t
+%   1) frames with finite width and t_core > 0
+%   2) positive-slope selection: quadratic fit, keep the rising branch
+%      (selectPositiveSlope, as in main_CTplots)
+%   3) linear regression on the selected frames -> KL_cm2min +/- KL_cm2min_se
+%   4) pointwise KL_i = (y_i - b0)/t_i on the selected frames -> mean, std
 %
-% Returns per pair: KL_cm2min, KL_cm2min_se, NPe, slope, intercept_cm2,
-% R2, nPts and, for plotting, t_all/y_all (all frames), t_fit/y_fit (used),
-% y_pred (fitted line at t_fit).
+% Returns per pair: KL_cm2min, KL_cm2min_se, intercept_cm2, R2, nPts (selected),
+% nValid, KL_mean, KL_std, KL_pts, pQuad, t_vertex, and for plotting
+% t_all/y_all (every frame), t_fit/y_fit (selected), y_pred.
 if nargin < 4, fitWithIntercept = false; end
-if nargin < 5, lenScale_cm = 1; end
-if nargin < 6, KLconv = 1; end
+minPtsSel = 5;
 
 allCols = string(vars.Properties.VariableNames);
 if variantSuffix == ""
@@ -25,7 +21,7 @@ else
     pat = '^zDWidth_(\d+)_(\d+)_xtrim_cm$';
 end
 matchIdx = find(~cellfun(@isempty, regexp(allCols, pat, 'once')));
-tCore = tCore(:);
+t_core_min = max(vars.secondsElapsed/60 - t_arrival_min, 0);
 KL_width_byPair = struct();
 
 for c = matchIdx(:)'
@@ -34,23 +30,33 @@ for c = matchIdx(:)'
     Cd_low  = str2double(tok{1})/100;
     Cd_high = str2double(tok{2})/100;
     k = erfcinv(2*Cd_low) - erfcinv(2*Cd_high);
-
-    W = vars.(col) / lenScale_cm;          % W_D if lenScale = L
-    normWidth2 = W.^2 ./ (4*k^2);          % = tD/NPe  (or KL*t)
-
-    valid = isfinite(normWidth2) & isfinite(tCore) & tCore > 0;
-    t_fit = tCore(valid);
-    y_fit = normWidth2(valid);
+    W_cm = vars.(col);
+    normWidth2 = W_cm.^2 ./ (4*k^2);   % = KL*t (no factor of 2 here)
     pairTag = "C" + tok{1} + "_" + tok{2};
 
-    if numel(t_fit) < 3
-        KL_width_byPair.(pairTag) = struct('KL_cm2min',NaN,'KL_cm2min_se',NaN, ...
-            'NPe',NaN,'slope',NaN,'intercept_cm2',NaN,'R2',NaN,'nPts',numel(t_fit), ...
-            't_all',tCore,'y_all',normWidth2, ...
-            't_fit',t_fit,'y_fit',y_fit,'y_pred',nan(size(t_fit)));
+    % 1) valid frames
+    valid = isfinite(normWidth2) & isfinite(t_core_min) & t_core_min > 0;
+    t_v = t_core_min(valid);
+    y_v = normWidth2(valid);
+
+    % 2) rising branch only
+    [keep, pQuad, t_vertex] = selectPositiveSlope(t_v, y_v, minPtsSel);
+    t_fit = t_v(keep);
+    y_fit = y_v(keep);
+
+    out = struct('KL_cm2min',NaN,'KL_cm2min_se',NaN,'intercept_cm2',NaN,'R2',NaN, ...
+        'nPts',numel(t_fit),'nValid',numel(t_v), ...
+        'KL_mean',NaN,'KL_std',NaN,'KL_pts',nan(size(t_fit)), ...
+        'pQuad',pQuad,'t_vertex',t_vertex, ...
+        't_all',t_core_min,'y_all',normWidth2, ...
+        't_fit',t_fit,'y_fit',y_fit,'y_pred',nan(size(t_fit)));
+
+    if numel(t_fit) < minPtsSel
+        KL_width_byPair.(pairTag) = out;
         continue
     end
 
+    % 3) linear regression
     if fitWithIntercept
         X = [ones(size(t_fit)), t_fit];
     else
@@ -64,21 +70,21 @@ for c = matchIdx(:)'
     if dof > 0, sigma2_resid = sum(resid.^2)/dof; end
     covBeta = sigma2_resid * inv(X'*X); %#ok<MINV>
 
-    slope    = beta(end);
-    slope_se = sqrt(covBeta(end,end));
-    KL_cm2min    = slope    * KLconv;     % width: slope = KL/(uL) = 1/NPe
-    KL_cm2min_se = slope_se * KLconv;
-    NPe = 1/slope;
-
     intercept_cm2 = 0;
-    if fitWithIntercept, intercept_cm2 = beta(1) * lenScale_cm^2; end   % back to cm^2
-
+    if fitWithIntercept, intercept_cm2 = beta(1); end
     SStot = sum((y_fit - mean(y_fit)).^2);
-    R2 = 1 - sum(resid.^2)/SStot;
 
-    KL_width_byPair.(pairTag) = struct('KL_cm2min',KL_cm2min,'KL_cm2min_se',KL_cm2min_se, ...
-        'NPe',NPe,'slope',slope,'intercept_cm2',intercept_cm2,'R2',R2,'nPts',numel(t_fit), ...
-        't_all',tCore,'y_all',normWidth2, ...
-        't_fit',t_fit,'y_fit',y_fit,'y_pred',yPred);
+    out.KL_cm2min     = beta(end);                 % slope = KL directly
+    out.KL_cm2min_se  = sqrt(covBeta(end,end));
+    out.intercept_cm2 = intercept_cm2;
+    out.R2            = 1 - sum(resid.^2)/SStot;
+    out.y_pred        = yPred;
+
+    % 4) pointwise KL on the selected frames
+    out.KL_pts  = (y_fit - intercept_cm2) ./ t_fit;
+    out.KL_mean = mean(out.KL_pts, 'omitnan');
+    out.KL_std  = std(out.KL_pts, 'omitnan');
+
+    KL_width_byPair.(pairTag) = out;
 end
 end
