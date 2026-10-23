@@ -306,6 +306,7 @@ for i = 1:height(inputFileConfig)
 
         kRange = 1:nn_exp;
         for k = kRange
+            k
             % Concentration profiles and histograms of normalized images
             imgNr = expCTData.(filedataExp.Key).exp.(run_name).pcp.ImgNr(k);
             rotPos = expCTData.(filedataExp.Key).exp.(run_name).pcp.RotPos(k);
@@ -386,6 +387,23 @@ for i = 1:height(inputFileConfig)
                 vFrontByLevel_xtrim.(lvlTag) = frontVel(t_min, vars.(zDcolCm_xtrim), vars.(zDcol_xtrim));
             end
         end
+
+        % mean front velocity per fixed angle (0-180, mirrored 181-360), pooling
+        % direct+opposite readings from every frame -- this is the per-angle
+        % (z vs t) analysis your imaging script's velocity field will draw from
+        azimVelByLevel       = struct();
+        azimVelByLevel_xtrim = struct();
+        for lvl = Clevels
+            lvlTag = sprintf('%02d', round(lvl*100));
+            if ismember("zDFront"+lvlTag+"_azimDirect", string(vars.Properties.VariableNames))
+                azimVelByLevel.(lvlTag) = frontVel_byAzimuth(vars, lvlTag, "");
+            end
+            if ismember("zDFront"+lvlTag+"_azimDirect_xtrim", string(vars.Properties.VariableNames))
+                azimVelByLevel_xtrim.(lvlTag) = frontVel_byAzimuth(vars, lvlTag, "_xtrim");
+            end
+        end
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).azimVelByLevel       = azimVelByLevel;
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).azimVelByLevel_xtrim = azimVelByLevel_xtrim;
 
         expCTData.(filedataExp.Key).resultsAll.(dataSource).vFrontByLevel       = vFrontByLevel;
         expCTData.(filedataExp.Key).resultsAll.(dataSource).vFrontByLevel_xtrim = vFrontByLevel_xtrim;
