@@ -1,10 +1,12 @@
 function plotKLComparison(resultsOut, Key, dataSource, pathExportAll)
 % PLOTKLCOMPARISON
-%   1) KL bar chart: BTC per zD (full/xtrim), front width/sigma (full/xtrim),
-%      MFM CT and MFM UHS (with total uncertainty)
-%   2) one figure per completed BTC fit (variant x zD): data + fitted curve,
-%      KL in the title -> saved in <pathExportAll>/KLfits_<Key>_<dataSource>/
-%   3) one overview per variant: all completed zD fits overlaid
+%   1) KL bar chart (0-10 cm2/min): BTC per zD (full/xtrim), front
+%      width/sigma (full/xtrim), MFM CT and MFM UHS (with total uncertainty)
+%   2) one figure per completed BTC fit (variant x zD): data + fitted curve
+%   3) one overview per variant: all completed zD BTC fits overlaid
+%   4) one figure per front width pair / sigma fit (variant x method):
+%      all frames, frames used, fitted line + overview per variant
+%   Individual fits -> <pathExportAll>/KLfits_<Key>_<dataSource>/
 
 Key = string(Key);  dataSource = string(dataSource);
 if ~isfolder(pathExportAll), mkdir(pathExportAll); end
@@ -15,6 +17,7 @@ mfmTag = "";
 if isfield(resultsOut, 'MFM_fitData'), mfmTag = " (" + string(resultsOut.MFM_fitData) + ")"; end
 
 variants = ["full","xtrim"];
+KLmax = 10;   % bar chart x-limit [cm2/min]
 
 %% 1) KL bar chart
 labels = strings(0,1);  vals = [];  errs = [];  grp = [];
@@ -72,15 +75,16 @@ for g = unique(grp)                       % legend entries, one per group presen
 end
 set(ax, 'YTick',y, 'YTickLabel',labels, 'TickLabelInterpreter','tex', 'FontSize',8, 'YDir','reverse')
 ylim(ax, [0.4, nBars+0.6])
+xlim(ax, [0 KLmax])
 xlabel(ax, 'K_L [cm^2/min]')
-xlim(ax, [0 10])
-% bars beyond 10 are cut off at the axis edge -> print their value there
-over = find(vals > 10);
-for k = over
-    text(ax, 9.9, y(k), sprintf('%.3g \\rightarrow', vals(k)), ...
+
+% bars beyond KLmax are cut at the axis edge -> print their value there
+for k = find(vals > KLmax)
+    text(ax, 0.99*KLmax, y(k), sprintf('%.3g \\rightarrow', vals(k)), ...
         'HorizontalAlignment','right', 'VerticalAlignment','middle', 'FontSize',7)
 end
-title(ax, sprintf('%s (%s): K_L by method', Key, dataSource), 'Interpreter','none')
+
+title(ax, sprintf('%s (%s): KL by method', Key, dataSource), 'Interpreter','none')
 legend(ax, 'Location','southeast', 'FontSize',8)
 grid(ax,'on')
 
@@ -135,21 +139,92 @@ for v = 1:numel(variants)
         scatter(axAll, t_min, e.C_vals, 8, c, 'filled', 'MarkerFaceAlpha',0.4, 'HandleVisibility','off')
         if hasFit
             plot(axAll, t_min, best.C_pred, '-', 'Color',c, 'LineWidth',2, ...
-                'DisplayName', sprintf('z_D=%.1f: K_L=%.3g', e.zD, KLv))
+                'DisplayName', sprintf('zD=%.1f: KL=%.3g', e.zD, KLv))
         end
         nPlotted = nPlotted + 1;
     end
 
     if nPlotted == 0
         text(axAll, 0.5, 0.5, "No completed BTC fit (" + variant + ")", ...
-            'Units','normalized', 'HorizontalAlignment','center')
+            'Units','normalized', 'HorizontalAlignment','center', 'Interpreter','none')
     else
-        legend(axAll, 'Location','southeast', 'FontSize',8)
+        legend(axAll, 'Location','southeast', 'FontSize',8, 'Interpreter','none')
     end
     xlabel(axAll,'t [min]'); ylabel(axAll,'C_D [-]'); ylim(axAll,[-0.05 1.05]); grid(axAll,'on')
     title(axAll, sprintf('%s (%s, %s): all BTC fits along the core', Key, dataSource, variant), ...
         'Interpreter','none')
     fnAll = sprintf('BTCfitsAll_%s_%s_%s', Key, dataSource, variant);
+    saveas(figAll, fullfile(pathExportAll, fnAll), 'png');
+    saveas(figAll, fullfile(pathExportAll, fnAll), 'fig');
+end
+
+%% 4) front width / sigma fits vs time: one figure per method + overview per variant
+for v = 1:numel(variants)
+    variant  = variants(v);
+    frontFns = fieldnames(resultsOut.(variant).KL_front_CT);
+    cols     = lines(numel(frontFns));
+
+    figAll = figure('Position',[100 100 1000 650]);
+    axAll = axes(figAll); hold(axAll,'on')
+    nPlotted = 0;
+
+    for f = 1:numel(frontFns)
+        name = string(frontFns{f});
+        S2   = resultsOut.(variant).KL_front_CT.(name);
+        if ~all(isfield(S2, {'t_all','y_all','t_fit','y_fit','y_pred'})), continue, end
+
+        if name == "sigma"
+            yLab = 'sigma^2 [cm^2]   (slope = 2 KL)';
+        else
+            yLab = 'W^2/(4k^2) [cm^2]   (slope = KL)';
+        end
+
+        % --- individual figure
+        f1 = figure('Visible','off', 'Position',[100 100 800 550]);
+        a1 = axes(f1); hold(a1,'on')
+        okAll = isfinite(S2.t_all) & isfinite(S2.y_all);
+        scatter(a1, S2.t_all(okAll), S2.y_all(okAll), 10, [0.75 0.75 0.75], 'filled', ...
+            'DisplayName','all frames')
+        scatter(a1, S2.t_fit, S2.y_fit, 18, cols(f,:), 'filled', 'DisplayName','used in fit')
+        if any(isfinite(S2.y_pred))
+            [tS, o] = sort(S2.t_fit);
+            plot(a1, tS, S2.y_pred(o), '-', 'Color',cols(f,:)*0.6, 'LineWidth',2, 'DisplayName','linear fit')
+        end
+        xlabel(a1, 't since arrival [min]', 'Interpreter','none')
+        ylabel(a1, yLab, 'Interpreter','none')
+        grid(a1,'on')
+        legend(a1, 'Location','northwest', 'Interpreter','none')
+        title(a1, sprintf('%s (%s, %s) %s: KL = %.3g +/- %.2g cm2/min, R2=%.3f, n=%d', ...
+            Key, dataSource, variant, name, S2.KL_cm2min_best, S2.KL_cm2min_se, S2.R2, S2.nValidFrames), ...
+            'Interpreter','none', 'FontSize',9)
+        fn1 = sprintf('frontFit_%s_%s_%s_%s', Key, dataSource, variant, name);
+        saveas(f1, fullfile(fitDir, fn1), 'png');
+        saveas(f1, fullfile(fitDir, fn1), 'fig');
+        close(f1)
+
+        % --- overview (width pairs only share the same y quantity; sigma^2 = 2*KL*t)
+        scatter(axAll, S2.t_fit, S2.y_fit, 10, cols(f,:), 'filled', 'MarkerFaceAlpha',0.5, ...
+            'HandleVisibility','off')
+        if any(isfinite(S2.y_pred))
+            [tS, o] = sort(S2.t_fit);
+            plot(axAll, tS, S2.y_pred(o), '-', 'Color',cols(f,:), 'LineWidth',2, ...
+                'DisplayName', sprintf('%s: KL=%.3g', name, S2.KL_cm2min_best))
+        end
+        nPlotted = nPlotted + 1;
+    end
+
+    if nPlotted == 0
+        text(axAll, 0.5, 0.5, "No front fits with stored data (" + variant + ")", ...
+            'Units','normalized', 'HorizontalAlignment','center', 'Interpreter','none')
+    else
+        legend(axAll, 'Location','northwest', 'Interpreter','none', 'FontSize',8)
+    end
+    xlabel(axAll, 't since arrival [min]', 'Interpreter','none')
+    ylabel(axAll, 'W^2/(4k^2) or sigma^2 [cm^2]', 'Interpreter','none')
+    grid(axAll,'on')
+    title(axAll, sprintf('%s (%s, %s): front width / sigma fits', Key, dataSource, variant), ...
+        'Interpreter','none')
+    fnAll = sprintf('frontFitsAll_%s_%s_%s', Key, dataSource, variant);
     saveas(figAll, fullfile(pathExportAll, fnAll), 'png');
     saveas(figAll, fullfile(pathExportAll, fnAll), 'fig');
 end
