@@ -262,20 +262,12 @@ function [zMinVal, zMaxVal] = robustFrontMinMax(frontEntry, nx, ny, smoothWindow
 end
 
 function frontProfile = contourProfileByColumn(xContour_px, zContour_px, nx, ny)
-% Bin raw contourc points into per-pixel-column x bins -- a column with
-% more than one crossing (fold-back/overhang) keeps both its min and max
-% instead of averaging them away.
-    xBin = min(max(round(xContour_px), 1), nx);
-    zMean = nan(nx,1); zMin = nan(nx,1); zMax = nan(nx,1); nPts = zeros(nx,1);
-    for xc = 1:nx
-        zc = zContour_px(xBin == xc);
-        if ~isempty(zc)
-            zMean(xc) = mean(zc);
-            zMin(xc)  = min(zc);
-            zMax(xc)  = max(zc);
-            nPts(xc)  = numel(zc);
-        end
-    end
+    xBin = min(max(round(xContour_px(:)), 1), nx);
+    z    = zContour_px(:);
+    zMean = accumarray(xBin, z, [nx 1], @mean, NaN);
+    zMin  = accumarray(xBin, z, [nx 1], @min,  NaN);
+    zMax  = accumarray(xBin, z, [nx 1], @max,  NaN);
+    nPts  = accumarray(xBin, 1, [nx 1]);
     frontProfile = table((1:nx)'/nx, zMean/ny, zMin/ny, zMax/ny, nPts, ...
         'VariableNames', {'xD','zDmean','zDmin','zDmax','nPts'});
 end
