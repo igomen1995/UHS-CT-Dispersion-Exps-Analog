@@ -21,19 +21,37 @@ for i = 1:height(inputFileConfig)
 
     filedataExp = import_inputCTExp(filenameExp);
 
+    % MFM analog (CT)
     pathImport_MFM_CT = regexprep(inputFileConfig.MFM_BTC_CT_Path{i}, '^(\.\./)+', '');
     MFM_CT_name = inputFileConfig.MFM_BTC_CT_Key{i};
     MFM_CT_file = fullfile(Root, pathImport_MFM_CT, 'expProcFullData.mat');
-    if ~isfile(MFM_CT_file)
-        error('MFM results file not found: %s', MFM_CT_file);
+
+    % MFM UHS
+    pathImport_MFM_UHS = regexprep(inputFileConfig.MFM_BTC_UHS_Path{i}, '^(\.\./)+', '');
+    MFM_UHS_name = inputFileConfig.MFM_BTC_UHS_Key{i};
+    MFM_UHS_file = fullfile(Root, pathImport_MFM_UHS, 'expProcFullData.mat');
+
+    if ~isfile(MFM_CT_file),  error('MFM CT results file not found: %s',  MFM_CT_file);  end
+    if ~isfile(MFM_UHS_file), error('MFM UHS results file not found: %s', MFM_UHS_file); end
+
+    MFM_CT_Data  = load(MFM_CT_file);
+    MFM_UHS_Data = load(MFM_UHS_file);
+
+    if ~isfield(MFM_CT_Data.expProcFullData, MFM_CT_name)
+        error('Experiment %s not found in %s', MFM_CT_name, MFM_CT_file);
     end
-    MFM_CT_Data = load(MFM_CT_file);
-    expKey = MFM_CT_name;
-    if ~isfield(MFM_CT_Data.expProcFullData, expKey)
-        error('Experiment %s not found in %s', expKey, MFM_CT_file);
+    if ~isfield(MFM_UHS_Data.expProcFullData, MFM_UHS_name)
+        error('Experiment %s not found in %s', MFM_UHS_name, MFM_UHS_file);
     end
-    mfmExp = MFM_CT_Data.expProcFullData.(expKey);   % exp_params + woEOS/wEOS
-    D_cm2min  = mfmExp.exp_params.D12_cm2min;           % same for both variants
+
+    mfmExpCT  = MFM_CT_Data.expProcFullData.(MFM_CT_name);    % exp_params + woEOS/wEOS
+    mfmExpUHS = MFM_UHS_Data.expProcFullData.(MFM_UHS_name);
+
+    D_cm2min     = mfmExpCT.exp_params.D12_cm2min;    % CT-analog fluid pair
+    D_UHS_cm2min = mfmExpUHS.exp_params.D12_cm2min;   % UHS fluid pair (may differ)
+
+    % placeholder when a variant has no results
+    nanRes = table(NaN, NaN, "none", 'VariableNames', {'KL_cm2min','totUncertKL_cm2min','model'});
 
     % experiment data all in cm (not m) and min (not seconds) -- same as main_CTpreproc.m
     Ci = filedataExp.C1init/100;
@@ -65,15 +83,26 @@ for i = 1:height(inputFileConfig)
             case "rhoNorm", fitDataMFM = "woEOS";
             case "conc",    fitDataMFM = "wEOS";
         end
-        if ~isfield(mfmExp, fitDataMFM)
-            warning('MFM %s results not found for %s, KL_MFM = NaN', fitDataMFM, expKey);
-            mfmRes = table(NaN, NaN, "none", ...
-                'VariableNames', {'KL_cm2min','totUncertKL_cm2min','model'});
+        % MFM analog (CT)
+        if isfield(mfmExpCT, fitDataMFM)
+            mfmResCT = mfmExpCT.(fitDataMFM).results;
         else
-            mfmRes = mfmExp.(fitDataMFM).results;
+            warning('MFM CT %s results not found for %s, KL = NaN', fitDataMFM, MFM_CT_name);
+            mfmResCT = nanRes;
         end
-        KL_MFM  = mfmRes.KL_cm2min;              % NaN if no valid MFM fit
-        dKL_MFM = mfmRes.totUncertKL_cm2min;
+
+        % MFM UHS
+        if isfield(mfmExpUHS, fitDataMFM)
+            mfmResUHS = mfmExpUHS.(fitDataMFM).results;
+        else
+            warning('MFM UHS %s results not found for %s, KL = NaN', fitDataMFM, MFM_UHS_name);
+            mfmResUHS = nanRes;
+        end
+
+        KL_MFM_CT   = mfmResCT.KL_cm2min;            % NaN if no valid fit
+        dKL_MFM_CT  = mfmResCT.totUncertKL_cm2min;
+        KL_MFM_UHS  = mfmResUHS.KL_cm2min;
+        dKL_MFM_UHS = mfmResUHS.totUncertKL_cm2min;
 
         vars = expCTData.varsAll.(dataSource);
         t_arrival_min = max(tLines_min, 0);   % scalar, broadcasts in fitKL_frontWidth/fitKL_moments
@@ -169,13 +198,19 @@ for i = 1:height(inputFileConfig)
             resultsOut.(variant).KL_front_CT = KL_front;
         end
 
-        resultsOut.KL_MFM        = KL_MFM;
-        resultsOut.dKL_MFM       = dKL_MFM;
-        resultsOut.D_cm2min         = D_cm2min;
-        resultsOut.MFM_fitData   = fitDataMFM;
-        resultsOut.MFM_bestModel = string(mfmRes.model);
+        resultsOut.MFM_fitData       = fitDataMFM;
+        resultsOut.KL_MFM_CT         = KL_MFM_CT;
+        resultsOut.dKL_MFM_CT        = dKL_MFM_CT;
+        resultsOut.MFM_CT_bestModel  = string(mfmResCT.model);
+        resultsOut.KL_MFM_UHS        = KL_MFM_UHS;
+        resultsOut.dKL_MFM_UHS       = dKL_MFM_UHS;
+        resultsOut.MFM_UHS_bestModel = string(mfmResUHS.model);
+        resultsOut.D_cm2min          = D_cm2min;
+        resultsOut.D_UHS_cm2min      = D_UHS_cm2min;
 
-        expCTData.resultsAll.(dataSource) = resultsOut;
+        for f = string(fieldnames(resultsOut))'
+            expCTData.resultsAll.(dataSource).(f) = resultsOut.(f);
+        end
 
         % Excel export, same sheet layout as the old script, per variant
         xlsxName = fullfile(pathExportAll, filedataExp.Key + "_KLresultsAll_" + dataSource + ".xlsx");
@@ -210,9 +245,12 @@ for i = 1:height(inputFileConfig)
             writetable(frontT, xlsxName, 'Sheet', "KL_front_" + variant);
         end
 
-        summaryT = table(KL_MFM, dKL_MFM, D_cm2min, string(fitDataMFM), string(mfmRes.model), ...
-            'VariableNames', {'KL_MFM_cm2min','dKL_MFM_cm2min','D12_cm2min', ...
-                              'MFM_fitData','MFM_bestModel'});
+        summaryT = table(string(fitDataMFM), ...
+            KL_MFM_CT,  dKL_MFM_CT,  string(mfmResCT.model),  D_cm2min, ...
+            KL_MFM_UHS, dKL_MFM_UHS, string(mfmResUHS.model), D_UHS_cm2min, ...
+            'VariableNames', {'MFM_fitData', ...
+            'KL_MFM_CT_cm2min','dKL_MFM_CT_cm2min','MFM_CT_bestModel','D12_CT_cm2min', ...
+            'KL_MFM_UHS_cm2min','dKL_MFM_UHS_cm2min','MFM_UHS_bestModel','D12_UHS_cm2min'});
         if ismember('tD_corr_vFrontC50', vars.Properties.VariableNames)
             summaryT.tD_corr_vFrontC50       = median(vars.tD_corr_vFrontC50,'omitnan');
             summaryT.tD_corr_vFrontC50_xtrim = median(vars.tD_corr_vFrontC50_xtrim,'omitnan');
