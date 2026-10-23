@@ -28,14 +28,14 @@ for i = 1:height(inputFileConfig)
         error('MFM results file not found: %s', MFM_CT_file);
     end
     MFM_CT_Data = load(MFM_CT_file);
-    expProcFullData_MFM_CT = MFM_CT_Data.expProcFullData.(MFM_CT_name);
+    MFM_all = MFM_CT_Data.expProcFullData; 
+    expKey  = MFM_CT_name;
 
     % experiment data all in cm (not m) and min (not seconds) -- same as main_CTpreproc.m
     Ci = filedataExp.C1init/100;
     Cj = filedataExp.C1j/100;
     uint_cmmin = filedataExp.Q/(filedataExp.phi*pi*((filedataExp.D*2.54/2)^2));
     L_cm = filedataExp.L*2.54;
-    D_MFM = expProcFullData_MFM_CT.exp_params.D12_cm2min;
 
     u_SI = uint_cmmin/(60*100);
     L_SI = L_cm/100;
@@ -56,6 +56,19 @@ for i = 1:height(inputFileConfig)
     fitWithIntercept = false;   % false = force fit through origin (physically expected)
 
     for dataSource = ["rhoNorm","conc"]
+
+        switch dataSource
+            case "rhoNorm", fitDataMFM = "woEOS";
+            case "conc",    fitDataMFM = "wEOS";
+        end
+        if ~isfield(MFM_all, fitDataMFM)
+            warning('MFM variant %s not in %s, skipping %s', fitDataMFM, MFM_CT_file, dataSource);
+            continue
+        end
+
+        expProcFullData_MFM_CT = MFM_all.(fitDataMFM);
+        D_MFM = expProcFullData_MFM_CT.(expKey).exp_params.D12_cm2min;
+        KL_MFM = expProcFullData_MFM_CT.(expKey).results.KL_cm2min;
 
         vars = expCTData.varsAll.(dataSource);
         t_arrival_min = max(tLines_min, 0);   % scalar, broadcasts in fitKL_frontWidth/fitKL_moments
