@@ -21,7 +21,7 @@ KLmax = 10;   % bar chart x-limit [cm2/min]
 
 %% 1) KL bar chart
 labels = strings(0,1);  vals = [];  errs = [];  grp = [];
-% groups: 1 BTC full, 2 BTC xtrim, 3 front full, 4 front xtrim, 5 MFM CT, 6 MFM UHS
+% groups: 1 BTC full, 2 BTC xtrim, 3/4 front no-int, 5 MFM CT, 6 MFM UHS, 7/8 front int
 for v = 1:numel(variants)
     variant = variants(v);
 
@@ -38,11 +38,15 @@ for v = 1:numel(variants)
 
     frontFns = fieldnames(resultsOut.(variant).KL_front_CT);
     for f = 1:numel(frontFns)
-        S2 = resultsOut.(variant).KL_front_CT.(frontFns{f});
-        labels(end+1,1) = strrep(frontFns{f},'_','/') + " " + variant;   %#ok<AGROW>
-        vals(end+1) = S2.KL_cm2min_best;                                  %#ok<AGROW>
-        errs(end+1) = S2.KL_cm2min_se;                                    %#ok<AGROW>
-        grp(end+1)  = 2 + v;                                              %#ok<AGROW>
+        nm = string(frontFns{f});
+        S2 = resultsOut.(variant).KL_front_CT.(nm);
+        isInt = isfield(S2,'fitWithIntercept') && S2.fitWithIntercept;
+        base  = strrep(erase(erase(nm,"_int1"),"_int0"), "_", "/");
+        if isInt, intLbl = " int"; else, intLbl = " no-int"; end
+        labels(end+1,1) = base + intLbl + " " + variant;   %#ok<AGROW>
+        vals(end+1) = S2.KL_cm2min_best;                    %#ok<AGROW>
+        errs(end+1) = S2.KL_cm2min_se;                      %#ok<AGROW>
+        grp(end+1)  = 2 + v + 4*isInt;                      %#ok<AGROW>  % 3/4 no-int, 7/8 int
     end
 end
 
@@ -52,8 +56,9 @@ labels(end+1,1) = "MFM UHS" + mfmTag + " - " + string(resultsOut.MFM_UHS_bestMod
 vals(end+1) = resultsOut.KL_MFM_UHS;  errs(end+1) = resultsOut.dKL_MFM_UHS;  grp(end+1) = 6;
 
 errs(~isfinite(errs)) = 0;
-grpNames = ["BTC full","BTC xtrim","front full","front xtrim","MFM CT","MFM UHS"];
-grpCol   = lines(6);
+grpNames = ["BTC full","BTC xtrim","front full (no int)","front xtrim (no int)", ...
+            "MFM CT","MFM UHS","front full (int)","front xtrim (int)"];
+grpCol   = lines(8);
 
 nBars = numel(vals);
 figBar = figure('Position',[100 100 900 max(450, 22*nBars)]);
@@ -158,74 +163,88 @@ for v = 1:numel(variants)
     saveas(figAll, fullfile(pathExportAll, fnAll), 'fig');
 end
 
-%% 4) front width / sigma fits vs time: one figure per method + overview per variant
+%% 4) front width / sigma fits vs time: one figure per method + overview per variant and intercept mode
+intModes = [false true];
+intNames = ["noInt","int"];
+
 for v = 1:numel(variants)
     variant  = variants(v);
-    frontFns = fieldnames(resultsOut.(variant).KL_front_CT);
-    cols     = lines(numel(frontFns));
+    frontFns = string(fieldnames(resultsOut.(variant).KL_front_CT));
 
-    figAll = figure('Position',[100 100 1000 650]);
-    axAll = axes(figAll); hold(axAll,'on')
-    nPlotted = 0;
+    for im = 1:numel(intModes)
+        % methods fitted with this intercept mode
+        sel = false(numel(frontFns),1);
+        for f = 1:numel(frontFns)
+            S2 = resultsOut.(variant).KL_front_CT.(frontFns(f));
+            sel(f) = isfield(S2,'fitWithIntercept') && S2.fitWithIntercept == intModes(im);
+        end
+        fnsMode = frontFns(sel);
+        cols    = lines(max(numel(fnsMode),1));
 
-    for f = 1:numel(frontFns)
-        name = string(frontFns{f});
-        S2   = resultsOut.(variant).KL_front_CT.(name);
-        if ~all(isfield(S2, {'t_all','y_all','t_fit','y_fit','y_pred'})), continue, end
+        figAll = figure('Position',[100 100 1000 650]);
+        axAll = axes(figAll); hold(axAll,'on')
+        nPlotted = 0;
 
-        if name == "sigma"
-            yLab = 'sigma^2 [cm^2]   (slope = 2 KL)';
+        for f = 1:numel(fnsMode)
+            name = fnsMode(f);
+            S2   = resultsOut.(variant).KL_front_CT.(name);
+            if ~all(isfield(S2, {'t_all','y_all','t_fit','y_fit','y_pred'})), continue, end
+
+            if startsWith(name, "sigma")
+                yLab = 'sigma^2 [cm^2]   (slope = 2 KL)';
+            else
+                yLab = 'W^2/(4k^2) [cm^2]   (slope = KL)';
+            end
+
+            % --- individual figure
+            f1 = figure('Visible','off', 'Position',[100 100 800 550]);
+            a1 = axes(f1); hold(a1,'on')
+            okAll = isfinite(S2.t_all) & isfinite(S2.y_all);
+            scatter(a1, S2.t_all(okAll), S2.y_all(okAll), 10, [0.75 0.75 0.75], 'filled', ...
+                'DisplayName','all frames')
+            scatter(a1, S2.t_fit, S2.y_fit, 18, cols(f,:), 'filled', 'DisplayName','used in fit')
+            if any(isfinite(S2.y_pred))
+                [tS, o] = sort(S2.t_fit);
+                plot(a1, tS, S2.y_pred(o), '-', 'Color',cols(f,:)*0.6, 'LineWidth',2, 'DisplayName','linear fit')
+            end
+            xlabel(a1, 't since arrival [min]', 'Interpreter','none')
+            ylabel(a1, yLab, 'Interpreter','none')
+            grid(a1,'on')
+            legend(a1, 'Location','northwest', 'Interpreter','none')
+            title(a1, sprintf('%s (%s, %s) %s: KL = %.3g +/- %.2g cm2/min, b0 = %.3g cm2, R2=%.3f, n=%d', ...
+                Key, dataSource, variant, name, S2.KL_cm2min_best, S2.KL_cm2min_se, ...
+                S2.intercept_cm2, S2.R2, S2.nValidFrames), ...
+                'Interpreter','none', 'FontSize',9)
+            fn1 = sprintf('frontFit_%s_%s_%s_%s', Key, dataSource, variant, name);
+            saveas(f1, fullfile(fitDir, fn1), 'png');
+            saveas(f1, fullfile(fitDir, fn1), 'fig');
+            close(f1)
+
+            % --- overview
+            scatter(axAll, S2.t_fit, S2.y_fit, 10, cols(f,:), 'filled', 'MarkerFaceAlpha',0.5, ...
+                'HandleVisibility','off')
+            if any(isfinite(S2.y_pred))
+                [tS, o] = sort(S2.t_fit);
+                plot(axAll, tS, S2.y_pred(o), '-', 'Color',cols(f,:), 'LineWidth',2, ...
+                    'DisplayName', sprintf('%s: KL=%.3g', name, S2.KL_cm2min_best))
+            end
+            nPlotted = nPlotted + 1;
+        end
+
+        if nPlotted == 0
+            text(axAll, 0.5, 0.5, "No front fits with stored data (" + variant + ", " + intNames(im) + ")", ...
+                'Units','normalized', 'HorizontalAlignment','center', 'Interpreter','none')
         else
-            yLab = 'W^2/(4k^2) [cm^2]   (slope = KL)';
+            legend(axAll, 'Location','northwest', 'Interpreter','none', 'FontSize',8)
         end
-
-        % --- individual figure
-        f1 = figure('Visible','off', 'Position',[100 100 800 550]);
-        a1 = axes(f1); hold(a1,'on')
-        okAll = isfinite(S2.t_all) & isfinite(S2.y_all);
-        scatter(a1, S2.t_all(okAll), S2.y_all(okAll), 10, [0.75 0.75 0.75], 'filled', ...
-            'DisplayName','all frames')
-        scatter(a1, S2.t_fit, S2.y_fit, 18, cols(f,:), 'filled', 'DisplayName','used in fit')
-        if any(isfinite(S2.y_pred))
-            [tS, o] = sort(S2.t_fit);
-            plot(a1, tS, S2.y_pred(o), '-', 'Color',cols(f,:)*0.6, 'LineWidth',2, 'DisplayName','linear fit')
-        end
-        xlabel(a1, 't since arrival [min]', 'Interpreter','none')
-        ylabel(a1, yLab, 'Interpreter','none')
-        grid(a1,'on')
-        legend(a1, 'Location','northwest', 'Interpreter','none')
-        title(a1, sprintf('%s (%s, %s) %s: KL = %.3g +/- %.2g cm2/min, R2=%.3f, n=%d', ...
-            Key, dataSource, variant, name, S2.KL_cm2min_best, S2.KL_cm2min_se, S2.R2, S2.nValidFrames), ...
-            'Interpreter','none', 'FontSize',9)
-        fn1 = sprintf('frontFit_%s_%s_%s_%s', Key, dataSource, variant, name);
-        saveas(f1, fullfile(fitDir, fn1), 'png');
-        saveas(f1, fullfile(fitDir, fn1), 'fig');
-        close(f1)
-
-        % --- overview (width pairs only share the same y quantity; sigma^2 = 2*KL*t)
-        scatter(axAll, S2.t_fit, S2.y_fit, 10, cols(f,:), 'filled', 'MarkerFaceAlpha',0.5, ...
-            'HandleVisibility','off')
-        if any(isfinite(S2.y_pred))
-            [tS, o] = sort(S2.t_fit);
-            plot(axAll, tS, S2.y_pred(o), '-', 'Color',cols(f,:), 'LineWidth',2, ...
-                'DisplayName', sprintf('%s: KL=%.3g', name, S2.KL_cm2min_best))
-        end
-        nPlotted = nPlotted + 1;
+        xlabel(axAll, 't since arrival [min]', 'Interpreter','none')
+        ylabel(axAll, 'W^2/(4k^2) or sigma^2 [cm^2]', 'Interpreter','none')
+        grid(axAll,'on')
+        title(axAll, sprintf('%s (%s, %s, %s): front width / sigma fits', ...
+            Key, dataSource, variant, intNames(im)), 'Interpreter','none')
+        fnAll = sprintf('frontFitsAll_%s_%s_%s_%s', Key, dataSource, variant, intNames(im));
+        saveas(figAll, fullfile(pathExportAll, fnAll), 'png');
+        saveas(figAll, fullfile(pathExportAll, fnAll), 'fig');
     end
-
-    if nPlotted == 0
-        text(axAll, 0.5, 0.5, "No front fits with stored data (" + variant + ")", ...
-            'Units','normalized', 'HorizontalAlignment','center', 'Interpreter','none')
-    else
-        legend(axAll, 'Location','northwest', 'Interpreter','none', 'FontSize',8)
-    end
-    xlabel(axAll, 't since arrival [min]', 'Interpreter','none')
-    ylabel(axAll, 'W^2/(4k^2) or sigma^2 [cm^2]', 'Interpreter','none')
-    grid(axAll,'on')
-    title(axAll, sprintf('%s (%s, %s): front width / sigma fits', Key, dataSource, variant), ...
-        'Interpreter','none')
-    fnAll = sprintf('frontFitsAll_%s_%s_%s', Key, dataSource, variant);
-    saveas(figAll, fullfile(pathExportAll, fnAll), 'png');
-    saveas(figAll, fullfile(pathExportAll, fnAll), 'fig');
 end
 end
