@@ -73,6 +73,13 @@ end
 set(ax, 'YTick',y, 'YTickLabel',labels, 'TickLabelInterpreter','tex', 'FontSize',8, 'YDir','reverse')
 ylim(ax, [0.4, nBars+0.6])
 xlabel(ax, 'K_L [cm^2/min]')
+xlim(ax, [0 10])
+% bars beyond 10 are cut off at the axis edge -> print their value there
+over = find(vals > 10);
+for k = over
+    text(ax, 9.9, y(k), sprintf('%.3g \\rightarrow', vals(k)), ...
+        'HorizontalAlignment','right', 'VerticalAlignment','middle', 'FontSize',7)
+end
 title(ax, sprintf('%s (%s): K_L by method', Key, dataSource), 'Interpreter','none')
 legend(ax, 'Location','southeast', 'FontSize',8)
 grid(ax,'on')
@@ -115,9 +122,9 @@ for v = 1:numel(variants)
         yline(a1, [0.16 0.84], ':k', 'HandleVisibility','off')
         xlabel(a1,'t [min]'); ylabel(a1,'C_D [-]'); ylim(a1,[-0.05 1.05]); grid(a1,'on')
         legend(a1,'Location','southeast')
-        title(a1, sprintf('%s (%s, %s) z_D=%.1f: K_L = %.3g \\pm %.2g cm^2/min, R^2=%.3f [%s]', ...
+        title(a1, sprintf('%s (%s, %s) zD=%.1f: KL = %.3g +/- %.2g cm2/min, R2=%.3f [%s]', ...
             Key, dataSource, variant, e.zD, KLv, dKLv, R2v, string(e.bestMethod)), ...
-            'Interpreter','tex', 'FontSize',9)
+            'Interpreter','none', 'FontSize',9)
         fn1 = sprintf('BTCfit_%s_%s_%s_zD%s', Key, dataSource, variant, strrep(sprintf('%.1f',e.zD),'.','p'));
         saveas(f1, fullfile(fitDir, fn1), 'png');
         saveas(f1, fullfile(fitDir, fn1), 'fig');
