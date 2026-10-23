@@ -104,6 +104,16 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     [zDFront84_min, zDFront84_max] = robustFrontMinMax(frontC084, nx, ny, smoothWindow);
     [zDFront90_min, zDFront90_max] = robustFrontMinMax(frontC09,  nx, ny, smoothWindow);
 
+    zDFront10_min_cm = zDFront10_min*Lcm; zDFront10_max_cm = zDFront10_max*Lcm;
+    zDFront16_min_cm = zDFront16_min*Lcm; zDFront16_max_cm = zDFront16_max*Lcm;
+    zDFront30_min_cm = zDFront30_min*Lcm; zDFront30_max_cm = zDFront30_max*Lcm;
+    zDFront40_min_cm = zDFront40_min*Lcm; zDFront40_max_cm = zDFront40_max*Lcm;
+    zDFront50_min_cm = zDFront50_min*Lcm; zDFront50_max_cm = zDFront50_max*Lcm;
+    zDFront60_min_cm = zDFront60_min*Lcm; zDFront60_max_cm = zDFront60_max*Lcm;
+    zDFront70_min_cm = zDFront70_min*Lcm; zDFront70_max_cm = zDFront70_max*Lcm;
+    zDFront84_min_cm = zDFront84_min*Lcm; zDFront84_max_cm = zDFront84_max*Lcm;
+    zDFront90_min_cm = zDFront90_min*Lcm; zDFront90_max_cm = zDFront90_max*Lcm;
+
     % tilt/shape for C=0.5
     tiltStats  = getFrontTilt(frontC05);
     shapeStats = getFrontShapeMetrics(frontC05);
@@ -163,6 +173,26 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     frameVars.zDWidth_16_84_cm = zDWidth_16_84_cm;
     frameVars.zDWidth_30_70_cm = zDWidth_30_70_cm;
     frameVars.zDWidth_40_60_cm = zDWidth_40_60_cm;
+
+    frameVars.zDFront10_min = zDFront10_min; frameVars.zDFront10_max = zDFront10_max;
+    frameVars.zDFront16_min = zDFront16_min; frameVars.zDFront16_max = zDFront16_max;
+    frameVars.zDFront30_min = zDFront30_min; frameVars.zDFront30_max = zDFront30_max;
+    frameVars.zDFront40_min = zDFront40_min; frameVars.zDFront40_max = zDFront40_max;
+    frameVars.zDFront50_min = zDFront50_min; frameVars.zDFront50_max = zDFront50_max;
+    frameVars.zDFront60_min = zDFront60_min; frameVars.zDFront60_max = zDFront60_max;
+    frameVars.zDFront70_min = zDFront70_min; frameVars.zDFront70_max = zDFront70_max;
+    frameVars.zDFront84_min = zDFront84_min; frameVars.zDFront84_max = zDFront84_max;
+    frameVars.zDFront90_min = zDFront90_min; frameVars.zDFront90_max = zDFront90_max;
+
+    frameVars.zDFront10_min_cm = zDFront10_min_cm; frameVars.zDFront10_max_cm = zDFront10_max_cm;
+    frameVars.zDFront16_min_cm = zDFront16_min_cm; frameVars.zDFront16_max_cm = zDFront16_max_cm;
+    frameVars.zDFront30_min_cm = zDFront30_min_cm; frameVars.zDFront30_max_cm = zDFront30_max_cm;
+    frameVars.zDFront40_min_cm = zDFront40_min_cm; frameVars.zDFront40_max_cm = zDFront40_max_cm;
+    frameVars.zDFront50_min_cm = zDFront50_min_cm; frameVars.zDFront50_max_cm = zDFront50_max_cm;
+    frameVars.zDFront60_min_cm = zDFront60_min_cm; frameVars.zDFront60_max_cm = zDFront60_max_cm;
+    frameVars.zDFront70_min_cm = zDFront70_min_cm; frameVars.zDFront70_max_cm = zDFront70_max_cm;
+    frameVars.zDFront84_min_cm = zDFront84_min_cm; frameVars.zDFront84_max_cm = zDFront84_max_cm;
+    frameVars.zDFront90_min_cm = zDFront90_min_cm; frameVars.zDFront90_max_cm = zDFront90_max_cm;
 
     % per-zD concentration
     frameVars.CD1_zD0p0 = Cz(1);

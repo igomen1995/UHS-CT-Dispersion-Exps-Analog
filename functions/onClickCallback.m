@@ -74,7 +74,8 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
     k = BT.k(idx);
 
     run_name = "run_" + sprintf('%02d', j);
-    vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+    varsAll = expCTData.(filedataExp.Key).varsAll.(dataSource);
+    vars = varsAll(varsAll.runName == run_name & varsAll.imgNr == k, :);
 
     % load image params
     HDF5filename = fullfile(path, filedataExp.Key + ".h5");

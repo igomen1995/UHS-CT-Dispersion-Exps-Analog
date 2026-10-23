@@ -277,7 +277,7 @@ for i = 1:height(inputFileConfig)
         zDBTC_conc{m} = table();
     end
 
-    for j = 1%:length(expFolderName)
+    for j = 1:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
             % pca
@@ -333,25 +333,22 @@ for i = 1:height(inputFileConfig)
 
             rhoNormVars_k = populate_CTframeVars(rhoNormImage, resXmm, resYmm, ...
                 run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal);
-            expCTData.(filedataExp.Key).exp.(run_name).vars.rhoNorm(k) = rhoNormVars_k;
+            rhoNormVars_local(k) = rhoNormVars_k; 
             
             concVars_k = populate_CTframeVars(concImage, resXmm, resYmm, ...
                 run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal);
             concVars_k.dConc_mean = dConc_mean_k;
             concVars_k.dConc_std = dConc_std_k;
             concVars_k.dConc_max  = dConc_max_k;
-
-            expCTData.(filedataExp.Key).exp.(run_name).vars.conc(k) = concVars_k;
+            concVars_local(k) = concVars_k; 
             
         end
 
-        rhoNormVars_temp = expCTData.(filedataExp.Key).exp.(run_name).vars.rhoNorm(kRange);
-        rhoNormVars_tempTable = struct2table(rhoNormVars_temp,'AsArray',true);
-        rhoNormVarsAll = [rhoNormVarsAll;rhoNormVars_tempTable];
-
-        concVars_temp = expCTData.(filedataExp.Key).exp.(run_name).vars.conc(kRange);
-        concVars_tempTable = struct2table(concVars_temp,'AsArray',true);
-        concVarsAll = [concVarsAll;concVars_tempTable];
+        rhoNormVars_tempTable = struct2table(rhoNormVars_local,'AsArray',true);
+        rhoNormVarsAll = [rhoNormVarsAll; rhoNormVars_tempTable];
+        
+        concVars_tempTable = struct2table(concVars_local,'AsArray',true);
+        concVarsAll = [concVarsAll; concVars_tempTable];
 
     end
     
@@ -382,21 +379,12 @@ for i = 1:height(inputFileConfig)
     
         expCTData.(filedataExp.Key).varsAll.(dataSource) = vars;   % write back -- vars was a local copy
     
-        for r = 1:height(vars)
-            rn = vars.runName(r);
-            lk = vars.imgNr(r);
-            expCTData.(filedataExp.Key).exp.(rn).vars.(dataSource)(lk).tD_corr_contour        = vars.tD_corr_contour(r);
-            expCTData.(filedataExp.Key).exp.(rn).vars.(dataSource)(lk).tD_corr_lines          = vars.tD_corr_lines(r);
-            expCTData.(filedataExp.Key).exp.(rn).vars.(dataSource)(lk).tD_corr_contour_scaled = vars.tD_corr_contour_scaled(r);
-        end
-    
         expCTData.(filedataExp.Key).resultsAll.(dataSource).vFront               = vFront;
         expCTData.(filedataExp.Key).resultsAll.(dataSource).vFront_cmmin         = vFront.v_front_cmmin;
         expCTData.(filedataExp.Key).resultsAll.(dataSource).vCrit_cmmin          = vCrit_cmmin;
         expCTData.(filedataExp.Key).resultsAll.(dataSource).isUnstable           = vFront.v_front_cmmin > vCrit_cmmin;
         expCTData.(filedataExp.Key).resultsAll.(dataSource).tD_arrival_contour   = tD_arrival_contour;
         expCTData.(filedataExp.Key).resultsAll.(dataSource).tD_arrival_lines     = tD_arrival_lines;
-        expCTData.(filedataExp.Key).resultsAll.(dataSource).tD_corr_contour_scaled = vars.tD_corr_contour_scaled;
     end
 
     % save expCTData

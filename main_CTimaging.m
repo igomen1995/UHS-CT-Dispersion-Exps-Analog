@@ -242,9 +242,12 @@ for i = 1:nExp
         nx = dims(1);
         ny = dims(2);
         nz = dims(3);
+
+        varsRun = expCTData.(filedataExp.Key).varsAll.(dataSource);
+        varsRun = varsRun(varsRun.runName == run_name, :);
     
         for k = 1:nz
-            vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+            vars = varsRun(k,:);
     
             % hTitle
             set(hTitle, 'String', ...
@@ -408,10 +411,13 @@ for i = 1:nExp
         info = h5info(HDF5filename, HDF5dataPath);
         dims = info.Dataspace.Size;
         nz = dims(3);
+
+        varsRun = expCTData.(filedataExp.Key).varsAll.(dataSource);
+        varsRun = varsRun(varsRun.runName == run_name, :);
     
         for k = 1:nz
     
-            vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+            vars = varsRun(k,:);
     
             % breakthrough point
             t = vars.secondsElapsed;
@@ -542,7 +548,8 @@ for i = 1:nExp
         dims = info.Dataspace.Size;
         nx = dims(1); ny = dims(2); nz = dims(3);
     
-        varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
+        varsRun = expCTData.(filedataExp.Key).varsAll.(dataSource);
+        varsRun = varsRun(varsRun.runName == run_name, :);
         tDRun = [varsRun.tDtotal];
     
         % fixed tD grid, same for every experiment regardless of flow rate
@@ -683,7 +690,9 @@ for i = 1:nExp
         ny = dims(2);
         nz = dims(3);
 
-        varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
+        varsRun = expCTData.(filedataExp.Key).varsAll.(dataSource);
+        varsRun = varsRun(varsRun.runName == run_name, :);
+
         tDRun = [varsRun.tDtotal];
         varsRun = varsRun(tDRun < tDmax);
         tDstep = 0.1;
@@ -698,7 +707,7 @@ for i = 1:nExp
 
         for ii = 1:length(kPlot)
             k = kPlot(ii);
-            vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+            vars = varsRun(k,:);
             tD = vars.tDtotal;
 
             rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
