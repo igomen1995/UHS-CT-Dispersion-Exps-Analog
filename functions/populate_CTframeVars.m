@@ -93,11 +93,6 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     sweepEff_full = nan(1,nLevels); sweepEff_xtrim = nan(1,nLevels);
     dispEff_full  = nan(1,nLevels); dispEff_xtrim  = nan(1,nLevels);
     recovery_full = nan(1,nLevels); recovery_xtrim = nan(1,nLevels);
-
-    zDFront_azimDirect       = nan(1,nLevels); zDFront_azimDirect_cm       = nan(1,nLevels);
-    zDFront_azimOpp          = nan(1,nLevels); zDFront_azimOpp_cm          = nan(1,nLevels);
-    zDFront_azimDirect_xtrim = nan(1,nLevels); zDFront_azimDirect_xtrim_cm = nan(1,nLevels);
-    zDFront_azimOpp_xtrim    = nan(1,nLevels); zDFront_azimOpp_xtrim_cm    = nan(1,nLevels);
     
     for i = 1:nLevels
         lvl = levels(i);
@@ -115,19 +110,6 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
         zDFront_min_cm(i) = zMinVal*Lcm;   zDFront_max_cm(i) = zMaxVal*Lcm;
     
         zDContourOnGrid(:,i) = regridContourZ(entry, xDimLess);
-
-        % one-sided azimuth split -- xD>0.5 is THIS frame's own rotPos azimuth,
-        % xD<0.5 is the opposite side (rotPos+180), same frame, same instant.
-        % Unlike zDFront/zDFront_xtrim, these never blend the two azimuths.
-        zDFront_azimDirect(i)    = contourZMeanInROI(entry, ny, [0.5 1]);
-        zDFront_azimOpp(i)       = contourZMeanInROI(entry, ny, [0 0.5]);
-        zDFront_azimDirect_cm(i) = zDFront_azimDirect(i)*Lcm;
-        zDFront_azimOpp_cm(i)    = zDFront_azimOpp(i)*Lcm;
-    
-        zDFront_azimDirect_xtrim(i)    = contourZMeanInROI(entry, ny, [0.5+halfMargin, 1-halfMargin]);
-        zDFront_azimOpp_xtrim(i)       = contourZMeanInROI(entry, ny, [0+halfMargin, 0.5-halfMargin]);
-        zDFront_azimDirect_xtrim_cm(i) = zDFront_azimDirect_xtrim(i)*Lcm;
-        zDFront_azimOpp_xtrim_cm(i)    = zDFront_azimOpp_xtrim(i)*Lcm;
     
         % sweep / displacement / recovery efficiencies at this level's threshold
         maskFull = imageFull > lvl;
@@ -151,15 +133,6 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
         frameVars.("zDFront"+tag+"_max")      = zDFront_max(i);
         frameVars.("zDFront"+tag+"_min_cm")   = zDFront_min_cm(i);
         frameVars.("zDFront"+tag+"_max_cm")   = zDFront_max_cm(i);
-
-        frameVars.("zDFront"+tag+"_azimDirect")          = zDFront_azimDirect(i);
-        frameVars.("zDFront"+tag+"_azimDirect_cm")       = zDFront_azimDirect_cm(i);
-        frameVars.("zDFront"+tag+"_azimOpp")             = zDFront_azimOpp(i);
-        frameVars.("zDFront"+tag+"_azimOpp_cm")          = zDFront_azimOpp_cm(i);
-        frameVars.("zDFront"+tag+"_azimDirect_xtrim")    = zDFront_azimDirect_xtrim(i);
-        frameVars.("zDFront"+tag+"_azimDirect_xtrim_cm") = zDFront_azimDirect_xtrim_cm(i);
-        frameVars.("zDFront"+tag+"_azimOpp_xtrim")       = zDFront_azimOpp_xtrim(i);
-        frameVars.("zDFront"+tag+"_azimOpp_xtrim_cm")    = zDFront_azimOpp_xtrim_cm(i);
     
         frameVars.("sweepEff"+tag)          = sweepEff_full(i);
         frameVars.("sweepEff"+tag+"_xtrim") = sweepEff_xtrim(i);

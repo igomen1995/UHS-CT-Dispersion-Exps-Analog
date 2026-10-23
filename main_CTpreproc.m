@@ -392,21 +392,6 @@ for i = 1:height(inputFileConfig)
                 vFrontByLevel_xtrim.(fieldTag) = frontVel(t_min, vars.(zDcolCm_xtrim), vars.(zDcol_xtrim));
             end
         end
-    
-        azimVelByLevel       = struct();
-        azimVelByLevel_xtrim = struct();
-        for lvl = Clevels
-            lvlTag   = sprintf('%02d', round(lvl*100));
-            fieldTag = "C" + lvlTag;
-            if ismember("zDFront"+lvlTag+"_azimDirect", string(vars.Properties.VariableNames))
-                azimVelByLevel.(fieldTag) = frontVel_byAzimuth(vars, lvlTag, "");
-            end
-            if ismember("zDFront"+lvlTag+"_azimDirect_xtrim", string(vars.Properties.VariableNames))
-                azimVelByLevel_xtrim.(fieldTag) = frontVel_byAzimuth(vars, lvlTag, "_xtrim");
-            end
-        end
-        expCTData.(filedataExp.Key).resultsAll.(dataSource).azimVelByLevel       = azimVelByLevel;
-        expCTData.(filedataExp.Key).resultsAll.(dataSource).azimVelByLevel_xtrim = azimVelByLevel_xtrim;
 
         expCTData.(filedataExp.Key).resultsAll.(dataSource).vFrontByLevel       = vFrontByLevel;
         expCTData.(filedataExp.Key).resultsAll.(dataSource).vFrontByLevel_xtrim = vFrontByLevel_xtrim;
