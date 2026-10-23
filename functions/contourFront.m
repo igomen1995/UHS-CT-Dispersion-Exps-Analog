@@ -30,16 +30,13 @@ end
 end
 
 function [xs, ys] = contourMatrixPoints(C)
-    xs = [];
-    ys = [];
-    idx = 1;
     n = size(C,2);
+    isHeader = false(1,n);
+    idx = 1;
     while idx <= n
-        npts = C(2,idx);
-        segX = C(1, idx+1 : idx+npts);
-        segY = C(2, idx+1 : idx+npts);
-        xs = [xs, segX];
-        ys = [ys, segY];
-        idx = idx + npts + 1;
+        isHeader(idx) = true;
+        idx = idx + C(2,idx) + 1;   % jump past this segment's points
     end
+    xs = C(1, ~isHeader);
+    ys = C(2, ~isHeader);
 end

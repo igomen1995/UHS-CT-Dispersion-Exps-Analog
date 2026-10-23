@@ -305,6 +305,10 @@ for i = 1:height(inputFileConfig)
         xDRange = [0.25 0.75];
 
         kRange = 1:nn_exp;
+
+        rhoNormCell = cell(nn_exp,1);
+        concCell    = cell(nn_exp,1);
+
         for k = kRange
             k
             % Concentration profiles and histograms of normalized images
@@ -339,21 +343,21 @@ for i = 1:height(inputFileConfig)
 
             rhoNormVars_k = populate_CTframeVars(rhoNormImage, resXmm, resYmm, ...
                 run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal, Clevels,xDRange);
-            rhoNormVars_local(k) = rhoNormVars_k; 
+            rhoNormCell{k} = rhoNormVars_k; 
             
             concVars_k = populate_CTframeVars(concImage, resXmm, resYmm, ...
                 run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal, Clevels,xDRange);
             concVars_k.dConc_mean = dConc_mean_k;
             concVars_k.dConc_std = dConc_std_k;
             concVars_k.dConc_max  = dConc_max_k;
-            concVars_local(k) = concVars_k; 
+            concCell{k} = concVars_k; 
             
         end
 
-        rhoNormVars_tempTable = struct2table(rhoNormVars_local,'AsArray',true);
+        rhoNormVars_tempTable = struct2table([rhoNormCell{:}]', 'AsArray', true);
         rhoNormVarsAll = [rhoNormVarsAll; rhoNormVars_tempTable];
         
-        concVars_tempTable = struct2table(concVars_local,'AsArray',true);
+        concVars_tempTable    = struct2table([concCell{:}]',    'AsArray', true);
         concVarsAll = [concVarsAll; concVars_tempTable];
 
     end
@@ -373,33 +377,32 @@ for i = 1:height(inputFileConfig)
         vFrontByLevel_xtrim = struct();   % xD trimmed to xDRangeAvg (e.g. [0.25 0.75])
         
         for lvl = Clevels
-            lvlTag = sprintf('%02d', round(lvl*100));
+            lvlTag   = sprintf('%02d', round(lvl*100));
+            fieldTag = "C" + lvlTag;                     % valid field name: C01, C10, C16, ...
         
             zDcolCm = "zDFront" + lvlTag + "_cm";
             zDcol   = "zDFront" + lvlTag;
             if all(ismember([zDcolCm, zDcol], string(vars.Properties.VariableNames)))
-                vFrontByLevel.(lvlTag) = frontVel(t_min, vars.(zDcolCm), vars.(zDcol));
+                vFrontByLevel.(fieldTag) = frontVel(t_min, vars.(zDcolCm), vars.(zDcol));
             end
         
             zDcolCm_xtrim = "zDFront" + lvlTag + "_xtrim_cm";
             zDcol_xtrim   = "zDFront" + lvlTag + "_xtrim";
             if all(ismember([zDcolCm_xtrim, zDcol_xtrim], string(vars.Properties.VariableNames)))
-                vFrontByLevel_xtrim.(lvlTag) = frontVel(t_min, vars.(zDcolCm_xtrim), vars.(zDcol_xtrim));
+                vFrontByLevel_xtrim.(fieldTag) = frontVel(t_min, vars.(zDcolCm_xtrim), vars.(zDcol_xtrim));
             end
         end
-
-        % mean front velocity per fixed angle (0-180, mirrored 181-360), pooling
-        % direct+opposite readings from every frame -- this is the per-angle
-        % (z vs t) analysis your imaging script's velocity field will draw from
+    
         azimVelByLevel       = struct();
         azimVelByLevel_xtrim = struct();
         for lvl = Clevels
-            lvlTag = sprintf('%02d', round(lvl*100));
+            lvlTag   = sprintf('%02d', round(lvl*100));
+            fieldTag = "C" + lvlTag;
             if ismember("zDFront"+lvlTag+"_azimDirect", string(vars.Properties.VariableNames))
-                azimVelByLevel.(lvlTag) = frontVel_byAzimuth(vars, lvlTag, "");
+                azimVelByLevel.(fieldTag) = frontVel_byAzimuth(vars, lvlTag, "");
             end
             if ismember("zDFront"+lvlTag+"_azimDirect_xtrim", string(vars.Properties.VariableNames))
-                azimVelByLevel_xtrim.(lvlTag) = frontVel_byAzimuth(vars, lvlTag, "_xtrim");
+                azimVelByLevel_xtrim.(fieldTag) = frontVel_byAzimuth(vars, lvlTag, "_xtrim");
             end
         end
         expCTData.(filedataExp.Key).resultsAll.(dataSource).azimVelByLevel       = azimVelByLevel;
