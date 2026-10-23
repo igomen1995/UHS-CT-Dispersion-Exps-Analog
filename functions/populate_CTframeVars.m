@@ -14,25 +14,25 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     numBins = 100;
     [counts, edges] = histcounts(image, numBins);
     
+    % horizontal (X) profile
+    concHorz = mean(image);
+    pixelHorz = 1:length(concHorz);
+    xHorzcm = pixelHorz*resXmm/10;
+    xDimLess = xHorzcm/xHorzcm(end);
+    
     % vertical (Z) profile
     concVert = mean(image');
     pixelVert = 1:length(concVert);
     zVertcm = pixelVert*resYmm/10;
     zDimLess = zVertcm/zVertcm(end);
     Lcm = zVertcm(end);
-
+    
     xMaskTrim = xDimLess >= xDRangeAvg(1) & xDimLess <= xDRangeAvg(2);
     if ~any(xMaskTrim)
         warning('populate_CTframeVars: xDRangeAvg selects no columns -- falling back to full x-range for CVert_xtrim.');
         xMaskTrim = true(size(xDimLess));
     end
     concVert_xtrim = mean(image(:, xMaskTrim), 2)';
-
-    % horizontal (X) profile
-    concHorz = mean(image);
-    pixelHorz = 1:length(concHorz);
-    xHorzcm = pixelHorz*resXmm/10;
-    xDimLess = xHorzcm/xHorzcm(end);
 
     % concentration interpolated at fixed zD = 0:0.1:1 (unrelated to `levels`)
     zDlevels = 0:0.1:1;
@@ -139,9 +139,12 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
         end
         widthTag = levelTag(i) + "_" + levelTag(j);
     
-        frameVars.("zDWidth_"+widthTag)      = zDFront(i)    - zDFront(j);
+        frameVars.("zDWidth_"+widthTag)       = zDFront(i)    - zDFront(j);
         frameVars.("zDWidth_"+widthTag+"_cm") = zDFront_cm(i) - zDFront_cm(j);
-    
+        
+        frameVars.("zDWidth_"+widthTag+"_xtrim")    = zDFront_xtrim(i)    - zDFront_xtrim(j);
+        frameVars.("zDWidth_"+widthTag+"_xtrim_cm") = zDFront_xtrim_cm(i) - zDFront_xtrim_cm(j);
+        
         widthTags{end+1} = widthTag; %#ok<AGROW>
         zDWidthContourAll.(matlab.lang.makeValidName(widthTag)) = zDContourOnGrid(:,i) - zDContourOnGrid(:,j);
     end
