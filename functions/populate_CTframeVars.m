@@ -4,92 +4,92 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
 
     if nargin < 12 || isempty(xDRangeAvg), xDRangeAvg = [0 1]; end
     
-    [ny, nx] = size(image);
+    imageFull = image;
+    [ny, nx] = size(imageFull);
     smoothWindow = 7;   % columns; widen/narrow if a single stray pixel still sets the tip
     
-    imgSmooth = imgaussfilt(double(image), 20);
-    frontByLevelRaw = contourFront(imgSmooth, levels);   % frontByLevelRaw(i) <-> levels(i), same order
-    
-    % histogram
-    numBins = 100;
-    [counts, edges] = histcounts(image, numBins);
-    
-    % horizontal (X) profile
-    concHorz = mean(image);
-    pixelHorz = 1:length(concHorz);
+    % horizontal (X) profile -- pixelHorz spans the nx columns
+    concHorz = mean(imageFull);
+    pixelHorz = 1:length(concHorz);     % == 1:nx
     xHorzcm = pixelHorz*resXmm/10;
     xDimLess = xHorzcm/xHorzcm(end);
     
-    % vertical (Z) profile
-    concVert = mean(image');
-    pixelVert = 1:length(concVert);
+    % x-trim mask, now that xDimLess actually exists
+    xMaskTrim = xDimLess >= xDRangeAvg(1) & xDimLess <= xDRangeAvg(2);
+    if ~any(xMaskTrim)
+        warning('populate_CTframeVars: xDRangeAvg selects no columns -- falling back to full x-range.');
+        xMaskTrim = true(size(xDimLess));
+    end
+    imageTrim = imageFull(:, xMaskTrim);
+    
+    % vertical (Z) profile -- pixelVert spans the ny rows
+    concVert = mean(imageFull');
+    pixelVert = 1:length(concVert);     % == 1:ny
     zVertcm = pixelVert*resYmm/10;
     zDimLess = zVertcm/zVertcm(end);
     Lcm = zVertcm(end);
     
-    xMaskTrim = xDimLess >= xDRangeAvg(1) & xDimLess <= xDRangeAvg(2);
-    if ~any(xMaskTrim)
-        warning('populate_CTframeVars: xDRangeAvg selects no columns -- falling back to full x-range for CVert_xtrim.');
-        xMaskTrim = true(size(xDimLess));
-    end
-    concVert_xtrim = mean(image(:, xMaskTrim), 2)';
-
+    concVert_xtrim = mean(imageTrim');
+    
+    imgSmooth = imgaussfilt(double(imageFull), 20);
+    frontByLevelRaw = contourFront(imgSmooth, levels);   % frontByLevelRaw(i) <-> levels(i), same order
+    
+    % histogram
+    numBins = 100;
+    [counts, edges] = histcounts(imageFull, numBins);
+    
     % concentration interpolated at fixed zD = 0:0.1:1 (unrelated to `levels`)
     zDlevels = 0:0.1:1;
-    Cz = interp1(zDimLess, concVert, zDlevels, 'linear', 'extrap');
+    Cz       = interp1(zDimLess, concVert,       zDlevels, 'linear', 'extrap');
     Cz_xtrim = interp1(zDimLess, concVert_xtrim, zDlevels, 'linear', 'extrap');
     
+    % overall recovery -- threshold-free, one value per x-range, compared
+    % below against the per-level Es*Ed identity at each level's cutoff
+    overallRecovery_full  = mean(imageFull(:), 'omitnan');
+    overallRecovery_xtrim = mean(imageTrim(:), 'omitnan');
+    
     % pack remaining results
-    frameVars.runName       = run_name;
-    frameVars.imgNr         = imgNr;
-    frameVars.rotPos        = rotPos;
-    frameVars.timeStamp     = timeStamp;
-    frameVars.timeElapsed   = timeElapsed;
+    frameVars.runName        = run_name;
+    frameVars.imgNr          = imgNr;
+    frameVars.rotPos         = rotPos;
+    frameVars.timeStamp      = timeStamp;
+    frameVars.timeElapsed    = timeElapsed;
     frameVars.secondsElapsed = secondsElapsed;
-    frameVars.tDtotal       = tDtotal;
+    frameVars.tDtotal        = tDtotal;
     
     frameVars.histImage = table(counts', edges(1:end-1)', edges(2:end)', ...
         'VariableNames',{'counts','minEdge','maxEdge'});
     frameVars.C1Profile = table(zVertcm', zDimLess', concVert', concVert_xtrim', ...
         'VariableNames',{'zVertcm','zDimLess','CVert','CVert_xtrim'});
     
-    frameVars.CD1_zD0p0 = Cz(1);
-    frameVars.CD1_zD0p1 = Cz(2);
-    frameVars.CD1_zD0p2 = Cz(3);
-    frameVars.CD1_zD0p3 = Cz(4);
-    frameVars.CD1_zD0p4 = Cz(5);
-    frameVars.CD1_zD0p5 = Cz(6);
-    frameVars.CD1_zD0p6 = Cz(7);
-    frameVars.CD1_zD0p7 = Cz(8);
-    frameVars.CD1_zD0p8 = Cz(9);
-    frameVars.CD1_zD0p9 = Cz(10);
-    frameVars.CD1_zD1p0 = Cz(11);
+    frameVars.CD1_zD0p0 = Cz(1);  frameVars.CD1_zD0p1 = Cz(2);  frameVars.CD1_zD0p2 = Cz(3);
+    frameVars.CD1_zD0p3 = Cz(4);  frameVars.CD1_zD0p4 = Cz(5);  frameVars.CD1_zD0p5 = Cz(6);
+    frameVars.CD1_zD0p6 = Cz(7);  frameVars.CD1_zD0p7 = Cz(8);  frameVars.CD1_zD0p8 = Cz(9);
+    frameVars.CD1_zD0p9 = Cz(10); frameVars.CD1_zD1p0 = Cz(11);
     
-    frameVars.CD1_zD0p0_xtrim = Cz_xtrim(1);
-    frameVars.CD1_zD0p1_xtrim = Cz_xtrim(2);
-    frameVars.CD1_zD0p2_xtrim = Cz_xtrim(3);
-    frameVars.CD1_zD0p3_xtrim = Cz_xtrim(4);
-    frameVars.CD1_zD0p4_xtrim = Cz_xtrim(5);
-    frameVars.CD1_zD0p5_xtrim = Cz_xtrim(6);
-    frameVars.CD1_zD0p6_xtrim = Cz_xtrim(7);
-    frameVars.CD1_zD0p7_xtrim = Cz_xtrim(8);
-    frameVars.CD1_zD0p8_xtrim = Cz_xtrim(9);
-    frameVars.CD1_zD0p9_xtrim = Cz_xtrim(10);
+    frameVars.CD1_zD0p0_xtrim = Cz_xtrim(1);  frameVars.CD1_zD0p1_xtrim = Cz_xtrim(2);
+    frameVars.CD1_zD0p2_xtrim = Cz_xtrim(3);  frameVars.CD1_zD0p3_xtrim = Cz_xtrim(4);
+    frameVars.CD1_zD0p4_xtrim = Cz_xtrim(5);  frameVars.CD1_zD0p5_xtrim = Cz_xtrim(6);
+    frameVars.CD1_zD0p6_xtrim = Cz_xtrim(7);  frameVars.CD1_zD0p7_xtrim = Cz_xtrim(8);
+    frameVars.CD1_zD0p8_xtrim = Cz_xtrim(9);  frameVars.CD1_zD0p9_xtrim = Cz_xtrim(10);
     frameVars.CD1_zD1p0_xtrim = Cz_xtrim(11);
     
-    % per-level pass -- everything that used to be one hand-written line per level
+    frameVars.overallRecovery_full  = overallRecovery_full;
+    frameVars.overallRecovery_xtrim = overallRecovery_xtrim;
+    
+    % per-level pass
     nLevels = numel(levels);
     levelTag = strings(1,nLevels);
     
-    zDFront          = nan(1,nLevels);
-    zDFront_cm       = nan(1,nLevels);
-    zDFront_xtrim    = nan(1,nLevels);
-    zDFront_xtrim_cm = nan(1,nLevels);
-    zDFront_min      = nan(1,nLevels);
-    zDFront_max      = nan(1,nLevels);
-    zDFront_min_cm   = nan(1,nLevels);
-    zDFront_max_cm   = nan(1,nLevels);
+    zDFront          = nan(1,nLevels); zDFront_cm       = nan(1,nLevels);
+    zDFront_xtrim    = nan(1,nLevels); zDFront_xtrim_cm = nan(1,nLevels);
+    zDFront_min      = nan(1,nLevels); zDFront_max      = nan(1,nLevels);
+    zDFront_min_cm   = nan(1,nLevels); zDFront_max_cm   = nan(1,nLevels);
     zDContourOnGrid  = nan(length(xDimLess), nLevels);
+    
+    sweepEff_full = nan(1,nLevels); sweepEff_xtrim = nan(1,nLevels);
+    dispEff_full  = nan(1,nLevels); dispEff_xtrim  = nan(1,nLevels);
+    recovery_full = nan(1,nLevels); recovery_xtrim = nan(1,nLevels);
     
     for i = 1:nLevels
         lvl = levels(i);
@@ -107,10 +107,19 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
         zDFront_min_cm(i) = zMinVal*Lcm;   zDFront_max_cm(i) = zMaxVal*Lcm;
     
         zDContourOnGrid(:,i) = regridContourZ(entry, xDimLess);
+    
+        % sweep / displacement / recovery efficiencies at this level's threshold
+        maskFull = imageFull > lvl;
+        sweepEff_full(i) = nnz(maskFull) / numel(imageFull);
+        if any(maskFull(:)), dispEff_full(i) = mean(imageFull(maskFull), 'omitnan'); end
+        recovery_full(i) = sweepEff_full(i) * dispEff_full(i);
+    
+        maskTrim = imageTrim > lvl;
+        sweepEff_xtrim(i) = nnz(maskTrim) / numel(imageTrim);
+        if any(maskTrim(:)), dispEff_xtrim(i) = mean(imageTrim(maskTrim), 'omitnan'); end
+        recovery_xtrim(i) = sweepEff_xtrim(i) * dispEff_xtrim(i);
     end
     
-    % write the per-level scalars into frameVars under the old field-naming
-    % convention (zDFront10, zDFront10_cm, zDFront10_xtrim, ... zDFront10_max_cm)
     for i = 1:nLevels
         tag = levelTag(i);
         frameVars.("zDFront"+tag)             = zDFront(i);
@@ -121,6 +130,13 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
         frameVars.("zDFront"+tag+"_max")      = zDFront_max(i);
         frameVars.("zDFront"+tag+"_min_cm")   = zDFront_min_cm(i);
         frameVars.("zDFront"+tag+"_max_cm")   = zDFront_max_cm(i);
+    
+        frameVars.("sweepEff"+tag)          = sweepEff_full(i);
+        frameVars.("sweepEff"+tag+"_xtrim") = sweepEff_xtrim(i);
+        frameVars.("dispEff"+tag)           = dispEff_full(i);
+        frameVars.("dispEff"+tag+"_xtrim")  = dispEff_xtrim(i);
+        frameVars.("recovery"+tag)          = recovery_full(i);
+        frameVars.("recovery"+tag+"_xtrim") = recovery_xtrim(i);
     end
     
     % symmetric width pairs (10/90, 16/84, 20/80, 30/70, 40/60, ...) -- found
