@@ -200,6 +200,12 @@ for i = 1:height(inputFileConfig)
     dT_C_avg = expProcFullData_MFM_CT.exp_params.T_std;
     P_psig_avg = expProcFullData_MFM_CT.exp_params.Pavg_avg;
     dP_psig_avg = expProcFullData_MFM_CT.exp_params.Pavg_std;
+    K_mD = expProcFullData_MFM_CT.exp_params.K_mD;
+    rho1 = expProcFullData_MFM_CT.exp_params.rho1;
+    rho2 = expProcFullData_MFM_CT.exp_params.rho2;
+    mu1 = expProcFullData_MFM_CT.exp_params.mu1;
+    mu2 = expProcFullData_MFM_CT.exp_params.mu2;
+    theta = expProcFullData_MFM_CT.exp_params.Angle;
 
     % Capture init ref data folder
     refInitFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_init); % Xe
@@ -271,7 +277,7 @@ for i = 1:height(inputFileConfig)
         zDBTC_conc{m} = table();
     end
 
-    for j = 1:length(expFolderName)
+    for j = 1%:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
             % pca
@@ -326,13 +332,11 @@ for i = 1:height(inputFileConfig)
             resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
 
             rhoNormVars_k = populate_CTframeVars(rhoNormImage, resXmm, resYmm, ...
-                imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, ...
-                D, uint_cmmin, filedataExp.Vlinesbefore);
+                run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal);
             expCTData.(filedataExp.Key).exp.(run_name).vars.rhoNorm(k) = rhoNormVars_k;
             
             concVars_k = populate_CTframeVars(concImage, resXmm, resYmm, ...
-                imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, volInjected, tDtotal, ...
-                D, uint_cmmin, filedataExp.Vlinesbefore);
+                run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal);
             concVars_k.dConc_mean = dConc_mean_k;
             concVars_k.dConc_std = dConc_std_k;
             concVars_k.dConc_max  = dConc_max_k;
@@ -351,99 +355,48 @@ for i = 1:height(inputFileConfig)
 
     end
     
-    u_SI = uint_cmmin/(60*100);
-    L_SI = L_cm/100;
-    dt_guess = 0;
-    Cmin = 0.16; Cmax = 0.84;
-
-    zDlevels_KLfit = 0.1:0.1:1.0;
-    KLfields = {'KL_CT_10_90','KL_CT_16_84','KL_CT_30_70','KL_CT_40_60','KL_CT_sigma'};
-    
     expCTData.(filedataExp.Key).varsAll.rhoNorm = rhoNormVarsAll;
     expCTData.(filedataExp.Key).varsAll.conc    = concVarsAll;
 
     for dataSource = ["rhoNorm","conc"]
         vars = expCTData.(filedataExp.Key).varsAll.(dataSource);
-
-        % KL from CT breakthrough curves at each zD
-        KL_fit_byZD = struct();
-        BTCMetrics_byZD = struct();
-        for m = 1:length(zDlevels_KLfit)
-            zD = zDlevels_KLfit(m);
-            fieldName  = strrep(sprintf('zD%.1f', zD), '.', 'p');   % zD0p1 ... zD1p0
-            CfieldName = strrep(sprintf('CD1_zD%.1f', zD), '.', 'p');
-
-            C_at_zD = vars.(CfieldName);
-            t_vals  = vars.secondsElapsed;
-            tD_vals = vars.tDtotal;
-            L_eff   = zD * L_SI;
-
-            % only fit if the curve is complete
-            [isComplete, C_at_zD, t_vals, tD_vals] = checkBTCComplete(C_at_zD, t_vals, tD_vals, Cmin, Cmax, 5);
-
-            if isComplete
-                [methods_m, bestMethod_m, best_m] = fitBTC_KL_allMethods( ...
-                    t_vals, C_at_zD, ones(size(t_vals)), ...
-                    u_SI, Cj, Ci, L_eff, dt_guess, Cmin, Cmax);
-                [C_unique, idx] = unique(C_at_zD,'stable');
-                BTCMetrics_byZD.(fieldName) = getBTCMetrics(t_vals(idx), tD_vals(idx), C_unique);
-            else
-                methods_m = struct(); bestMethod_m = "skipped_incompleteBTC"; best_m = struct();
-                BTCMetrics_byZD.(fieldName) = struct();
-                fprintf('  %s: BTC at zD=%.1f incomplete (C range %.2f-%.2f), fit skipped\n', ...
-                    dataSource, zD, min(C_at_zD), max(C_at_zD));
-            end
-
-            KL_fit_byZD.(fieldName) = struct('zD',zD,'L_eff',L_eff,'complete',isComplete, ...
-                'allMethods',methods_m,'bestMethod',bestMethod_m,'best',best_m);
+        t_min = vars.secondsElapsed/60;
+        L_cm  = filedataExp.L*2.54;
+    
+        vFront = frontVel(t_min, vars.zDFront50_cm, vars.zDFront50);
+    
+        [tD_arrival_contour, t_arrival_contour_min] = tDArrivalFromContour(t_min, vars.zDFront01, ...
+            filedataExp.Q, filedataExp.Vtotal);
+        [tD_arrival_lines, t_arrival_lines_min] = tDArrivalFromLines(filedataExp.Vlinesbefore, filedataExp.Q, filedataExp.Vtotal);
+    
+        vCrit_cmmin = critVel(K_mD, rho1, rho2, mu1, mu2, theta);
+    
+        % nominal-scale (Q/Vtotal) corrected times -- diagnostic / comparison only
+        vars.tD_corr_contour = vars.tDtotal - tD_arrival_contour;
+        vars.tD_corr_lines   = vars.tDtotal - tD_arrival_lines;
+    
+        % velocity-corrected time -- uses the MEASURED front velocity, referenced
+        % to the empirical (contour) arrival. No line-based counterpart: lines
+        % arrival has no independent velocity to correct with, so it stays nominal.
+        vars.tD_corr_contour_scaled = vFront.v_front_cmmin * (t_min - t_arrival_contour_min) / L_cm;
+    
+        expCTData.(filedataExp.Key).varsAll.(dataSource) = vars;   % write back -- vars was a local copy
+    
+        for r = 1:height(vars)
+            rn = vars.runName(r);
+            lk = vars.imgNr(r);
+            expCTData.(filedataExp.Key).exp.(rn).vars.(dataSource)(lk).tD_corr_contour        = vars.tD_corr_contour(r);
+            expCTData.(filedataExp.Key).exp.(rn).vars.(dataSource)(lk).tD_corr_lines          = vars.tD_corr_lines(r);
+            expCTData.(filedataExp.Key).exp.(rn).vars.(dataSource)(lk).tD_corr_contour_scaled = vars.tD_corr_contour_scaled(r);
         end
-
-        expCTData.(filedataExp.Key).resultsAll.(dataSource).KL_BTC_CT_byZD  = KL_fit_byZD;
-        expCTData.(filedataExp.Key).resultsAll.(dataSource).BTCMetrics_byZD = BTCMetrics_byZD;
-        % at zD = 1.0 (outlet of the core)
-        expCTData.(filedataExp.Key).resultsAll.(dataSource).KL_BTC_CT  = KL_fit_byZD.zD1p0;
-        expCTData.(filedataExp.Key).resultsAll.(dataSource).BTCMetrics = BTCMetrics_byZD.zD1p0;
-
-        % KL from average fronts (all width pairs + moment-based)
-        for f = 1:numel(KLfields)
-            kl = vars.(KLfields{f});
-            valid = isfinite(kl);
-            S = struct();
-            S.KL_cm2min_mean = mean(kl(valid));
-            S.KL_cm2min_std  = std(kl(valid));
-            S.nValidFrames   = sum(valid);
-            expCTData.(filedataExp.Key).resultsAll.(dataSource).KL_front_CT.(KLfields{f}) = S;
-        end
-        
-        % save results in excel
-        dataStruct = expCTData.(filedataExp.Key).resultsAll.(dataSource);
-        xlsxName = fullfile(pathExportAll, filedataExp.Key + "_resultsAll_" + dataSource + ".xlsx");
-        if isfile(xlsxName), delete(xlsxName); end
-
-        % KL_BTC_CT_byZD and BTCMetrics_byZD: one row per zD
-        zDnames = fieldnames(dataStruct.KL_BTC_CT_byZD);
-        btcRows = cell(numel(zDnames),1);
-        metRows = cell(numel(zDnames),1);
-        for m = 1:numel(zDnames)
-            varsDataStruct = dataStruct.KL_BTC_CT_byZD.(zDnames{m});
-            base = struct('zD', varsDataStruct.zD, 'L_eff_m', varsDataStruct.L_eff, 'complete', varsDataStruct.complete, ...
-                          'bestMethod', string(varsDataStruct.bestMethod));
-            btcRows{m} = flatScalars(varsDataStruct.best, 'best_', base);
-            btcRows{m} = flatScalars(varsDataStruct.allMethods, '', btcRows{m});
-            metRows{m} = flatScalars(dataStruct.BTCMetrics_byZD.(zDnames{m}), '', struct('zD', varsDataStruct.zD));
-        end
-        writetable(stackRows(btcRows), xlsxName, 'Sheet', 'KL_BTC_CT_byZD');
-        writetable(stackRows(metRows), xlsxName, 'Sheet', 'BTCMetrics_byZD');
-
-        % KL_front_CT: one row per method
-        frontT = table();
-        for f = 1:numel(KLfields)
-            S = dataStruct.KL_front_CT.(KLfields{f});
-            frontT = [frontT; table(string(KLfields{f}), S.KL_cm2min_mean, S.KL_cm2min_std, S.nValidFrames, ...
-                'VariableNames', {'method','KL_cm2min_mean','KL_cm2min_std','nValidFrames'})]; %#ok<AGROW>
-        end
-        writetable(frontT, xlsxName, 'Sheet', 'KL_front_CT');
-
+    
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).vFront               = vFront;
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).vFront_cmmin         = vFront.v_front_cmmin;
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).vCrit_cmmin          = vCrit_cmmin;
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).isUnstable           = vFront.v_front_cmmin > vCrit_cmmin;
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).tD_arrival_contour   = tD_arrival_contour;
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).tD_arrival_lines     = tD_arrival_lines;
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).tD_corr_contour_scaled = vars.tD_corr_contour_scaled;
     end
 
     % save expCTData
