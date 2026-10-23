@@ -28,8 +28,12 @@ for i = 1:height(inputFileConfig)
         error('MFM results file not found: %s', MFM_CT_file);
     end
     MFM_CT_Data = load(MFM_CT_file);
-    MFM_all = MFM_CT_Data.expProcFullData; 
-    expKey  = MFM_CT_name;
+    expKey = MFM_CT_name;
+    if ~isfield(MFM_CT_Data.expProcFullData, expKey)
+        error('Experiment %s not found in %s', expKey, MFM_CT_file);
+    end
+    mfmExp = MFM_CT_Data.expProcFullData.(expKey);   % exp_params + woEOS/wEOS
+    D_cm2min  = mfmExp.exp_params.D12_cm2min;           % same for both variants
 
     % experiment data all in cm (not m) and min (not seconds) -- same as main_CTpreproc.m
     Ci = filedataExp.C1init/100;
@@ -61,14 +65,15 @@ for i = 1:height(inputFileConfig)
             case "rhoNorm", fitDataMFM = "woEOS";
             case "conc",    fitDataMFM = "wEOS";
         end
-        if ~isfield(MFM_all, fitDataMFM)
-            warning('MFM variant %s not in %s, skipping %s', fitDataMFM, MFM_CT_file, dataSource);
-            continue
+        if ~isfield(mfmExp, fitDataMFM)
+            warning('MFM %s results not found for %s, KL_MFM = NaN', fitDataMFM, expKey);
+            mfmRes = table(NaN, NaN, "none", ...
+                'VariableNames', {'KL_cm2min','totUncertKL_cm2min','model'});
+        else
+            mfmRes = mfmExp.(fitDataMFM).results;
         end
-
-        expProcFullData_MFM_CT = MFM_all.(fitDataMFM);
-        D_MFM = expProcFullData_MFM_CT.(expKey).exp_params.D12_cm2min;
-        KL_MFM = expProcFullData_MFM_CT.(expKey).results.KL_cm2min;
+        KL_MFM  = mfmRes.KL_cm2min;              % NaN if no valid MFM fit
+        dKL_MFM = mfmRes.totUncertKL_cm2min;
 
         vars = expCTData.varsAll.(dataSource);
         t_arrival_min = max(tLines_min, 0);   % scalar, broadcasts in fitKL_frontWidth/fitKL_moments
@@ -164,7 +169,11 @@ for i = 1:height(inputFileConfig)
             resultsOut.(variant).KL_front_CT = KL_front;
         end
 
-        resultsOut.KL_MFM = D_MFM;
+        resultsOut.KL_MFM        = KL_MFM;
+        resultsOut.dKL_MFM       = dKL_MFM;
+        resultsOut.D_cm2min         = D_cm2min;
+        resultsOut.MFM_fitData   = fitDataMFM;
+        resultsOut.MFM_bestModel = string(mfmRes.model);
 
         expCTData.resultsAll.(dataSource) = resultsOut;
 
@@ -201,7 +210,9 @@ for i = 1:height(inputFileConfig)
             writetable(frontT, xlsxName, 'Sheet', "KL_front_" + variant);
         end
 
-        summaryT = table(D_MFM, 'VariableNames', {'KL_MFM_cm2min'});
+        summaryT = table(KL_MFM, dKL_MFM, D_cm2min, string(fitDataMFM), string(mfmRes.model), ...
+            'VariableNames', {'KL_MFM_cm2min','dKL_MFM_cm2min','D12_cm2min', ...
+                              'MFM_fitData','MFM_bestModel'});
         if ismember('tD_corr_vFrontC50', vars.Properties.VariableNames)
             summaryT.tD_corr_vFrontC50       = median(vars.tD_corr_vFrontC50,'omitnan');
             summaryT.tD_corr_vFrontC50_xtrim = median(vars.tD_corr_vFrontC50_xtrim,'omitnan');
