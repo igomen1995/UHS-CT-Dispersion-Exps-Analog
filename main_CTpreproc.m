@@ -165,6 +165,8 @@ inputFileConfig = readtable(inputFileConfigName);
 
 %% Extract data from images
 
+Clevels = [0.01 0.1 0.16 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.84 0.9];
+
 for i = 1:height(inputFileConfig)
 
     filenameExp = inputFileConfig.inputFileName{i};
@@ -277,7 +279,7 @@ for i = 1:height(inputFileConfig)
         zDBTC_conc{m} = table();
     end
 
-    for j = 1:length(expFolderName)
+    for j = 1%:length(expFolderName)
         expFolderPathCT = fullfile(expFolderPath{j}, expFolderName{j});
         run_name = "run_" + sprintf('%02d', j);
             % pca
@@ -298,6 +300,9 @@ for i = 1:height(inputFileConfig)
         nx = dims(1);
         ny = dims(2);
         nz = dims(3);
+
+        % ROI definition -- avoids wall effects (x) and inlet/outlet end effects (z)
+        xDRange = [0.25 0.75];
 
         kRange = 1:nn_exp;
         for k = kRange
@@ -332,11 +337,11 @@ for i = 1:height(inputFileConfig)
             resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
 
             rhoNormVars_k = populate_CTframeVars(rhoNormImage, resXmm, resYmm, ...
-                run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal);
+                run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal, Clevels,xDRange);
             rhoNormVars_local(k) = rhoNormVars_k; 
             
             concVars_k = populate_CTframeVars(concImage, resXmm, resYmm, ...
-                run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal);
+                run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal, Clevels,xDRange);
             concVars_k.dConc_mean = dConc_mean_k;
             concVars_k.dConc_std = dConc_std_k;
             concVars_k.dConc_max  = dConc_max_k;
@@ -361,6 +366,29 @@ for i = 1:height(inputFileConfig)
         L_cm  = filedataExp.L*2.54;
     
         vFront = frontVel(t_min, vars.zDFront50_cm, vars.zDFront50);
+
+        % front velocity for every traced C-level, both over the full image and over the x-trimmed
+        vFrontByLevel       = struct();   % full xD range [0 1]
+        vFrontByLevel_xtrim = struct();   % xD trimmed to xDRangeAvg (e.g. [0.25 0.75])
+        
+        for lvl = Clevels
+            lvlTag = sprintf('%02d', round(lvl*100));
+        
+            zDcolCm = "zDFront" + lvlTag + "_cm";
+            zDcol   = "zDFront" + lvlTag;
+            if all(ismember([zDcolCm, zDcol], string(vars.Properties.VariableNames)))
+                vFrontByLevel.(lvlTag) = frontVel(t_min, vars.(zDcolCm), vars.(zDcol));
+            end
+        
+            zDcolCm_xtrim = "zDFront" + lvlTag + "_xtrim_cm";
+            zDcol_xtrim   = "zDFront" + lvlTag + "_xtrim";
+            if all(ismember([zDcolCm_xtrim, zDcol_xtrim], string(vars.Properties.VariableNames)))
+                vFrontByLevel_xtrim.(lvlTag) = frontVel(t_min, vars.(zDcolCm_xtrim), vars.(zDcol_xtrim));
+            end
+        end
+
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).vFrontByLevel       = vFrontByLevel;
+        expCTData.(filedataExp.Key).resultsAll.(dataSource).vFrontByLevel_xtrim = vFrontByLevel_xtrim;
     
         [tD_arrival_contour, t_arrival_contour_min] = tDArrivalFromContour(t_min, vars.zDFront01, ...
             filedataExp.Q, filedataExp.Vtotal);
