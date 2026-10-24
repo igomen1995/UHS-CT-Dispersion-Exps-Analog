@@ -1,8 +1,19 @@
 function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     run_name, imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal, ...
-    levels, xDRangeAvg)
+    levels, xDRangeAvg, volInjected, D_cm2min, uint_cmmin, tArrival_min)
+% volInjected  [mL]      injected volume at this frame
+% D_cm2min     [cm2/min] molecular diffusion coefficient (theoretical widths)
+% uint_cmmin   [cm/min]  nominal interstitial velocity (theoretical front)
+% tArrival_min [min]     time the injected fluid reaches the core inlet
 
-    if nargin < 12 || isempty(xDRangeAvg), xDRangeAvg = [0 1]; end
+    if nargin < 12 || isempty(xDRangeAvg),   xDRangeAvg   = [0 1]; end
+    if nargin < 13 || isempty(volInjected),  volInjected  = NaN;   end
+    if nargin < 14 || isempty(D_cm2min),     D_cm2min     = NaN;   end
+    if nargin < 15 || isempty(uint_cmmin),   uint_cmmin   = NaN;   end
+    if nargin < 16 || isempty(tArrival_min), tArrival_min = 0;     end
+
+    % time spent in the core (since arrival at the inlet)
+    tcore_min = max(secondsElapsed/60 - tArrival_min, 0);
     
     imageFull = image;
     [ny, nx] = size(imageFull);
@@ -58,6 +69,7 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     frameVars.timeStamp      = timeStamp;
     frameVars.timeElapsed    = timeElapsed;
     frameVars.secondsElapsed = secondsElapsed;
+    frameVars.volInjected    = volInjected;
     frameVars.tDtotal        = tDtotal;
     
     frameVars.histImage = table(counts', edges(1:end-1)', edges(2:end)', ...
@@ -163,6 +175,10 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
         
         frameVars.("zDWidth_"+widthTag+"_xtrim")    = zDFront_xtrim(i)    - zDFront_xtrim(j);
         frameVars.("zDWidth_"+widthTag+"_xtrim_cm") = zDFront_xtrim_cm(i) - zDFront_xtrim_cm(j);
+
+        % diffusion-only width for this pair: W = 2k*sqrt(D*t)
+        kPair = erfcinv(2*L) - erfcinv(2*(1-L));
+        frameVars.("zDWidthDiff_"+widthTag) = 2*kPair*sqrt(D_cm2min*tcore_min) / Lcm;
         
         widthTags{end+1} = widthTag; %#ok<AGROW>
         zDWidthContourAll.(matlab.lang.makeValidName(widthTag)) = zDContourOnGrid(:,i) - zDContourOnGrid(:,j);
@@ -184,6 +200,8 @@ function frameVars = populate_CTframeVars(image, resXmm, resYmm, ...
     end
     frameVars.C1Axial = table(C1AxialVars{:}, 'VariableNames', C1AxialNames);
     
+    frameVars.zDFront_theory = uint_cmmin * tcore_min / Lcm;   % advective front position [-]
+
     % tilt/shape, still specifically from the C=0.5 contour
     idx50 = find(abs(levels - 0.5) < 1e-9, 1);
     if ~isempty(idx50)

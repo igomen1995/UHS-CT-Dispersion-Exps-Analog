@@ -272,6 +272,8 @@ for i = 1:height(inputFileConfig)
     
     % zD levels for spatially-resolved BTC extraction (zD=0 is BTlinesBefore; zD=1 is outlet BTcore)
     zDlevels = 0:0.1:1.0;
+    [tD_arrival_lines, t_arrival_lines_min] = tDArrivalFromLines(filedataExp.Vlinesbefore, filedataExp.Q, filedataExp.Vtotal);
+    
     zDBTC_rhoNorm = cell(length(zDlevels),1);
     zDBTC_conc    = cell(length(zDlevels),1);
     for m = 1:length(zDlevels)
@@ -301,7 +303,7 @@ for i = 1:height(inputFileConfig)
         ny = dims(2);
         nz = dims(3);
 
-        % ROI definition -- avoids wall effects (x) and inlet/outlet end effects (z)
+        % ROI definition -- avoids wall effects (x)
         xDRange = [0.25 0.75];
 
         kRange = 1:nn_exp;
@@ -341,11 +343,13 @@ for i = 1:height(inputFileConfig)
             resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
 
             rhoNormVars_k = populate_CTframeVars(rhoNormImage, resXmm, resYmm, ...
-                run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal, Clevels,xDRange);
-            rhoNormCell{k} = rhoNormVars_k; 
-            
+                run_name, imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal, ...
+                                Clevels, xDRange, volInjected, D, uint_cmmin, t_arrival_lines_min);
+            rhoNormCell{k} = rhoNormVars_k;
+
             concVars_k = populate_CTframeVars(concImage, resXmm, resYmm, ...
-                run_name,imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal, Clevels,xDRange);
+                run_name, imgNr, rotPos, timeStamp, timeElapsed, secondsElapsed, tDtotal, ...
+                                Clevels, xDRange, volInjected, D, uint_cmmin, t_arrival_lines_min);
             concVars_k.dConc_mean = dConc_mean_k;
             concVars_k.dConc_std = dConc_std_k;
             concVars_k.dConc_max  = dConc_max_k;
