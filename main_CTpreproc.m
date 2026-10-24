@@ -310,7 +310,6 @@ for i = 1:height(inputFileConfig)
         concCell    = cell(nn_exp,1);
 
         for k = kRange
-            k
             % Concentration profiles and histograms of normalized images
             imgNr = expCTData.(filedataExp.Key).exp.(run_name).pcp.ImgNr(k);
             rotPos = expCTData.(filedataExp.Key).exp.(run_name).pcp.RotPos(k);

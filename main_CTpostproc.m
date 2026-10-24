@@ -53,6 +53,10 @@ for i = 1:height(inputFileConfig)
     % placeholder when a variant has no results
     nanRes = table(NaN, NaN, "none", 'VariableNames', {'KL_cm2min','totUncertKL_cm2min','model'});
 
+    % tcore reference, same convention as the old populate_CTframeVars:
+    % time (minutes) to clear the line volume before the core
+    tLines_min = filedataExp.Vlinesbefore/filedataExp.Q;
+
     % experiment data all in cm (not m) and min (not seconds) -- same as main_CTpreproc.m
     Ci = filedataExp.C1init/100;
     Cj = filedataExp.C1j/100;
@@ -61,14 +65,10 @@ for i = 1:height(inputFileConfig)
 
     u_SI = uint_cmmin/(60*100);
     L_SI = L_cm/100;
-    dt_guess = 0;
+    dt_guess = tLines_min * 60;    % [s] line volume before the core, same time base as t_vals
     Cmin = 0.16; Cmax = 0.84;
 
     zDlevels_KLfit = 0.1:0.1:1.0;
-
-    % tcore reference, same convention as the old populate_CTframeVars:
-    % time (minutes) to clear the line volume before the core
-    tLines_min = filedataExp.Vlinesbefore/filedataExp.Q;
 
     % load the data produced by main_CTpreproc.m
     expCT_name = pathExportAll + filedataExp.Key;
@@ -129,8 +129,9 @@ for i = 1:height(inputFileConfig)
                 tD_vals = vars.tDtotal;
                 if dataSource == "conc"
                     dC_vals = vars.dConc_mean;
+                    dC_vals(~(dC_vals > 0)) = NaN;          % zero/negative -> dropped by the NaN filter below
                 else
-                    dC_vals = zeros(size(tD_vals));
+                    dC_vals = ones(size(tD_vals));         % no per-frame uncertainty for rhoNorm -> unweighted
                 end
                 L_eff   = zD * L_SI;
 
