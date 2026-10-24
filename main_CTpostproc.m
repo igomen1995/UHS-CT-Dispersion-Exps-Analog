@@ -128,9 +128,8 @@ for i = 1:height(inputFileConfig)
                 t_vals  = vars.secondsElapsed;
                 tD_vals = vars.tDtotal;
                 if dataSource == "conc"
-                    dC_vals = ones(size(tD_vals));
-                    % dC_vals = vars.dConc_mean;
-                    % dC_vals(~(dC_vals > 0)) = NaN;          % zero/negative -> dropped by the NaN filter below
+                    dC_vals = vars.dConc_mean;
+                    dC_vals(~(dC_vals > 0)) = NaN;          % zero/negative -> dropped by the NaN filter below
                 else
                     dC_vals = ones(size(tD_vals));         % no per-frame uncertainty for rhoNorm -> unweighted
                 end
