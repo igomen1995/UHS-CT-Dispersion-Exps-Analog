@@ -152,16 +152,30 @@ for i = 1:nExp
     MFM_CT_file = fullfile(Root, pathImport_MFM_CT, 'expProcFullData.mat');
     MFM_UHS_file = fullfile(Root, pathImport_MFM_UHS, 'expProcFullData.mat');
     % load processed MFM data
-    MFM_CT_Data = load(MFM_CT_file);
+    MFM_CT_Data  = load(MFM_CT_file);
     MFM_UHS_Data = load(MFM_UHS_file);
 
-    % exp params
-    Fluid1 = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.Fluid1;
-    Fluid2 = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.Fluid2;
-    T_C_avg = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.T_mean;
-    dT_C_avg = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.T_std;
-    P_psig_avg = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.Pavg_avg;
-    dP_psig_avg = MFM_CT_Data.expProcFullData.(filedataExp.Key).exp_params.Pavg_std;
+    % MFM variant matching this CT dataSource
+    switch dataSource
+        case 'rhoNorm', fitDataMFM = "woEOS";
+        case 'conc',    fitDataMFM = "wEOS";
+    end
+
+    eCT  = MFM_CT_Data.expProcFullData.(MFM_CT_name);
+    eUHS = MFM_UHS_Data.expProcFullData.(MFM_UHS_name);
+    if ~isfield(eCT, fitDataMFM) || ~isfield(eUHS, fitDataMFM)
+        error('%s results missing for %s or %s', fitDataMFM, MFM_CT_name, MFM_UHS_name);
+    end
+    mfmCT  = eCT.(fitDataMFM);   mfmCT.exp_params  = eCT.exp_params;    % BT, results, ... + exp_params
+    mfmUHS = eUHS.(fitDataMFM);  mfmUHS.exp_params = eUHS.exp_params;
+
+    % exp params (shared, from the MFM analog experiment)
+    Fluid1      = eCT.exp_params.Fluid1;
+    Fluid2      = eCT.exp_params.Fluid2;
+    T_C_avg     = eCT.exp_params.T_mean;
+    dT_C_avg    = eCT.exp_params.T_std;
+    P_psig_avg  = eCT.exp_params.Pavg_avg;
+    dP_psig_avg = eCT.exp_params.Pavg_std;
 
     % interpolant for composition form array 0 to 1 (binary mixture)
     [interpFcn, interpFcn_Tp, interpFcn_Tm, interpFcn_Pp, interpFcn_Pm] = ...
@@ -170,8 +184,8 @@ for i = 1:nExp
 
     filedataExpAll{i}   = filedataExp;
     expCTDataAll{i}     = expCTDataTemp.expCTDataSave;
-    MFM_CT_DataAll{i}   = MFM_CT_Data.expProcFullData.(MFM_CT_name);
-    MFM_UHS_DataAll{i}  = MFM_UHS_Data.expProcFullData.(MFM_UHS_name);
+    MFM_CT_DataAll{i}   = mfmCT;
+    MFM_UHS_DataAll{i}  = mfmUHS;
     HDF5filenameAll{i}  = HDF5filename;
     interpFcnAll{i}     = interpFcn;
     expFolderNameAll{i} = expFolderName;
@@ -248,6 +262,10 @@ for i = 1:nExp
     
         for k = 1:nz
             vars = varsRun(k,:);
+            % profile / histogram columns are cells in the table -> unwrap
+            axial = vars.C1Axial;    if iscell(axial), axial = axial{1}; end
+            prof  = vars.C1Profile;  if iscell(prof),  prof  = prof{1};  end
+            hist1 = vars.histImage;  if iscell(hist1), hist1 = hist1{1}; end
     
             % hTitle
             set(hTitle, 'String', ...
@@ -255,9 +273,9 @@ for i = 1:nExp
                 " ImgNumber_" + sprintf('%03d', k));
     
             % plot concentration in x ax1
-            x1 = vars.C1Axial.xHorzcm;
+            x1 = axial.xHorzcm;
             xD1 = x1 / max(x1);
-            y1 = vars.C1Axial.CHorz;
+            y1 = axial.CHorz;
             cla(ax1)
             plot(ax1, xD1, y1,'LineWidth',2)
             xlim(ax1,[0 1])
@@ -270,9 +288,9 @@ for i = 1:nExp
             grid(ax1,'on')
     
             % plot concentration in z ax4
-            x2 = vars.C1Profile.zVertcm;
+            x2 = prof.zVertcm;
             zD2 = x2 / max(x2);
-            y2 = vars.C1Profile.CVert;
+            y2 = prof.CVert;
             cla(ax4)
             plot(ax4, zD2, y2,'LineWidth',2)
             xlabel(ax4,'z_D [-]')
@@ -322,9 +340,9 @@ for i = 1:nExp
             % hold(ax3,'off')
     
             % plot histogram ax2
-            freq = vars.histImage.counts;
-            binCenters = (vars.histImage.minEdge + vars.histImage.maxEdge)/2;
-            binWidth = abs(vars.histImage.maxEdge-vars.histImage.minEdge);
+            freq = hist1.counts;
+            binCenters = (hist1.minEdge + hist1.maxEdge)/2;
+            binWidth = abs(hist1.maxEdge-hist1.minEdge);
             cla(ax2)
             bar(ax2,binCenters,freq,1)
             xlim(ax2,[-0.02,1])
@@ -453,13 +471,12 @@ for i = 1:nExp
         'filled', ...
         'MarkerFaceColor','k', ...
         'MarkerEdgeColor','none','DisplayName','CT analog BTC (zD=1.0, outlet)');
-    scatter(ax5, expProcFullData_MFM_CT.BT.tDtotal, expProcFullData_MFM_CT.BT.CDi, 8, ...
-        'filled', ...
-        'MarkerFaceColor',colors(1,:), ...
+    if strcmp(dataSource,'conc'), mfmCol = 'CDi'; else, mfmCol = 'rho_norm'; end
+    scatter(ax5, expProcFullData_MFM_CT.BT.tDtotal, expProcFullData_MFM_CT.BT.(mfmCol), 8, ...
+        'filled', 'MarkerFaceColor',colors(1,:), ...
         'MarkerEdgeColor','none','DisplayName','MFM_analog_BTC');
-    scatter(ax5, expProcFullData_MFM_UHS.BT.tDtotal, expProcFullData_MFM_UHS.BT.CDi, 8, ...
-        'filled', ...
-        'MarkerFaceColor',colors(3,:), ...
+    scatter(ax5, expProcFullData_MFM_UHS.BT.tDtotal, expProcFullData_MFM_UHS.BT.(mfmCol), 8, ...
+        'filled', 'MarkerFaceColor',colors(3,:), ...
         'MarkerEdgeColor','none','DisplayName','MFM_UHS_BTC');
     xlim(ax5,[0 tDmax])
     ylim(ax5,[-0.02 1])
@@ -569,7 +586,7 @@ for i = 1:nExp
     
         for ii = 1:length(plotIdx)
             k = plotIdx(ii);
-            vars = varsRun(k);
+            vars = varsRun(k,:);
             tD = vars.tDtotal;
             theta = deg2rad(vars.rotPos);
     
@@ -668,10 +685,6 @@ for i = 1:nExp
         'FontSize', 12,'FontWeight','bold', 'Interpreter','none');
 
     cmap = flipud(winter(256));
-    varsAll = expCTData.(filedataExp.Key).varsAll.(dataSource);
-    varsAll = varsAll(varsAll.tDtotal < tDmax,:);
-
-    tDAll = varsAll.tDtotal;
     tDminContours = 0;
     tDmaxContours = tDmax;
     levels = [0.5 0.5];
@@ -680,7 +693,9 @@ for i = 1:nExp
     frames = struct('tD',{},'run_name',{},'k',{},'rotPos',{}, ...
         'color',{},'xD',{},'zD',{},'C',{}, ...
         'xD2',{},'CVert',{},'hContour',{},'hScatter',{});
+    cache  = struct('plotImage',{},'imgSmooth',{});   % same order as frames
 
+    % build static overlays (one read + smooth per frame)
     for j = 1:length(expFolderName)
         run_name = "run_" + sprintf('%02d', j);
         HDF5dataPath = ['/exp/' char(run_name) '/conc'];
@@ -688,26 +703,23 @@ for i = 1:nExp
         dims = info.Dataspace.Size;
         nx = dims(1);
         ny = dims(2);
-        nz = dims(3);
 
         varsRun = expCTData.(filedataExp.Key).varsAll.(dataSource);
-        varsRun = varsRun(varsRun.runName == run_name, :);
+        varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
+        if isempty(varsRun), continue, end
 
-        tDRun = [varsRun.tDtotal];
-        varsRun = varsRun(tDRun < tDmax);
         tDstep = 0.1;
-        tDtargets = min([varsRun.tDtotal]):tDstep:max([varsRun.tDtotal]);
+        tDtargets = min(varsRun.tDtotal):tDstep:max(varsRun.tDtotal);
         kPlot = zeros(length(tDtargets),1);
-
         for m = 1:length(tDtargets)
-            [~,kPlot(m)] = min(abs([varsRun.tDtotal] - tDtargets(m)));
+            [~,kPlot(m)] = min(abs(varsRun.tDtotal - tDtargets(m)));
         end
-
         kPlot = unique(kPlot,'stable');
 
         for ii = 1:length(kPlot)
             k = kPlot(ii);
             vars = varsRun(k,:);
+            prof = vars.C1Profile;  if iscell(prof), prof = prof{1}; end
             tD = vars.tDtotal;
 
             rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
@@ -725,14 +737,17 @@ for i = 1:nExp
             zcm = (1:nx)*resYmm/10;
             xD = xcm/max(xcm);
             zD = zcm/max(zcm);
+
+            % ax1: C = 0.5 contour of this frame
             hold(ax1,'on')
             [C, h] = contour(ax1,xD,zD,imgSmooth,levels, ...
                 'LineColor','k','LineWidth',2.2);
             set(h,'HitTest','off','PickableParts','none');
 
-            x2 = vars.C1Profile.zVertcm;
+            % ax3: vertical profile of this frame
+            x2 = prof.zVertcm;
             xD2 = x2/max(x2);
-            y2 = vars.C1Profile.CVert;
+            y2 = prof.CVert;
             s = scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor','k');
             set(s,'HitTest','off','PickableParts','none');
             hold(ax3,'on')
@@ -741,11 +756,11 @@ for i = 1:nExp
                 'tD',tD,'run_name',run_name,'k',k,'rotPos',vars.rotPos, ...
                 'color','k','xD',xD,'zD',zD,'C',C, ...
                 'xD2',xD2,'CVert',y2, ...
-                'hContour',h,'hScatter',s);
+                'hContour',h,'hScatter',s); %#ok<SAGROW>
+            cache(end+1) = struct('plotImage',plotImage,'imgSmooth',imgSmooth); %#ok<SAGROW>
 
-            if isempty(C)
-                continue
-            end
+            % labels
+            if isempty(C), continue, end
             npts = C(2,1);
             if npts > 5
                 mid = round(npts/2);
@@ -767,6 +782,7 @@ for i = 1:nExp
         end
     end
 
+    % format axes
     set(ax1,'YDir','reverse','FontSize',8)
     grid(ax1,'on')
     xlabel(ax1,'x_D [-]','FontSize',8)
@@ -800,6 +816,7 @@ for i = 1:nExp
     ax3.YAxisLocation = 'right';
     title(ax3,'Vert. conc. profile @ t_D','FontSize',9)
 
+    % ax4: breakthrough curves (CT at three zD + MFM analog/UHS)
     BTdata = expCTData.(filedataExp.Key).varsAll.(dataSource);
     colors = get(groot,'defaultAxesColorOrder');
 
@@ -843,25 +860,61 @@ for i = 1:nExp
     legend(ax4, 'Location','southeast','Interpreter','none')
     title(ax4,'Breakthrough curve @ zD = 0.0, 0.5 and 1.0','FontSize',9)
 
-    setappdata(fig,'frames',frames);
-    setappdata(fig,'HDF5filename',HDF5filename);
-    setappdata(fig,'interpFcn',interpFcn);
-    setappdata(fig,'ax2',ax2);
-    setappdata(fig,'ax4',ax4);
-    setappdata(fig,'levels',levels);
-    setappdata(fig,'levelsFull',levelsFull);
-    setappdata(fig,'hImgAx2',gobjects(0));
-    setappdata(fig,'hContourAx2',gobjects(0));
-    setappdata(fig,'hCurrentAx4',gobjects(0));
-    setappdata(fig,'hTitle',hTitle);
-    setappdata(fig,'keyName',filedataExp.Key);
-    setappdata(fig,'pathExportAll',pathExportAll);
-    setappdata(fig,'selectedIdx',[]);
-    setappdata(fig,'dataSource',dataSource);
-    setappdata(fig,'filedataExp',filedataExp);
+    % per-frame save: current tD contour in red, its map in ax2, tD line in ax4
+    hCurrentAx4   = xline(ax4, NaN, '--r', 'LineWidth', 2, 'DisplayName','');
+    hImgAx2       = gobjects(0);
+    hContourAx2   = gobjects(0);
+    hContourAx2Hi = gobjects(0);
+    prevIdx = [];
 
     for idx = 1:numel(frames)
-        saveFrame(fig, idx);
+        fr  = frames(idx);
+        cfr = cache(idx);
+
+        % previous frame back to black, current one red
+        if ~isempty(prevIdx)
+            set(frames(prevIdx).hContour,'LineColor','k','LineWidth',2.2);
+            set(frames(prevIdx).hScatter,'MarkerFaceColor','k','SizeData',3);
+        end
+        set(fr.hContour,'LineColor','r','LineWidth',3);
+        set(fr.hScatter,'MarkerFaceColor','r','SizeData',8);
+
+        % ax2: concentration map of this frame (cached)
+        if isempty(hImgAx2) || ~isvalid(hImgAx2)
+            hold(ax2,'on')
+            hImgAx2 = imagesc(ax2, fr.xD, fr.zD, cfr.plotImage);
+            uistack(hImgAx2,'bottom');
+        else
+            set(hImgAx2,'CData',cfr.plotImage,'XData',fr.xD,'YData',fr.zD);
+        end
+
+        if ~isempty(hContourAx2Hi) && isvalid(hContourAx2Hi), delete(hContourAx2Hi); end
+        [~, hContourAx2Hi] = contour(ax2, fr.xD, fr.zD, cfr.imgSmooth, levels, ...
+            'LineColor','k','LineWidth',3,'ShowText',true);
+        set(hContourAx2Hi,'HitTest','off','PickableParts','none');
+        uistack(hContourAx2Hi,'top');
+
+        if ~isempty(hContourAx2) && isvalid(hContourAx2), delete(hContourAx2); end
+        [~, hContourAx2] = contour(ax2, fr.xD, fr.zD, cfr.imgSmooth, levelsFull, ...
+            'LineColor','k','LineWidth',1,'ShowText',true,'LabelFormat',"%0.1f");
+        set(hContourAx2,'HitTest','off','PickableParts','none');
+
+        xlim(ax2,[0 1]);  ylim(ax2,[0 1]);
+        title(ax2, sprintf('Concentration map @ t_D = %.1f', fr.tD), 'FontSize', 9)
+
+        % ax4: current tD
+        hCurrentAx4.Value = fr.tD;
+        hCurrentAx4.DisplayName = sprintf('tD = %.1f', fr.tD);
+
+        hTitle.String = sprintf('%s - CT %s %s, tD = %.1f, theta = %.0f°', ...
+            char(filedataExp.Key), dataSource, fr.run_name, fr.tD, fr.rotPos);
+
+        tDStr = strrep(sprintf('%.1f', fr.tD), '.', 'p');
+        fname = sprintf('%s_tD%s_%s_%s', char(filedataExp.Key), tDStr, fr.run_name, dataSource);
+        saveas(fig, fullfile(pathExportAll, fname), 'png');
+        fprintf('Saved %s\n', fname);
+
+        prevIdx = idx;
     end
 
     close(fig)
@@ -869,7 +922,8 @@ end
 
 %% Countour map (batch save, multi-level overlay C=0.1/0.5/0.9)
 
-widthPairs = [0.1 0.9; 0.3 0.7; 0.4 0.6];
+% widthPairs = [0.1 0.9; 0.3 0.7; 0.4 0.6];
+widthPairs = [0.4 0.6];
 levelsFull = 0:0.1:1;   % fixed grid; covers every level requested
  
 for i = 1:nExp
@@ -898,9 +952,9 @@ for i = 1:nExp
         nx = dims(1);
         ny = dims(2);
  
-        varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
-        tDRun = [varsRun.tDtotal];
-        varsRun = varsRun(tDRun < tDmax);
+        varsRun = expCTData.(filedataExp.Key).varsAll.(dataSource);
+        varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
+
         tDstep = 0.1;
         tDtargets = min([varsRun.tDtotal]):tDstep:max([varsRun.tDtotal]);
         kPlot = zeros(length(tDtargets),1);
@@ -912,7 +966,9 @@ for i = 1:nExp
  
         for ii = 1:length(kPlot)
             k = kPlot(ii);
-            vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+            vars = varsRun(k,:);
+            prof  = vars.C1Profile;  if iscell(prof),  prof  = prof{1};  end
+
             tD = vars.tDtotal;
  
             rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
@@ -931,9 +987,9 @@ for i = 1:nExp
             xD = xcm/max(xcm);
             zD = zcm/max(zcm);
  
-            x2v = vars.C1Profile.zVertcm;
+            x2v = prof.zVertcm;
             xD2 = x2v/max(x2v);
-            y2 = vars.C1Profile.CVert;
+            y2 = prof.CVert;
  
             Cfull = contourc(double(xD), double(zD), double(imgSmooth), levelsFull);
             segsAll = parseContourMatrix(Cfull);
@@ -1352,9 +1408,9 @@ for i = 1:nExp
         ny = dims(2);
         nz = dims(3);
     
-        varsRun = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource);
-        tDRun = [varsRun.tDtotal];
-        varsRun = varsRun(tDRun < tDmax);
+        varsRun = expCTData.(filedataExp.Key).varsAll.(dataSource);
+        varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
+
         tDstep = 0.1;
         tDtargets = min([varsRun.tDtotal]):tDstep:max([varsRun.tDtotal]);
         kPlot = zeros(length(tDtargets),1);
@@ -1367,7 +1423,8 @@ for i = 1:nExp
     
         for ii = 1:length(kPlot)
             k = kPlot(ii);
-            vars = expCTData.(filedataExp.Key).exp.(run_name).vars.(dataSource)(k);
+            vars = varsRun(k,:);
+            prof = vars.C1Profile;  if iscell(prof), prof = prof{1}; end
             tD = vars.tDtotal;
     
             % ax1
@@ -1393,9 +1450,9 @@ for i = 1:nExp
             set(h,'HitTest','off','PickableParts','none');
     
             % ax3
-            x2 = vars.C1Profile.zVertcm;
+            x2 = prof.zVertcm;
             xD2 = x2/max(x2);
-            y2 = vars.C1Profile.CVert;
+            y2 = prof.CVert;
             s = scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor','k');
             set(s,'HitTest','off','PickableParts','none');
             hold(ax3,'on')

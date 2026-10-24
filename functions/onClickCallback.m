@@ -75,8 +75,18 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
 
     run_name = "run_" + sprintf('%02d', j);
     varsAll = expCTData.(filedataExp.Key).varsAll.(dataSource);
-    vars = varsAll(varsAll.runName == run_name & varsAll.imgNr == k, :);
+    varsRun = varsAll(varsAll.runName == run_name, :);
+    if k > height(varsRun)
+        warning('onClickCallback: frame %d not found in %s', k, run_name);
+        return
+    end
+    vars = varsRun(k,:);     % same indexing as BT.k was built with
 
+    % profile / histogram columns are cells in the table -> unwrap
+    axial = vars.C1Axial;    if iscell(axial), axial = axial{1}; end
+    prof  = vars.C1Profile;  if iscell(prof),  prof  = prof{1};  end
+    hist1 = vars.histImage;  if iscell(hist1), hist1 = hist1{1}; end
+    
     % load image params
     HDF5filename = fullfile(path, filedataExp.Key + ".h5");
     HDF5dataPath = ['/exp/' char(run_name) '/conc'];   
@@ -93,8 +103,8 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
     hSelectedLine.DisplayName = sprintf('selected: tD = %.3f, t = %.0f s', BT.tD(idx), BT.t(idx));
 
     % plot concentration in x ax1
-    x1 = vars.C1Axial.xHorzcm;
-    y1 = vars.C1Axial.CHorz;
+    x1 = axial.xHorzcm;
+    y1 = axial.CHorz;
     cla(ax1)
     plot(ax1, x1, y1,'LineWidth',2,'Color','k')
     xlim(ax1,[min(x1) max(x1)])
@@ -112,8 +122,8 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
         " ImgNumber_" + sprintf('%03d', k) + "_" + dataSource);
 
     % plot concentration in z ax4
-    x2 = vars.C1Profile.zVertcm;
-    y2 = vars.C1Profile.CVert;
+    x2 = prof.zVertcm;
+    y2 = prof.CVert;
     cla(ax4)
     plot(ax4, x2, y2,'LineWidth',2,'Color','k')
     xlabel(ax4,'Z [cm]')
@@ -126,7 +136,9 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
     ax4.YAxisLocation = 'right';
 
     % plot image ax3
-    rhoNormImage = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+    rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+    rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac, filedataExp.Fluid1, ...
+        filedataExp.Fluid2, filedataExp.T, filedataExp.P);
     if strcmp(dataSource,'conc')
         plotImage = interpFcn(rhoNormImage);
     else
@@ -156,8 +168,8 @@ function onClickCallback(~,event,path,hSelected,hSelectedLine,BT,expCTData,filed
     hold(ax3,'off')
 
     % plot histogram ax2
-    freq = vars.histImage.counts;
-    binCenters = (vars.histImage.minEdge+vars.histImage.maxEdge)/2;
+    freq = hist1.counts;
+    binCenters = (hist1.minEdge+hist1.maxEdge)/2;
     cla(ax2)
     bar(ax2,binCenters,freq,1)
     xlim(ax2,[-0.02,1])
