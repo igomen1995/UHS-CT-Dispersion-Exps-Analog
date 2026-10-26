@@ -1596,10 +1596,11 @@ for i = 1:nExp
     ax4.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax4, 'ax4');
 end
 
-%% Contour map by fixed angle: theta (solid), theta+180 flipped (dashed), 360 = 0 not flipped (dotted)
-% one row per target angle, one column per experiment, colour = tDtotal
+%% Contour map by fixed angle: one figure per target angle, one tile per experiment
+% theta (solid), theta+180 flipped (dashed), 360 = 0 not flipped (dotted); colour = tDtotal
+% tiles keep the physical width/height of the image (as the other contour maps)
 
-angleTargets = [0 45 90 135];   % each row: theta and theta+180 (flipped); row 0 also shows 360
+angleTargets = [0 45 90 135];   % one figure each
 angleTol_deg = 3;               % matching tolerance; rotPos is sampled every ~2 deg
 level = 0.5;                    % contour level to trace
 tDminContours = 0;
@@ -1610,29 +1611,40 @@ nHalfMax = 2;                       % n = 0,1,2 -> theta, theta+180, theta+360 (
 lsHalf   = {'-', '--', ':'};        % line style per n
 flipHalf = [false true false];      % theta+180 -> flipped; 360 is the same view as 0 -> not flipped
 
-fig = figure('Position',[50 50 280*nExp 170*numel(angleTargets)+140]);
-tl = tiledlayout(fig, numel(angleTargets), nExp, 'TileSpacing','compact', 'Padding','compact');
+tileW_px = 230;                     % width of one tile in the figure [px]
 
-for i = 1:nExp
+% --- physical aspect (height/width) of the images, from the first experiment's run_01
+info0  = h5info(HDF5filenameAll{1}, '/exp/run_01/conc');
+geom0  = expCTDataAll{1}.exp.run_01.pca.Geometry;
+Wcm0   = info0.Dataspace.Size(2) * geom0.VoxelSizeX/10;
+Hcm0   = info0.Dataspace.Size(1) * geom0.VoxelSizeY/10;
+aspHW  = Hcm0 / Wcm0;
 
-    filedataExp   = filedataExpAll{i};
-    dataSource    = dataSourceAll{i};
-    HDF5filename  = HDF5filenameAll{i};
-    interpFcn     = interpFcnAll{i};
-    expFolderName = expFolderNameAll{i};
+if ~isfolder('results/'), mkdir('results/'); end
 
-    expCTData = struct();
-    expCTData.(filedataExp.Key) = expCTDataAll{i};
+for aIdx = 1:numel(angleTargets)
+    targetAngle = angleTargets(aIdx);
 
-    fprintf('Contour-by-angle %s\n', filedataExp.Key)
+    fig = figure('Position',[50 50 tileW_px*nExp+120 tileW_px*aspHW+150]);
+    tl = tiledlayout(fig, 1, nExp, 'TileSpacing','compact', 'Padding','compact');
 
-    for aIdx = 1:numel(angleTargets)
-        targetAngle = angleTargets(aIdx);
+    for i = 1:nExp
+
+        filedataExp   = filedataExpAll{i};
+        dataSource    = dataSourceAll{i};
+        HDF5filename  = HDF5filenameAll{i};
+        interpFcn     = interpFcnAll{i};
+        expFolderName = expFolderNameAll{i};
+
+        expCTData = struct();
+        expCTData.(filedataExp.Key) = expCTDataAll{i};
+
+        fprintf('Contour-by-angle %d deg, %s\n', targetAngle, filedataExp.Key)
+
         nFound = false(1, nHalfMax+1);              % which theta+n*180 were found (for the legend)
-
-        tileIdx = (aIdx-1)*nExp + i;
-        ax = nexttile(tl, tileIdx);
+        ax = nexttile(tl, i);
         hold(ax,'on')
+        Wcm = NaN; Hcm = NaN;
 
         for j = 1:length(expFolderName)
             run_name = "run_" + sprintf('%02d', j);
@@ -1644,6 +1656,10 @@ for i = 1:nExp
             varsRun = expCTData.(filedataExp.Key).varsAll.(dataSource);
             varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
             if isempty(varsRun), continue, end
+
+            geom = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry;
+            Wcm  = ny*geom.VoxelSizeX/10;           % physical image width  [cm]
+            Hcm  = nx*geom.VoxelSizeY/10;           % physical image height [cm]
 
             xD = (0:ny-1)/(ny-1);                   % symmetric about the centre -> clean 1-xD flip
             zD = (0:nx-1)/(nx-1);
@@ -1659,7 +1675,14 @@ for i = 1:nExp
                 idxN = find(abs(rot - angN) <= angleTol_deg);
                 if isempty(idxN), continue, end
                 nFound(n+1) = true;
-                for kk = idxN(:)'
+
+                % frames within the tolerance come in groups of consecutive
+                % indices (one group per pass) -> keep the closest frame per pass
+                passId = cumsum([1; diff(idxN(:)) > 1]);
+                for q = unique(passId)'
+                    kq = idxN(passId == q);
+                    [~, best] = min(abs(rot(kq) - angN));
+                    kk = kq(best);
                     plotOneContour(ax, HDF5filename, HDF5dataPath, kk, nx, ny, xD, zD, ...
                         filedataExp, interpFcn, dataSource, level, cmap, tDmaxContours, ...
                         varsRun.tDtotal(kk), lsHalf{n+1}, flipHalf(n+1));
@@ -1668,8 +1691,9 @@ for i = 1:nExp
         end
 
         set(ax,'YDir','reverse','FontSize',8)
-        grid(ax,'on')
+        grid(ax,'on'); box(ax,'on')
         xlim(ax,[0 1]); ylim(ax,[0 1])
+        if isfinite(Wcm), pbaspect(ax,[Wcm Hcm 1]); else, pbaspect(ax,[1 aspHW 1]); end
         colormap(ax,cmap)
         clim(ax,[tDminContours tDmaxContours])
 
@@ -1684,32 +1708,439 @@ for i = 1:nExp
             end
         end
         if ~isempty(hL)
-            legend(ax, hL, lbl, 'Location','southeast', 'FontSize',6, 'Box','off')
+            legend(ax, hL, lbl, 'Location','southoutside', 'Orientation','horizontal', ...
+                'FontSize',6, 'Box','off')
         end
 
-        if aIdx == numel(angleTargets)
-            xlabel(ax,'x_D [-]')
+        xlabel(ax,'x_D [-]')
+        if i == 1, ylabel(ax,'z_D [-]'), end
+        title(ax, char(filedataExp.Key), 'Interpreter','none','FontSize',8)
+    end
+
+    cb = colorbar(ax);
+    cb.Layout.Tile = 'east';
+    cb.Label.String = 't_D [-]';
+
+    if targetAngle == 0
+        subStr = 'solid 0°, dashed 180° flipped, dotted 360° not flipped';
+    else
+        subStr = sprintf('solid %d°, dashed %d° flipped', targetAngle, targetAngle + 180);
+    end
+    title(tl, sprintf('Contours @ C_D = %.2f, \\theta = %d°  (%s)', level, targetAngle, subStr))
+
+    fnameAngle = sprintf('contourByAngle_%03ddeg_%s', targetAngle, dataSourceAll{1});
+    saveas(fig, fullfile('results/', fnameAngle), 'png');
+    saveas(fig, fullfile('results/', fnameAngle), 'fig');
+end
+
+%% Front velocity field by fixed angle: arrows = dz_front/dtD at each xD
+% one figure per target angle, one tile per experiment
+% frames: theta, theta+180 (flipped), 360 (= 0, not flipped) -> one time series per angle
+% arrow: starts on the earlier front, length ~ local front velocity, colour = tD
+
+angleTargets = [0 45 90 135];
+angleTol_deg = 3;
+level        = 0.5;               % contour level traced as "the front"
+nXbins       = 15;                % number of arrows across xD
+dtDmin       = 0.02;              % skip pass pairs closer than this in tD
+velMode      = "abs";             % "abs": w = dzD/dtD (shared scale) | "rel": w / mean_x(w)
+arrowMax     = 0.08;              % 95th-percentile arrow length in zD units ("abs")
+relScale     = 0.05;              % arrow length for w/mean(w) = 1 ("rel")
+tDminContours = 0;
+tDmaxContours = tDmax;
+cmap = flipud(winter(256));
+
+nHalfMax = 2;
+flipHalf = [false true false];    % theta+180 flipped, 360 not
+
+xEdges = linspace(0, 1, nXbins+1);
+xGrid  = 0.5*(xEdges(1:end-1) + xEdges(2:end));
+tileW_px = 230;
+
+% physical aspect from the first experiment
+info0 = h5info(HDF5filenameAll{1}, '/exp/run_01/conc');
+geom0 = expCTDataAll{1}.exp.run_01.pca.Geometry;
+aspHW = (info0.Dataspace.Size(1)*geom0.VoxelSizeY) / (info0.Dataspace.Size(2)*geom0.VoxelSizeX);
+
+if ~isfolder('results/'), mkdir('results/'); end
+tD2c = @(tD) cmap(max(1,min(256, round(1 + 255*min(tD/tDmaxContours,1)))), :);
+
+for aIdx = 1:numel(angleTargets)
+    targetAngle = angleTargets(aIdx);
+
+    % ---------- 1) collect passes (front profiles) for every experiment ----------
+    P    = cell(1, nExp);          % P{i}: struct array of passes
+    geomE = cell(1, nExp);
+    for i = 1:nExp
+        filedataExp   = filedataExpAll{i};
+        dataSource    = dataSourceAll{i};
+        HDF5filename  = HDF5filenameAll{i};
+        interpFcn     = interpFcnAll{i};
+        expFolderName = expFolderNameAll{i};
+        expData       = expCTDataAll{i};
+
+        fprintf('Front velocity %d deg, %s\n', targetAngle, filedataExp.Key)
+        passes = struct('tD',{},'z',{},'xc',{},'zc',{},'n',{});
+
+        for j = 1:length(expFolderName)
+            run_name = "run_" + sprintf('%02d', j);
+            HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+            info = h5info(HDF5filename, HDF5dataPath);
+            nx = info.Dataspace.Size(1); ny = info.Dataspace.Size(2);
+
+            varsRun = expData.varsAll.(dataSource);
+            varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
+            if isempty(varsRun), continue, end
+            geomE{i} = [ny*expData.exp.(run_name).pca.Geometry.VoxelSizeX, ...
+                        nx*expData.exp.(run_name).pca.Geometry.VoxelSizeY];
+
+            xD = (0:ny-1)/(ny-1);
+            zD = (0:nx-1)/(nx-1);
+            rot = varsRun.rotPos;
+
+            for n = 0:nHalfMax
+                angN = targetAngle + 180*n;
+                if angN > 360, break, end
+                idxN = find(abs(rot - angN) <= angleTol_deg);
+                if isempty(idxN), continue, end
+
+                % consecutive frame indices = one pass through this angle
+                passId = cumsum([1; diff(idxN(:)) > 1]);
+                for q = unique(passId)'
+                    kq = idxN(passId == q);
+                    zFr = NaN(numel(kq), nXbins);
+                    xcMid = []; zcMid = [];
+                    for m = 1:numel(kq)
+                        [xs, zs] = getContourXY(HDF5filename, HDF5dataPath, kq(m), nx, ny, xD, zD, ...
+                            filedataExp, interpFcn, dataSource, level, flipHalf(n+1));
+                        if isempty(xs), continue, end
+                        zFr(m,:) = frontProfile(xs, zs, xEdges);
+                        if m == ceil(numel(kq)/2), xcMid = xs; zcMid = zs; end
+                    end
+                    passes(end+1) = struct('tD', mean(varsRun.tDtotal(kq)), ...
+                        'z', mean(zFr, 1, 'omitnan'), 'xc', xcMid, 'zc', zcMid, 'n', n); %#ok<SAGROW>
+                end
+            end
         end
-        if i == 1
-            ylabel(ax, sprintf('\\theta = %d°\nz_D [-]', targetAngle))
+
+        % time series sorted by tD; drop passes too close in time
+        if ~isempty(passes)
+            [~, o] = sort([passes.tD]);
+            passes = passes(o);
+            keep = [true, diff([passes.tD]) >= dtDmin];
+            passes = passes(keep);
         end
-        if aIdx == 1
-            title(ax, char(filedataExp.Key), 'Interpreter','none','FontSize',8)
+        P{i} = passes;
+    end
+
+    % ---------- 2) velocities and a shared arrow scale ----------
+    W = cell(1, nExp);
+    for i = 1:nExp
+        ps = P{i};
+        W{i} = NaN(max(numel(ps)-1,0), nXbins);
+        for p = 1:numel(ps)-1
+            w = (ps(p+1).z - ps(p).z) / (ps(p+1).tD - ps(p).tD);   % dzD/dtD, >0 = moving down
+            if velMode == "rel"
+                w = w / mean(w, 'omitnan');
+            end
+            W{i}(p,:) = w;
         end
+    end
+    if velMode == "abs"
+        wAll  = abs(cell2mat(cellfun(@(w) w(:), W, 'UniformOutput', false)'));
+        scale = arrowMax / prctile(wAll(isfinite(wAll)), 95);
+        velStr = 'dz_D/dt_D';
+    else
+        scale = relScale;
+        velStr = 'w / mean_x(w)';
+    end
+
+    % ---------- 3) plot ----------
+    fig = figure('Position',[50 50 tileW_px*nExp+120 tileW_px*aspHW+150]);
+    tl = tiledlayout(fig, 1, nExp, 'TileSpacing','compact', 'Padding','compact');
+
+    for i = 1:nExp
+        ax = nexttile(tl, i);
+        hold(ax,'on')
+        ps = P{i};
+
+        % faint contours of every pass, coloured by tD
+        for p = 1:numel(ps)
+            if isempty(ps(p).xc), continue, end
+            c = tD2c(ps(p).tD);
+            line(ax, ps(p).xc, ps(p).zc, 'Color', [c 0.25], 'LineWidth', 0.8, ...
+                'HitTest','off','PickableParts','none');
+        end
+
+        % arrows: start on the earlier front, vertical, length ~ velocity
+        for p = 1:numel(ps)-1
+            ok = isfinite(W{i}(p,:)) & isfinite(ps(p).z);
+            if ~any(ok), continue, end
+            tMid = 0.5*(ps(p).tD + ps(p+1).tD);
+            quiver(ax, xGrid(ok), ps(p).z(ok), zeros(1,nnz(ok)), scale*W{i}(p,ok), 0, ...
+                'Color', tD2c(tMid), 'LineWidth', 1.1, 'MaxHeadSize', 0.6);
+        end
+
+        set(ax,'YDir','reverse','FontSize',8)
+        grid(ax,'on'); box(ax,'on')
+        xlim(ax,[0 1]); ylim(ax,[0 1])
+        if ~isempty(geomE{i}), pbaspect(ax,[geomE{i} 1]); else, pbaspect(ax,[1 aspHW 1]); end
+        colormap(ax,cmap)
+        clim(ax,[tDminContours tDmaxContours])
+        xlabel(ax,'x_D [-]')
+        if i == 1, ylabel(ax,'z_D [-]'), end
+        title(ax, char(filedataExpAll{i}.Key), 'Interpreter','none','FontSize',8)
+    end
+
+    cb = colorbar(ax);
+    cb.Layout.Tile = 'east';
+    cb.Label.String = 't_D [-]';
+
+    if targetAngle == 0
+        angStr = '0°, 180° (flip), 360°';
+    else
+        angStr = sprintf('%d°, %d° (flip)', targetAngle, targetAngle + 180);
+    end
+    if velMode == "abs"
+        scStr = sprintf('arrow 0.1 z_D = %.2g', 0.1/scale);
+    else
+        scStr = sprintf('arrow %.2f z_D = mean speed', relScale);
+    end
+    title(tl, sprintf('Front velocity %s @ C_D = %.2f, \\theta = %s  (%s)', ...
+        velStr, level, angStr, scStr))
+
+    fname = sprintf('frontVelocity_%s_%03ddeg_%s', velMode, targetAngle, dataSourceAll{1});
+    saveas(fig, fullfile('results/', fname), 'png');
+    saveas(fig, fullfile('results/', fname), 'fig');
+end
+
+%% Velocity field (0): shared data -- one smoothed, flip-corrected image per pass
+% For each angle family (theta, theta+180 flipped, 360 = 0 not flipped) and each
+% experiment: the frame closest to the angle in every pass, smoothed like the
+% contour maps and downsampled. Used by sections (1)-(4).
+
+vfAngles  = [0 45 90 135];
+vfTol     = 3;          % deg, angle matching tolerance
+vfLevel   = 0.5;        % front = this C_D contour
+vfSigma   = 20;         % px, Gaussian smoothing (as the contour maps)
+vfDs      = 4;          % downsampling factor after smoothing (speed / memory)
+vfDtDmin  = 0.02;       % passes closer than this in tD are dropped
+vfNbins   = 40;         % xD bins for the front profile z_front(xD)
+vfFlip    = [false true false];   % n = 0,1,2 -> theta, theta+180 (flip), theta+360
+
+vfEdges = linspace(0,1,vfNbins+1);
+vfXc    = 0.5*(vfEdges(1:end-1) + vfEdges(2:end));
+cmap    = flipud(winter(256));
+tileW_px = 230;
+
+VF = cell(numel(vfAngles), nExp);
+for aIdx = 1:numel(vfAngles)
+    targetAngle = vfAngles(aIdx);
+    for i = 1:nExp
+        filedataExp   = filedataExpAll{i};
+        dataSource    = dataSourceAll{i};
+        HDF5filename  = HDF5filenameAll{i};
+        interpFcn     = interpFcnAll{i};
+        expFolderName = expFolderNameAll{i};
+        expData       = expCTDataAll{i};
+        fprintf('Velocity-field data %d deg, %s\n', targetAngle, filedataExp.Key)
+
+        imgs = {}; tDs = []; ns = []; W = NaN; H = NaN;
+        for j = 1:length(expFolderName)
+            run_name = "run_" + sprintf('%02d', j);
+            HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+            info = h5info(HDF5filename, HDF5dataPath);
+            nx = info.Dataspace.Size(1); ny = info.Dataspace.Size(2);
+
+            varsRun = expData.varsAll.(dataSource);
+            varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
+            if isempty(varsRun), continue, end
+            geom = expData.exp.(run_name).pca.Geometry;
+            W = ny*geom.VoxelSizeX/10;  H = nx*geom.VoxelSizeY/10;     % image size [cm]
+            rot = varsRun.rotPos;
+
+            for n = 0:2
+                angN = targetAngle + 180*n;
+                if angN > 360, break, end
+                idxN = find(abs(rot - angN) <= vfTol);
+                if isempty(idxN), continue, end
+                passId = cumsum([1; diff(idxN(:)) > 1]);          % one group per pass
+                for q = unique(passId)'
+                    kq = idxN(passId == q);
+                    [~, b] = min(abs(rot(kq) - angN));            % closest frame of the pass
+                    kk = kq(b);
+                    img = getSmoothImage(HDF5filename, HDF5dataPath, kk, nx, ny, ...
+                        filedataExp, interpFcn, dataSource, vfSigma, vfFlip(n+1));
+                    imgs{end+1} = single(imresize(img, 1/vfDs)); %#ok<SAGROW>
+                    tDs(end+1)  = varsRun.tDtotal(kk);           %#ok<SAGROW>
+                    ns(end+1)   = n;                             %#ok<SAGROW>
+                end
+            end
+        end
+
+        rec = struct('key', string(filedataExp.Key), 'W', W, 'H', H, 'xD', [], 'zD', [], ...
+            'tD', [], 'n', [], 'C', [], 'xc', {{}}, 'zc', {{}}, 'zProf', []);
+        if ~isempty(imgs)
+            [tDs, o] = sort(tDs);  imgs = imgs(o);  ns = ns(o);
+            keep   = [true, diff(tDs) >= vfDtDmin];
+            rec.tD = tDs(keep);  rec.n = ns(keep);
+            rec.C  = cat(3, imgs{keep});
+            [nzs, nxs, P] = size(rec.C);
+            rec.xD = linspace(0,1,nxs);  rec.zD = linspace(0,1,nzs);
+            rec.xc = cell(1,P);  rec.zc = cell(1,P);  rec.zProf = NaN(P, vfNbins);
+            for p = 1:P
+                Cm = contourc(rec.xD, rec.zD, double(rec.C(:,:,p)), [vfLevel vfLevel]);
+                [xs, zs] = getLevelSegments(parseContourMatrix(Cm), vfLevel);
+                rec.xc{p} = xs;  rec.zc{p} = zs;
+                if ~isempty(xs), rec.zProf(p,:) = frontProfile(xs, zs, vfEdges); end
+            end
+        end
+        VF{aIdx,i} = rec;
     end
 end
 
-cb = colorbar(ax);
-cb.Layout.Tile = 'east';
-cb.Label.String = 't_D [-]';
+r1 = [VF{:}];  r1 = r1(isfinite([r1.W]));
+aspHW = r1(1).H / r1(1).W;                 % physical height/width of the images
 
-title(tl, sprintf(['Contours @ C_D=%.2f by fixed angle  ' ...
-    '(solid \\theta, dashed \\theta+180 flipped, dotted 360 = 0 not flipped)'], level))
-
-fnameAngle = sprintf('contourByAngle_%s', dataSourceAll{1});
 if ~isfolder('results/'), mkdir('results/'); end
-saveas(fig, fullfile('results/', fnameAngle), 'png');
-saveas(fig, fullfile('results/', fnameAngle), 'fig');
+save(fullfile('results','velField_data.mat'), 'VF', 'vfAngles', 'vfLevel', 'vfXc', '-v7.3');
+
+%% Velocity field (1): arrival-time map and front-speed map
+% t_arr(x,z) = tD at which C first crosses vfLevel (linear between passes)
+% isochrones = contours of t_arr; front velocity v = grad(t_arr)/|grad(t_arr)|^2
+% top row: t_arr + isochrones + arrows (direction of motion); bottom row: speed |v|
+
+arrSigma = 2;      % px (downsampled grid), smoothing of t_arr before the gradient
+arrStep  = 10;     % px between arrows
+nIso     = 12;     % number of isochrones
+
+for aIdx = 1:numel(vfAngles)
+    targetAngle = vfAngles(aIdx);
+    TA = cell(1,nExp); SP = cell(1,nExp); VX = cell(1,nExp); VZ = cell(1,nExp);
+
+    for i = 1:nExp
+        rec = VF{aIdx,i};
+        if numel(rec.tD) < 2, continue, end
+        C = double(rec.C);  P = size(C,3);
+        tArr = NaN(size(C,1), size(C,2));
+        for p = 2:P
+            c0 = C(:,:,p-1);  c1 = C(:,:,p);
+            hit = isnan(tArr) & c0 < vfLevel & c1 >= vfLevel;
+            fr  = (vfLevel - c0(hit)) ./ (c1(hit) - c0(hit));
+            tArr(hit) = rec.tD(p-1) + fr*(rec.tD(p) - rec.tD(p-1));
+        end
+        m  = isfinite(tArr);  t0 = tArr;  t0(~m) = 0;            % NaN-aware smoothing
+        tS = imgaussfilt(t0, arrSigma) ./ imgaussfilt(double(m), arrSigma);
+        tS(~m) = NaN;
+
+        dx = rec.W/(numel(rec.xD)-1);  dz = rec.H/(numel(rec.zD)-1);   % cm per px
+        [gx, gz] = gradient(tS, dx, dz);                 % tD per cm
+        g2 = gx.^2 + gz.^2;
+        VX{i} = gx./g2;  VZ{i} = gz./g2;                 % cm per tD
+        SP{i} = sqrt(VX{i}.^2 + VZ{i}.^2) / rec.H;       % zD per tD
+        TA{i} = tS;
+    end
+
+    tmp = cellfun(@(s) s(isfinite(s)), SP, 'UniformOutput', false);
+    spAll = vertcat(tmp{:});
+    if isempty(spAll), spLim = [0 1]; else, spLim = [0 prctile(spAll, 95)]; end
+
+    fig = figure('Position',[50 50 tileW_px*nExp+180 2*tileW_px*aspHW+180]);
+    tl = tiledlayout(fig, 2, nExp, 'TileSpacing','compact', 'Padding','compact');
+    for i = 1:nExp
+        rec = VF{aIdx,i};
+        axT = nexttile(tl, i);  axS = nexttile(tl, nExp+i);
+        if isempty(TA{i}), axis(axT,'off'); axis(axS,'off'); continue, end
+
+        [Xg, Zg] = meshgrid(rec.xD, rec.zD);
+        iso = linspace(min(TA{i}(:)), max(TA{i}(:)), nIso);
+        ir = 1:arrStep:numel(rec.zD);  ic = 1:arrStep:numel(rec.xD);
+        U = VX{i}(ir,ic)/rec.W;  V = VZ{i}(ir,ic)/rec.H;            % xD, zD per tD
+        mag = hypot(U,V);  capM = prctile(mag(isfinite(mag)), 95);
+        f = min(1, capM./mag);  U = U.*f;  V = V.*f;                 % clip outliers
+
+        imagesc(axT, rec.xD, rec.zD, TA{i}, 'AlphaData', isfinite(TA{i}));  hold(axT,'on')
+        contour(axT, Xg, Zg, TA{i}, iso, 'k', 'LineWidth', 0.5);
+        quiver(axT, Xg(ir,ic), Zg(ir,ic), U, V, 1, 'k', 'LineWidth', 0.8);
+        colormap(axT, cmap);  clim(axT, [0 tDmax]);
+
+        imagesc(axS, rec.xD, rec.zD, SP{i}, 'AlphaData', isfinite(SP{i}));  hold(axS,'on')
+        contour(axS, Xg, Zg, TA{i}, iso, 'w', 'LineWidth', 0.4);
+        colormap(axS, parula);  clim(axS, spLim);
+
+        for ax = [axT axS]
+            set(ax, 'YDir','reverse', 'FontSize',8);  box(ax,'on')
+            xlim(ax,[0 1]);  ylim(ax,[0 1]);  pbaspect(ax, [rec.W rec.H 1])
+            if i == 1, ylabel(ax,'z_D [-]'), end
+        end
+        title(axT, char(rec.key), 'Interpreter','none', 'FontSize',8)
+        xlabel(axS, 'x_D [-]')
+    end
+    cbT = colorbar(axT);  cbT.Label.String = 't_{arr} [t_D]';
+    cbS = colorbar(axS);  cbS.Label.String = 'front speed [z_D / t_D]';
+
+    title(tl, sprintf('Arrival time and front speed @ C_D = %.2f, \\theta = %d° family', ...
+        vfLevel, targetAngle))
+    fname = sprintf('velField1_arrival_%03ddeg_%s', targetAngle, dataSourceAll{1});
+    saveas(fig, fullfile('results', fname), 'png');  saveas(fig, fullfile('results', fname), 'fig');
+end
+
+%% Velocity field (3): front contours coloured by local normal speed
+% each point of the contour at pass p is coloured by its distance to the nearest
+% point of the contour at pass p+1, divided by delta tD [zD per tD]; + = moving down.
+% Last pass drawn in grey (no next contour).
+
+for aIdx = 1:numel(vfAngles)
+    targetAngle = vfAngles(aIdx);
+    SPc = cell(1,nExp);
+
+    for i = 1:nExp
+        rec = VF{aIdx,i};
+        P = numel(rec.tD);
+        SPc{i} = cell(1, max(P-1,0));
+        for p = 1:P-1
+            A = [rec.xc{p}(:)*rec.W,   rec.zc{p}(:)*rec.H];       % cm
+            B = [rec.xc{p+1}(:)*rec.W, rec.zc{p+1}(:)*rec.H];
+            okA = all(isfinite(A),2);  B = B(all(isfinite(B),2), :);
+            if isempty(B) || ~any(okA), continue, end
+            [id, d] = knnsearch(B, A(okA,:));
+            sgn = sign(B(id,2) - A(okA,2));  sgn(sgn == 0) = 1;
+            s = NaN(size(A,1),1);
+            s(okA) = sgn .* d / (rec.H * (rec.tD(p+1) - rec.tD(p)));
+            SPc{i}{p} = s;
+        end
+    end
+
+    tmp = [SPc{:}];  allS = vertcat(tmp{:});  allS = allS(isfinite(allS));
+    if isempty(allS), sLim = [0 1]; else, sLim = prctile(allS, [5 95]); end
+
+    fig = figure('Position',[50 50 tileW_px*nExp+160 tileW_px*aspHW+150]);
+    tl = tiledlayout(fig, 1, nExp, 'TileSpacing','compact', 'Padding','compact');
+    for i = 1:nExp
+        rec = VF{aIdx,i};
+        ax = nexttile(tl, i);  hold(ax,'on')
+        P = numel(rec.tD);
+        for p = 1:P-1
+            if isempty(SPc{i}{p}), continue, end
+            scatter(ax, rec.xc{p}(:), rec.zc{p}(:), 5, SPc{i}{p}, 'filled');
+        end
+        if P >= 1 && ~isempty(rec.xc{P})
+            line(ax, rec.xc{P}, rec.zc{P}, 'Color', [0.6 0.6 0.6], 'LineWidth', 1);
+        end
+        set(ax, 'YDir','reverse', 'FontSize',8);  grid(ax,'on');  box(ax,'on')
+        xlim(ax,[0 1]);  ylim(ax,[0 1])
+        if isfinite(rec.W), pbaspect(ax, [rec.W rec.H 1]); end
+        colormap(ax, parula);  clim(ax, sLim);
+        xlabel(ax,'x_D [-]');  if i == 1, ylabel(ax,'z_D [-]'), end
+        title(ax, char(rec.key), 'Interpreter','none', 'FontSize',8)
+    end
+    cb = colorbar(ax);  cb.Layout.Tile = 'east';  cb.Label.String = 'normal front speed [z_D / t_D]';
+
+    title(tl, sprintf('Front contours coloured by local speed @ C_D = %.2f, \\theta = %d° family', ...
+        vfLevel, targetAngle))
+    fname = sprintf('velField3_contourSpeed_%03ddeg_%s', targetAngle, dataSourceAll{1});
+    saveas(fig, fullfile('results', fname), 'png');  saveas(fig, fullfile('results', fname), 'fig');
+end
 
 %% local functions
 
@@ -1984,4 +2415,59 @@ cidx = max(1,min(256,cidx));
 
 line(ax, xSeg, ySeg, 'LineStyle', lineStyle, 'Color', cmap(cidx,:), 'LineWidth', 1.5, ...
     'HitTest','off','PickableParts','none');
+end
+
+function z = frontProfile(xs, zs, xEdges)
+% FRONTPROFILE  Front depth per xD bin: median zD of the contour points in each bin.
+ok = isfinite(xs) & isfinite(zs);
+xs = xs(ok); zs = zs(ok);
+nb = numel(xEdges) - 1;
+z  = NaN(1, nb);
+b  = discretize(xs, xEdges);
+for q = 1:nb
+    if any(b == q), z(q) = median(zs(b == q)); end
+end
+end
+
+function img = getSmoothImage(HDF5filename, HDF5dataPath, k, nx, ny, ...
+    filedataExp, interpFcn, dataSource, sigma, flipX)
+% GETSMOOTHIMAGE  Frame k as conc (or rhoNorm), Gaussian-smoothed, optionally x-mirrored.
+raw = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+rhoNormImage = rhoNorm_wVacRef(raw, filedataExp.Fluid1, filedataExp.Fluid2, ...
+    filedataExp.T, filedataExp.P);
+if strcmp(dataSource,'conc')
+    img = interpFcn(rhoNormImage);
+else
+    img = rhoNormImage;
+end
+img = imgaussfilt(double(img), sigma);
+if flipX, img = fliplr(img); end
+end
+
+function [xSeg, ySeg] = getContourXY(HDF5filename, HDF5dataPath, k, nx, ny, xD, zD, ...
+    filedataExp, interpFcn, dataSource, level, flipX)
+% GETCONTOURXY  C=level contour of frame k (NaN-separated), optionally x-mirrored.
+img = getSmoothImage(HDF5filename, HDF5dataPath, k, nx, ny, ...
+    filedataExp, interpFcn, dataSource, 20, flipX);
+Cmat = contourc(double(xD), double(zD), img, [level level]);
+[xSeg, ySeg] = getLevelSegments(parseContourMatrix(Cmat), level);
+end
+
+function G = interpCols(t, Y, tq)
+% INTERPCOLS  Interpolate each column of Y (rows at times t) onto times tq.
+G = NaN(numel(tq), size(Y,2));
+for b = 1:size(Y,2)
+    ok = isfinite(Y(:,b));
+    if nnz(ok) >= 2
+        G(:,b) = interp1(t(ok), Y(ok,b), tq, 'linear', NaN);
+    end
+end
+end
+
+function c = divergingMap(n)
+% DIVERGINGMAP  Blue - white - red colormap (white in the middle).
+h = floor(n/2);
+blu = [linspace(0.15,1,h)',   linspace(0.35,1,h)',   linspace(0.75,1,h)'];
+red = [linspace(1,0.75,n-h)', linspace(1,0.15,n-h)', linspace(1,0.15,n-h)'];
+c = [blu; red];
 end
