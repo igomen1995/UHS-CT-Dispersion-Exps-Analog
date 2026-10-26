@@ -200,7 +200,55 @@ for ds = dataSources
     end
 end
 
-%% 3b) Front position of every C-level vs tD_total and the three tD_core definitions
+%% 3b) CT BTCs at every zD level vs tD_total and tD_core (one figure per experiment)
+
+zDlevelsPlot = 0:0.1:1.0;
+btcVariant   = "";            % "" = full x-range, "_xtrim" = x-trimmed columns
+zDcols       = parula(numel(zDlevelsPlot) + 1);   % +1 avoids the pale last colour
+% {x column, x label, x limits}
+zDaxes = {'tDtotal',                't_D [-]',                                        [0 1.2]; ...
+          'tD_corr_contour_scaled', 't_{D,core} (v_{front}-scaled, contour arrival) [-]', [-0.2 1.2]};
+
+for ds = dataSources
+    for i = 1:nExp
+        vars = expCTDataAll{i}.varsAll.(ds);
+
+        fig = figure('Position',[100 100 1300 550]);
+        tl  = tiledlayout(fig, 1, size(zDaxes,1), 'TileSpacing','compact');
+
+        for a = 1:size(zDaxes,1)
+            ax = nexttile(tl);  hold(ax,'on')
+            xVar = zDaxes{a,1};
+            if ~ismember(xVar, vars.Properties.VariableNames)
+                text(ax, 0.5, 0.5, xVar + " not available", 'Units','normalized', ...
+                    'HorizontalAlignment','center', 'Interpreter','none')
+                continue
+            end
+
+            for m = 1:numel(zDlevelsPlot)
+                Cfield = strrep(sprintf('CD1_zD%.1f', zDlevelsPlot(m)), '.', 'p') + btcVariant;
+                if ~ismember(Cfield, vars.Properties.VariableNames), continue, end
+                [xS, o] = sort(vars.(xVar));
+                yS = vars.(Cfield)(o);
+                scatter(ax, xS, yS, 3, 'MarkerFaceColor',zDcols(m,:), 'MarkerEdgeColor',zDcols(m,:),...
+                    'DisplayName', sprintf('z_D = %.1f', zDlevelsPlot(m)))
+            end
+
+            yline(ax, [0.16 0.5 0.84], ':k', 'HandleVisibility','off')
+            xlabel(ax, zDaxes{a,2}, 'FontSize',13)
+            ylabel(ax, 'C_1 [-]', 'FontSize',13)
+            xlim(ax, zDaxes{a,3});  ylim(ax, [-0.02 1.02])
+            set(ax,'FontSize',12);  grid(ax,'on')
+            legend(ax, 'Location','northwest', 'FontSize',8)
+        end
+
+        title(tl, sprintf('%s (%s%s): BTC at each zD', expKeys(i), ds, btcVariant), ...
+            'Interpreter','none')
+        saveFigBoth(fig, exportPath, ...
+            sprintf('BT_CT_allZD_%s_%s%s', expKeys(i), ds, btcVariant), closeAfterSave)
+    end
+end
+%% 3c) Front position of every C-level vs tD_total and the three tD_core definitions
 
 CplotLevels  = [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9];   % must be among Clevels in main_CTpreproc
 frontVariant = "";           % "" = full x-range mean, "_xtrim" = x-trimmed mean
@@ -474,7 +522,29 @@ for ds = dataSources
     saveFigBoth(fig, exportPath, sprintf('frontTiltShape_%s_tD', ds), closeAfterSave)
 end
 
-%% 10) KL vs tD: pointwise front KL + BTC-CT and MFM reference KL
+%% 10) Front tilt vs rotation position, coloured by tD
+
+for ds = dataSources
+    fig = figure('Position',[100 100 1000 850]);
+    tl = tiledlayout(fig, 'flow', 'TileSpacing','compact');
+
+    for i = 1:nExp
+        vars = expCTDataAll{i}.varsAll.(ds);
+        ax = nexttile(tl);
+        scatter(ax, vars.rotPos, vars.frontTiltSlope, 25, vars.tDtotal, 'filled')
+        colormap(ax, parula);  clim(ax, [0 1.5])
+        cb = colorbar(ax);  cb.Label.String = 't_D [-]';
+        xlabel(ax,'rotation position [\circ]','FontSize',11)
+        ylabel(ax,'front tilt slope [z_D/x_D]','FontSize',11)
+        title(ax, expKeys(i), 'Interpreter','none','FontSize',11)
+        grid(ax,'on');  xlim(ax,[0 360])
+    end
+    title(tl, sprintf('Front tilt vs rotation position, coloured by t_D (%s)', ds), 'Interpreter','none')
+    saveFigBoth(fig, exportPath, sprintf('frontTilt_rotPos_tDcolor_%s', ds), closeAfterSave)
+end
+
+
+%% 11) KL vs tD: pointwise front KL + BTC-CT and MFM reference KL
 
 % front methods from main_CTpostproc (full x-range): pointwise KL on the selected frames
 frontMethodsKL = ["sigma_int0","width_C40_60_int0","width_C30_70_int0"];
@@ -529,7 +599,7 @@ for ds = dataSources
     saveFigBoth(fig, exportPath, sprintf('KL_compare_%s_tD', ds), closeAfterSave)
 end
 
-%% 11) Outlet BTC width (tD16 - tD84), one row per experiment
+%% 12) Outlet BTC width (tD16 - tD84), one row per experiment
 
 for ds = dataSources
     fig = figure('Position',[100 100 1000 650]);  hold on
@@ -554,25 +624,59 @@ for ds = dataSources
     saveFigBoth(fig, exportPath, sprintf('BTCwidth_outlet_%s_tD', ds), closeAfterSave)
 end
 
-%% 12) Front tilt vs rotation position, coloured by tD
+%% 13) Sweep, displacement and recovery efficiencies vs tD (all experiments together)
+
+CeffLevels = 0.1:0.1:0.9;     % thresholds C* (all traced in main_CTpreproc)   % thresholds C* (must be among Clevels in main_CTpreproc)
+effVariant = "";              % "" = full image, "_xtrim" = x-trimmed image
+effXVar    = 'tDtotal';       % x-axis: 'tDtotal', 'tD_corr_lines', 'tD_corr_contour', 'tD_corr_contour_scaled'
+effXLabel  = 't_{D,total} = Qt/V_{total} [-]';
+effXLim    = [0 1.5];
+
+if effVariant == "", vTxt = "full image"; else, vTxt = "x-trimmed"; end
+overallCol = "overallRecovery_" + ternaryStr(effVariant == "", "full", "xtrim");
 
 for ds = dataSources
-    fig = figure('Position',[100 100 1000 850]);
-    tl = tiledlayout(fig, 'flow', 'TileSpacing','compact');
+    for m = 1:numel(CeffLevels)
+        tag = sprintf('%02d', round(CeffLevels(m)*100));
 
-    for i = 1:nExp
-        vars = expCTDataAll{i}.varsAll.(ds);
-        ax = nexttile(tl);
-        scatter(ax, vars.rotPos, vars.frontTiltSlope, 25, vars.tDtotal, 'filled')
-        colormap(ax, parula);  clim(ax, [0 1.5])
-        cb = colorbar(ax);  cb.Label.String = 't_D [-]';
-        xlabel(ax,'rotation position [\circ]','FontSize',11)
-        ylabel(ax,'front tilt slope [z_D/x_D]','FontSize',11)
-        title(ax, expKeys(i), 'Interpreter','none','FontSize',11)
-        grid(ax,'on');  xlim(ax,[0 360])
+        % {column, y label, panel title}
+        effPanels = { ...
+            "sweepEff" + tag + effVariant, 'E_A [-]', sprintf('Areal sweep efficiency E_A (C > %.2f)', CeffLevels(m)); ...
+            "dispEff"  + tag + effVariant, 'E_D [-]', sprintf('Displacement efficiency E_D (mean C where C > %.2f)', CeffLevels(m)); ...
+            "recovery" + tag + effVariant, 'R [-]',   sprintf('Recovery R = E_A E_D (C > %.2f)', CeffLevels(m)); ...
+            overallCol,                    'R_{overall} [-]', 'Overall recovery (mean C over image, no threshold)'};
+
+        fig = figure('Position',[50 50 1400 1000]);
+        tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
+
+        for p = 1:size(effPanels,1)
+            ax = nexttile(tl);  hold(ax,'on')
+            yCol = effPanels{p,1};
+
+            for i = 1:nExp
+                vars   = expCTDataAll{i}.varsAll.(ds);
+                cols_i = string(vars.Properties.VariableNames);
+                if ~all(ismember([string(effXVar) yCol], cols_i))
+                    warning('%s (%s): %s or %s missing, skipped', expKeys(i), ds, effXVar, yCol);
+                    continue
+                end
+                x = vars.(effXVar);  y = vars.(yCol);
+                ok = isfinite(x) & isfinite(y);
+                scatter(ax, x(ok), y(ok), 12, cols(i,:), 'filled', 'DisplayName', expKeys(i))
+            end
+
+            xlabel(ax, effXLabel, 'FontSize',12)
+            ylabel(ax, effPanels{p,2}, 'FontSize',12)
+            title(ax, effPanels{p,3}, 'FontSize',11)
+            xlim(ax, effXLim);  ylim(ax, [-0.02 1.02])
+            set(ax,'FontSize',11);  grid(ax,'on')
+            legend(ax, 'Location','southeast', 'FontSize',8, 'Interpreter','none')
+        end
+
+        title(tl, sprintf('Efficiencies at C^* = %.2f (%s, %s)', CeffLevels(m), ds, vTxt), 'Interpreter','tex')
+        saveFigBoth(fig, exportPath, ...
+            sprintf('efficiencies_C%s_allExp_%s%s_%s', tag, ds, effVariant, effXVar), closeAfterSave)
     end
-    title(tl, sprintf('Front tilt vs rotation position, coloured by t_D (%s)', ds), 'Interpreter','none')
-    saveFigBoth(fig, exportPath, sprintf('frontTilt_rotPos_tDcolor_%s', ds), closeAfterSave)
 end
 
 %% Local functions
@@ -609,4 +713,8 @@ function saveFigBoth(fig, exportPath, fname, closeIt)
     saveas(fig, fullfile(exportPath, fname), 'png');
     saveas(fig, fullfile(exportPath, fname), 'fig');
     if closeIt, close(fig); end
+end
+
+function out = ternaryStr(cond, a, b)
+    if cond, out = a; else, out = b; end
 end
