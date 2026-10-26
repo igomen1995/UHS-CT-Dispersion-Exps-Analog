@@ -1596,16 +1596,21 @@ for i = 1:nExp
     ax4.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax4, 'ax4');
 end
 
-%% Contour map by fixed angle (direct = solid, mirror +180 = dashed), tDtotal as color, one column per experiment
+%% Contour map by fixed angle: theta (solid), theta+180 flipped (dashed), 360 = 0 not flipped (dotted)
+% one row per target angle, one column per experiment, colour = tDtotal
 
-angleTargets = [0 90];   % add more target angles here -- each gets its own row
-angleTol_deg = 3;        % matching tolerance; rotPos is sampled every ~2 deg
-level = 0.5;             % contour level to trace
+angleTargets = [0 45 90 135];   % each row: theta and theta+180 (flipped); row 0 also shows 360
+angleTol_deg = 3;               % matching tolerance; rotPos is sampled every ~2 deg
+level = 0.5;                    % contour level to trace
 tDminContours = 0;
 tDmaxContours = tDmax;
 cmap = flipud(winter(256));
 
-fig = figure('Position',[50 50 280*nExp 160*numel(angleTargets)+120]);
+nHalfMax = 2;                       % n = 0,1,2 -> theta, theta+180, theta+360 (only if <= 360)
+lsHalf   = {'-', '--', ':'};        % line style per n
+flipHalf = [false true false];      % theta+180 -> flipped; 360 is the same view as 0 -> not flipped
+
+fig = figure('Position',[50 50 280*nExp 170*numel(angleTargets)+140]);
 tl = tiledlayout(fig, numel(angleTargets), nExp, 'TileSpacing','compact', 'Padding','compact');
 
 for i = 1:nExp
@@ -1623,7 +1628,7 @@ for i = 1:nExp
 
     for aIdx = 1:numel(angleTargets)
         targetAngle = angleTargets(aIdx);
-        mirrorAngle = mod(targetAngle + 180, 360);
+        nFound = false(1, nHalfMax+1);              % which theta+n*180 were found (for the legend)
 
         tileIdx = (aIdx-1)*nExp + i;
         ax = nexttile(tl, tileIdx);
@@ -1640,32 +1645,25 @@ for i = 1:nExp
             varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
             if isempty(varsRun), continue, end
 
-            resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
-            resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
-            xcm = (1:ny)*resXmm/10;
-            zcm = (1:nx)*resYmm/10;
-            xD = xcm/max(xcm);
-            zD = zcm/max(zcm);
+            xD = (0:ny-1)/(ny-1);                   % symmetric about the centre -> clean 1-xD flip
+            zD = (0:nx-1)/(nx-1);
 
-            rotMod = mod(varsRun.rotPos, 360);
-            angDiffDirect = min(abs(rotMod - targetAngle), 360 - abs(rotMod - targetAngle));
-            angDiffMirror = min(abs(rotMod - mirrorAngle), 360 - abs(rotMod - mirrorAngle));
-
-            idxDirect = find(angDiffDirect <= angleTol_deg);
-            idxMirror = find(angDiffMirror <= angleTol_deg);
+            rot = varsRun.rotPos;                   % raw angle 0..360: 360 is kept apart from 0
 
             % NOTE: row position in varsRun == HDF5 frame index k, since the
             % tDtotal<tDmax filter above only trims a trailing suffix
             % (tDtotal is monotonic in frame order), never a scattered subset.
-            for kk = idxDirect(:)'
-                plotOneContour(ax, HDF5filename, HDF5dataPath, kk, nx, ny, xD, zD, ...
-                    filedataExp, interpFcn, dataSource, level, cmap, tDmaxContours, ...
-                    varsRun.tDtotal(kk), '-');
-            end
-            for kk = idxMirror(:)'
-                plotOneContour(ax, HDF5filename, HDF5dataPath, kk, nx, ny, xD, zD, ...
-                    filedataExp, interpFcn, dataSource, level, cmap, tDmaxContours, ...
-                    varsRun.tDtotal(kk), '--');
+            for n = 0:nHalfMax
+                angN = targetAngle + 180*n;
+                if angN > 360, break, end           % rotation stops at 360
+                idxN = find(abs(rot - angN) <= angleTol_deg);
+                if isempty(idxN), continue, end
+                nFound(n+1) = true;
+                for kk = idxN(:)'
+                    plotOneContour(ax, HDF5filename, HDF5dataPath, kk, nx, ny, xD, zD, ...
+                        filedataExp, interpFcn, dataSource, level, cmap, tDmaxContours, ...
+                        varsRun.tDtotal(kk), lsHalf{n+1}, flipHalf(n+1));
+                end
             end
         end
 
@@ -1674,11 +1672,26 @@ for i = 1:nExp
         xlim(ax,[0 1]); ylim(ax,[0 1])
         colormap(ax,cmap)
         clim(ax,[tDminContours tDmaxContours])
+
+        % line-style legend (black dummies, only for the angles present)
+        hL = gobjects(0); lbl = strings(0);
+        for n = find(nFound) - 1
+            hL(end+1) = plot(ax, NaN, NaN, 'k', 'LineStyle', lsHalf{n+1}, 'LineWidth', 1.2); %#ok<SAGROW>
+            if flipHalf(n+1)
+                lbl(end+1) = sprintf('%d° (flip)', targetAngle + 180*n); %#ok<SAGROW>
+            else
+                lbl(end+1) = sprintf('%d°', targetAngle + 180*n); %#ok<SAGROW>
+            end
+        end
+        if ~isempty(hL)
+            legend(ax, hL, lbl, 'Location','southeast', 'FontSize',6, 'Box','off')
+        end
+
         if aIdx == numel(angleTargets)
             xlabel(ax,'x_D [-]')
         end
         if i == 1
-            ylabel(ax, sprintf('\\theta=%d° solid / %d° dashed\nz_D [-]', targetAngle, mirrorAngle))
+            ylabel(ax, sprintf('\\theta = %d°\nz_D [-]', targetAngle))
         end
         if aIdx == 1
             title(ax, char(filedataExp.Key), 'Interpreter','none','FontSize',8)
@@ -1690,13 +1703,13 @@ cb = colorbar(ax);
 cb.Layout.Tile = 'east';
 cb.Label.String = 't_D [-]';
 
-title(tl, sprintf('Contours @ C_D=%.2f by fixed angle (solid=direct, dashed=mirror+180°)', level), ...
-    'Interpreter','none')
+title(tl, sprintf(['Contours @ C_D=%.2f by fixed angle  ' ...
+    '(solid \\theta, dashed \\theta+180 flipped, dotted 360 = 0 not flipped)'], level))
 
 fnameAngle = sprintf('contourByAngle_%s', dataSourceAll{1});
-if ~isfolder(pathExportAllVec{1}), mkdir(pathExportAllVec{1}); end
-saveas(fig, fullfile(pathExportAllVec{1}, fnameAngle), 'png');
-saveas(fig, fullfile(pathExportAllVec{1}, fnameAngle), 'fig');
+if ~isfolder('results/'), mkdir('results/'); end
+saveas(fig, fullfile('results/', fnameAngle), 'png');
+saveas(fig, fullfile('results/', fnameAngle), 'fig');
 
 %% local functions
 
@@ -1939,10 +1952,13 @@ end
 end
 
 function plotOneContour(ax, HDF5filename, HDF5dataPath, k, nx, ny, xD, zD, ...
-    filedataExp, interpFcn, dataSource, level, cmap, tDmaxContours, tD, lineStyle)
+    filedataExp, interpFcn, dataSource, level, cmap, tDmaxContours, tD, lineStyle, flipX)
 % PLOTONECONTOUR  Reads one frame, extracts its C=level contour, and draws
 % it on ax colored by tD (clamped to [0,tDmaxContours]) with the given
-% line style ('-' for direct angle, '--' for the +180 mirror).
+% line style. flipX=true mirrors the contour in x (xD -> 1-xD) -- needed
+% for the +180 mirror angle when the target/mirror axis is not aligned
+% with the detector's own x-axis (e.g. 90/270), but NOT when it is
+% (e.g. 0/180).
 
 rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
 rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac, filedataExp.Fluid1, ...
@@ -1958,6 +1974,10 @@ Cmat = contourc(double(xD), double(zD), double(imgSmooth), [level level]);
 segsAll = parseContourMatrix(Cmat);
 [xSeg, ySeg] = getLevelSegments(segsAll, level);
 if isempty(xSeg), return, end
+
+if flipX
+    xSeg = 1 - xSeg;
+end
 
 cidx = round(1 + 255*min(tD/tDmaxContours,1));
 cidx = max(1,min(256,cidx));
