@@ -1596,6 +1596,108 @@ for i = 1:nExp
     ax4.ButtonDownFcn = @(src,evt) axesClickCallback(fig, ax4, 'ax4');
 end
 
+%% Contour map by fixed angle (direct = solid, mirror +180 = dashed), tDtotal as color, one column per experiment
+
+angleTargets = [0 90];   % add more target angles here -- each gets its own row
+angleTol_deg = 3;        % matching tolerance; rotPos is sampled every ~2 deg
+level = 0.5;             % contour level to trace
+tDminContours = 0;
+tDmaxContours = tDmax;
+cmap = flipud(winter(256));
+
+fig = figure('Position',[50 50 280*nExp 160*numel(angleTargets)+120]);
+tl = tiledlayout(fig, numel(angleTargets), nExp, 'TileSpacing','compact', 'Padding','compact');
+
+for i = 1:nExp
+
+    filedataExp   = filedataExpAll{i};
+    dataSource    = dataSourceAll{i};
+    HDF5filename  = HDF5filenameAll{i};
+    interpFcn     = interpFcnAll{i};
+    expFolderName = expFolderNameAll{i};
+
+    expCTData = struct();
+    expCTData.(filedataExp.Key) = expCTDataAll{i};
+
+    fprintf('Contour-by-angle %s\n', filedataExp.Key)
+
+    for aIdx = 1:numel(angleTargets)
+        targetAngle = angleTargets(aIdx);
+        mirrorAngle = mod(targetAngle + 180, 360);
+
+        tileIdx = (aIdx-1)*nExp + i;
+        ax = nexttile(tl, tileIdx);
+        hold(ax,'on')
+
+        for j = 1:length(expFolderName)
+            run_name = "run_" + sprintf('%02d', j);
+            HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+            info = h5info(HDF5filename, HDF5dataPath);
+            dims = info.Dataspace.Size;
+            nx = dims(1); ny = dims(2);
+
+            varsRun = expCTData.(filedataExp.Key).varsAll.(dataSource);
+            varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
+            if isempty(varsRun), continue, end
+
+            resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
+            resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
+            xcm = (1:ny)*resXmm/10;
+            zcm = (1:nx)*resYmm/10;
+            xD = xcm/max(xcm);
+            zD = zcm/max(zcm);
+
+            rotMod = mod(varsRun.rotPos, 360);
+            angDiffDirect = min(abs(rotMod - targetAngle), 360 - abs(rotMod - targetAngle));
+            angDiffMirror = min(abs(rotMod - mirrorAngle), 360 - abs(rotMod - mirrorAngle));
+
+            idxDirect = find(angDiffDirect <= angleTol_deg);
+            idxMirror = find(angDiffMirror <= angleTol_deg);
+
+            % NOTE: row position in varsRun == HDF5 frame index k, since the
+            % tDtotal<tDmax filter above only trims a trailing suffix
+            % (tDtotal is monotonic in frame order), never a scattered subset.
+            for kk = idxDirect(:)'
+                plotOneContour(ax, HDF5filename, HDF5dataPath, kk, nx, ny, xD, zD, ...
+                    filedataExp, interpFcn, dataSource, level, cmap, tDmaxContours, ...
+                    varsRun.tDtotal(kk), '-');
+            end
+            for kk = idxMirror(:)'
+                plotOneContour(ax, HDF5filename, HDF5dataPath, kk, nx, ny, xD, zD, ...
+                    filedataExp, interpFcn, dataSource, level, cmap, tDmaxContours, ...
+                    varsRun.tDtotal(kk), '--');
+            end
+        end
+
+        set(ax,'YDir','reverse','FontSize',8)
+        grid(ax,'on')
+        xlim(ax,[0 1]); ylim(ax,[0 1])
+        colormap(ax,cmap)
+        clim(ax,[tDminContours tDmaxContours])
+        if aIdx == numel(angleTargets)
+            xlabel(ax,'x_D [-]')
+        end
+        if i == 1
+            ylabel(ax, sprintf('\\theta=%d° solid / %d° dashed\nz_D [-]', targetAngle, mirrorAngle))
+        end
+        if aIdx == 1
+            title(ax, char(filedataExp.Key), 'Interpreter','none','FontSize',8)
+        end
+    end
+end
+
+cb = colorbar(ax);
+cb.Layout.Tile = 'east';
+cb.Label.String = 't_D [-]';
+
+title(tl, sprintf('Contours @ C_D=%.2f by fixed angle (solid=direct, dashed=mirror+180°)', level), ...
+    'Interpreter','none')
+
+fnameAngle = sprintf('contourByAngle_%s', dataSourceAll{1});
+if ~isfolder(pathExportAllVec{1}), mkdir(pathExportAllVec{1}); end
+saveas(fig, fullfile(pathExportAllVec{1}, fnameAngle), 'png');
+saveas(fig, fullfile(pathExportAllVec{1}, fnameAngle), 'fig');
+
 %% local functions
 
 function alignAxesColorbar(ax, cb, axPos, cbGap, cbWidth, side)
@@ -1834,4 +1936,32 @@ for s = 1:numel(segList)
     xAll = [xAll segList(s).x]; 
     yAll = [yAll segList(s).y]; 
 end
+end
+
+function plotOneContour(ax, HDF5filename, HDF5dataPath, k, nx, ny, xD, zD, ...
+    filedataExp, interpFcn, dataSource, level, cmap, tDmaxContours, tD, lineStyle)
+% PLOTONECONTOUR  Reads one frame, extracts its C=level contour, and draws
+% it on ax colored by tD (clamped to [0,tDmaxContours]) with the given
+% line style ('-' for direct angle, '--' for the +180 mirror).
+
+rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac, filedataExp.Fluid1, ...
+    filedataExp.Fluid2, filedataExp.T, filedataExp.P);
+if strcmp(dataSource,'conc')
+    plotImage = interpFcn(rhoNormImage);
+else
+    plotImage = rhoNormImage;
+end
+imgSmooth = imgaussfilt(plotImage, 20);
+
+Cmat = contourc(double(xD), double(zD), double(imgSmooth), [level level]);
+segsAll = parseContourMatrix(Cmat);
+[xSeg, ySeg] = getLevelSegments(segsAll, level);
+if isempty(xSeg), return, end
+
+cidx = round(1 + 255*min(tD/tDmaxContours,1));
+cidx = max(1,min(256,cidx));
+
+line(ax, xSeg, ySeg, 'LineStyle', lineStyle, 'Color', cmap(cidx,:), 'LineWidth', 1.5, ...
+    'HitTest','off','PickableParts','none');
 end
