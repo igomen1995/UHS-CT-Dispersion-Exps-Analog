@@ -267,6 +267,65 @@ for ds = dataSources
     end
 end
 
+%% 3c) Front position of one C_D level, all experiments together (one figure per level)
+
+CplotLevels  = [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9];   % must be among Clevels in main_CTpreproc
+frontVariant = "";           % "" = full x-range mean, "_xtrim" = x-trimmed mean
+xLimPos      = [0 1.5];      % x-range for all four panels
+
+% {x column, x label, arrival-corrected?}
+posAxes = { ...
+    'tDtotal',                't_{D,total} = Qt/V_{total} [-]  (no arrival correction)',          false; ...
+    'tD_corr_lines',          't_{D,core} = t_{D,total} - t_{D,arrival,lines} [-]',                true; ...
+    'tD_corr_contour',        't_{D,core,front} = t_{D,total} - t_{D,arrival,front} [-]',           true; ...
+    'tD_corr_contour_scaled', 't_{D,core,front,scaled} = v_{front}(t - t_{arrival,front})/L [-]',  true};
+
+if frontVariant == "", xTxt = "full x-range mean"; else, xTxt = "x-trimmed mean"; end
+
+for ds = dataSources
+    for m = 1:numel(CplotLevels)
+        tag     = sprintf('%02d', round(CplotLevels(m)*100));
+        meanCol = "zDFront" + tag + frontVariant;
+
+        fig = figure('Position',[50 50 1400 1000]);
+        tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
+
+        for a = 1:size(posAxes,1)
+            ax = nexttile(tl);  hold(ax,'on')
+            xVar = posAxes{a,1};
+
+            for i = 1:nExp
+                vars   = expCTDataAll{i}.varsAll.(ds);
+                cols_i = string(vars.Properties.VariableNames);
+                if ~all(ismember([string(xVar) meanCol], cols_i))
+                    warning('%s (%s): %s or %s missing, skipped', expKeys(i), ds, xVar, meanCol);
+                    continue
+                end
+                x = vars.(xVar);
+                z = vars.(meanCol);
+                ok = isfinite(x) & isfinite(z);
+                scatter(ax, x(ok), z(ok), 14, cols(i,:), markers{mod(i-1,numel(markers))+1}, ...
+                    'filled', 'DisplayName', expKeys(i))
+            end
+
+            if posAxes{a,3}
+                xline(ax, 0, '--k', 'LineWidth',1, 'HandleVisibility','off')   % arrival
+            end
+
+            xlabel(ax, posAxes{a,2}, 'FontSize',12)
+            ylabel(ax, 'z_D front position [-]', 'FontSize',12)
+            xlim(ax, xLimPos);  ylim(ax, [-0.02 1.02])
+            set(ax,'FontSize',11);  grid(ax,'on')
+            legend(ax, 'Location','southeast', 'FontSize',8, 'Interpreter','none')
+        end
+
+        title(tl, sprintf('z_D front position at C_D = %.1f, all experiments (%s, %s)', ...
+            CplotLevels(m), ds, xTxt), 'Interpreter','tex')
+        saveFigBoth(fig, exportPath, ...
+            sprintf('frontPos_C%s_allExp_%s%s', tag, ds, frontVariant), closeAfterSave)
+    end
+end
+
 %% 4) MFM analog BTC
 
 for ds = dataSources
