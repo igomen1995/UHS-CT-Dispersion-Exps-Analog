@@ -1945,7 +1945,7 @@ for aIdx = 1:numel(vfAngles)
         expData       = expCTDataAll{i};
         fprintf('Velocity-field data %d deg, %s\n', targetAngle, filedataExp.Key)
 
-        imgs = {}; tDs = []; ns = []; W = NaN; H = NaN;
+        imgs = {}; tDs = []; ns = []; js = []; W = NaN; H = NaN;
         for j = 1:length(expFolderName)
             run_name = "run_" + sprintf('%02d', j);
             HDF5dataPath = ['/exp/' char(run_name) '/conc'];
@@ -1974,16 +1974,17 @@ for aIdx = 1:numel(vfAngles)
                     imgs{end+1} = single(imresize(img, 1/vfDs)); %#ok<SAGROW>
                     tDs(end+1)  = varsRun.tDtotal(kk);           %#ok<SAGROW>
                     ns(end+1)   = n;                             %#ok<SAGROW>
+                    js(end+1)   = j;                             %#ok<SAGROW>
                 end
             end
         end
 
         rec = struct('key', string(filedataExp.Key), 'W', W, 'H', H, 'xD', [], 'zD', [], ...
-            'tD', [], 'n', [], 'C', [], 'xc', {{}}, 'zc', {{}}, 'zProf', []);
+            'tD', [], 'n', [], 'run', [], 'C', [], 'xc', {{}}, 'zc', {{}}, 'zProf', []);
         if ~isempty(imgs)
-            [tDs, o] = sort(tDs);  imgs = imgs(o);  ns = ns(o);
+            [tDs, o] = sort(tDs);  imgs = imgs(o);  ns = ns(o);  js = js(o);
             keep   = [true, diff(tDs) >= vfDtDmin];
-            rec.tD = tDs(keep);  rec.n = ns(keep);
+            rec.tD = tDs(keep);  rec.n = ns(keep);  rec.run = js(keep);
             rec.C  = cat(3, imgs{keep});
             [nzs, nxs, P] = size(rec.C);
             rec.xD = linspace(0,1,nxs);  rec.zD = linspace(0,1,nzs);
@@ -2024,6 +2025,7 @@ for aIdx = 1:numel(vfAngles)
         C = double(rec.C);  P = size(C,3);
         tArr = NaN(size(C,1), size(C,2));
         for p = 2:P
+            if rec.run(p) ~= rec.run(p-1), continue, end     % no interpolation across runs (360 -> next 0)
             c0 = C(:,:,p-1);  c1 = C(:,:,p);
             hit = isnan(tArr) & c0 < vfLevel & c1 >= vfLevel;
             fr  = (vfLevel - c0(hit)) ./ (c1(hit) - c0(hit));
@@ -2099,6 +2101,7 @@ for aIdx = 1:numel(vfAngles)
         P = numel(rec.tD);
         SPc{i} = cell(1, max(P-1,0));
         for p = 1:P-1
+            if rec.run(p+1) ~= rec.run(p), continue, end       % same run only
             A = [rec.xc{p}(:)*rec.W,   rec.zc{p}(:)*rec.H];       % cm
             B = [rec.xc{p+1}(:)*rec.W, rec.zc{p+1}(:)*rec.H];
             okA = all(isfinite(A),2);  B = B(all(isfinite(B),2), :);
