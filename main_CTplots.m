@@ -200,6 +200,73 @@ for ds = dataSources
     end
 end
 
+%% 3b) Front position of every C-level vs tD_total and the three tD_core definitions
+
+CplotLevels  = [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9];   % must be among Clevels in main_CTpreproc
+frontVariant = "";           % "" = full x-range mean, "_xtrim" = x-trimmed mean
+xLimPos      = [0 1.5];      % x-range for all four panels
+lvlCols = parula(numel(CplotLevels) + 1);
+lvlCols = lvlCols(1:numel(CplotLevels),:);              % one colour per C-level
+
+% {x column, x label, arrival-corrected?}
+posAxes = { ...
+    'tDtotal',                't_{D,total} = Qt/V_{total} [-]  (no arrival correction)',          false; ...
+    'tD_corr_lines',          't_{D,core} = t_{D,total} - t_{D,arrival,lines} [-]',                true; ...
+    'tD_corr_contour',        't_{D,core,front} = t_{D,total} - t_{D,arrival,front} [-]',           true; ...
+    'tD_corr_contour_scaled', 't_{D,core,front,scaled} = v_{front}(t - t_{arrival,front})/L [-]',  true};
+
+for ds = dataSources
+    for i = 1:nExp
+        vars   = expCTDataAll{i}.varsAll.(ds);
+        cols_i = string(vars.Properties.VariableNames);
+
+        fig = figure('Position',[50 50 1400 1000]);
+        tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
+
+        for a = 1:size(posAxes,1)
+            ax = nexttile(tl);  hold(ax,'on')
+            xVar = posAxes{a,1};
+            if ~ismember(xVar, cols_i)
+                text(ax, 0.5, 0.5, xVar + " not available", 'Units','normalized', ...
+                    'HorizontalAlignment','center', 'Interpreter','none')
+                continue
+            end
+            x = vars.(xVar);
+
+            for m = 1:numel(CplotLevels)
+                tag     = sprintf('%02d', round(CplotLevels(m)*100));
+                meanCol = "zDFront" + tag + frontVariant;
+                if ~ismember(meanCol, cols_i)
+                    warning('%s (%s): %s missing, level skipped', expKeys(i), ds, meanCol);
+                    continue
+                end
+                zMean = vars.(meanCol);
+                ok = isfinite(x) & isfinite(zMean);
+                scatter(ax, x(ok), zMean(ok), 14, lvlCols(m,:), 'filled', ...
+                    'DisplayName', sprintf('C = %.1f', CplotLevels(m)))
+            end
+
+            if posAxes{a,3}
+                xline(ax, 0, '--k', 'LineWidth',1, 'HandleVisibility','off')   % arrival
+            end
+
+            % legend with every C_D level, in each panel
+            legend(ax, 'Location','southeast', 'FontSize',8)
+
+            xlabel(ax, posAxes{a,2}, 'FontSize',12)
+            ylabel(ax, 'z_D front position [-]', 'FontSize',12)
+            xlim(ax, xLimPos);  ylim(ax, [-0.02 1.02])
+            set(ax,'FontSize',11);  grid(ax,'on')
+        end
+
+        if frontVariant == "", xTxt = "full x-range mean"; else, xTxt = "x-trimmed mean"; end
+        title(tl, sprintf('%s (%s): zD front position of each CD level (%s) vs tD', ...
+            expKeys(i), ds, xTxt), 'Interpreter','none')
+        saveFigBoth(fig, exportPath, ...
+            sprintf('frontPos_allC_%s_%s%s', expKeys(i), ds, frontVariant), closeAfterSave)
+    end
+end
+
 %% 4) MFM analog BTC
 
 for ds = dataSources
