@@ -679,6 +679,70 @@ for ds = dataSources
     end
 end
 
+%% 14) rhoNorm vs conc BTC at each zD: left = lower Q, right = higher Q, both pressures superposed
+
+zDcompare  = 0:0.1:1.0;
+cmpVariant = "";            % "" = full x-range, "_xtrim" = x-trimmed columns
+cmpXVar    = 'tDtotal';     % or 'tD_corr_lines', 'tD_corr_contour', 'tD_corr_contour_scaled'
+cmpXLabel  = 't_{D,total} = Qt/V_{total} [-]';
+cmpXLim    = [0 1.5];
+
+% colours {pressure index, Q index}: row = pressure (1st = lower P), col = Q (1 = light/lower Q, 2 = dark/higher Q)
+cmpCols.conc    = {[0.318 0.654 0.976], [0.090 0.306 0.525];    % blue:  light, dark
+                   [0.435 0.753 0.251], [0.059 0.361 0.102]};   % green: light, dark
+cmpCols.rhoNorm = {[1.000 0.550 0.550], [0.700 0.000 0.000];    % red:   light, dark
+                   [0.600 0.600 0.600], [0.000 0.000 0.000]};   % black: grey, black
+
+if cmpVariant == "", vTxt = "full x-range"; else, vTxt = "x-trimmed"; end
+
+Qall  = cellfun(@(f) f.Q, filedataExpAll);
+Pall  = cellfun(@(f) f.P, filedataExpAll);
+Qlist = sort(unique(Qall));      % left panel = lowest Q
+Plist = sort(unique(Pall));      % colour row = pressure order
+
+for m = 1:numel(zDcompare)
+    Cfield = strrep(sprintf('CD1_zD%.1f', zDcompare(m)), '.', 'p') + cmpVariant;
+
+    fig = figure('Position',[50 50 1400 600]);
+    tl  = tiledlayout(fig, 1, numel(Qlist), 'TileSpacing','compact');
+
+    for q = 1:numel(Qlist)
+        ax = nexttile(tl);  hold(ax,'on')
+        qIdx = min(q, 2);                                   % light for 1st Q, dark otherwise
+
+        for i = find(Qall == Qlist(q))'
+            pIdx = min(find(Plist == Pall(i), 1), 2);       % 1st pressure -> blue/red, 2nd -> green/black
+
+            for ds = dataSources
+                vars   = expCTDataAll{i}.varsAll.(ds);
+                cols_i = string(vars.Properties.VariableNames);
+                if ~all(ismember([string(cmpXVar) Cfield], cols_i))
+                    warning('%s (%s): %s or %s missing, skipped', expKeys(i), ds, cmpXVar, Cfield);
+                    continue
+                end
+                x = vars.(cmpXVar);  y = vars.(Cfield);
+                ok = isfinite(x) & isfinite(y);
+                scatter(ax, x(ok), y(ok), 12, cmpCols.(ds){pIdx,qIdx}, 'filled', ...
+                    'DisplayName', sprintf('%s, P = %g psig', ds, Pall(i)))
+            end
+        end
+
+        yline(ax, [0.16 0.5 0.84], ':k', 'HandleVisibility','off')
+        xlabel(ax, cmpXLabel, 'FontSize',11)
+        ylabel(ax, 'C_D [-]', 'FontSize',11)
+        xlim(ax, cmpXLim);  ylim(ax, [-0.05 1.05])
+        set(ax,'FontSize',10);  grid(ax,'on')
+        title(ax, sprintf('Q = %g ml/min', Qlist(q)), 'FontSize',11)
+        legend(ax, 'Location','southeast', 'FontSize',8, 'Interpreter','none')
+    end
+
+    title(tl, sprintf('BTC at z_D = %.1f: rhoNorm vs conc, both pressures (%s)', ...
+        zDcompare(m), vTxt), 'Interpreter','tex')
+    saveFigBoth(fig, exportPath, ...
+        sprintf('BT_rhoNorm_vs_conc_byQ_zD%s%s_%s', strrep(sprintf('%.1f',zDcompare(m)),'.','p'), ...
+        cmpVariant, cmpXVar), closeAfterSave)
+end
+
 %% Local functions
 
 function out = loadMFMbyDataSource(fileMat, key, fitDataOf)
