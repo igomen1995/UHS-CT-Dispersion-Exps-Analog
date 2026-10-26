@@ -121,6 +121,7 @@ interpFcnAll     = cell(nExp,1);
 expFolderNameAll = cell(nExp,1);
 pathExportAllVec = cell(nExp,1);
 dataSourceAll    = cell(nExp,1);
+fitDataAll       = cell(nExp,1);
 
 for i = 1:nExp
 
@@ -129,8 +130,12 @@ for i = 1:nExp
     pathExportAll = inputFileConfig.exportPath{i}; % Path for OUTPUT
     mkdir(pathExportAll); % Create directory for output
     dataSource = inputFileConfig.dataSource{i};   % "rhoNorm" or "conc"
+    fitData = inputFileConfig.fitData{i};
     if ~ismember(dataSource, {'rhoNorm','conc'})
         error('dataSource must be "rhoNorm" or "conc", got "%s"', dataSource);
+    end
+    if ~ismember(fitData, {'woEOS','wEOS'})
+        error('fitData must be "woEOS" or "wEOS", got "%s"', fitData);
     end
 
     filedataExp = import_inputCTExp(filenameExp); % import input to a local variable
@@ -155,19 +160,13 @@ for i = 1:nExp
     MFM_CT_Data  = load(MFM_CT_file);
     MFM_UHS_Data = load(MFM_UHS_file);
 
-    % MFM variant matching this CT dataSource
-    switch dataSource
-        case 'rhoNorm', fitDataMFM = "woEOS";
-        case 'conc',    fitDataMFM = "wEOS";
-    end
-
     eCT  = MFM_CT_Data.expProcFullData.(MFM_CT_name);
     eUHS = MFM_UHS_Data.expProcFullData.(MFM_UHS_name);
-    if ~isfield(eCT, fitDataMFM) || ~isfield(eUHS, fitDataMFM)
-        error('%s results missing for %s or %s', fitDataMFM, MFM_CT_name, MFM_UHS_name);
+    if ~isfield(eCT, fitData) || ~isfield(eUHS, fitData)
+        error('%s results missing for %s or %s', fitData, MFM_CT_name, MFM_UHS_name);
     end
-    mfmCT  = eCT.(fitDataMFM);   mfmCT.exp_params  = eCT.exp_params;    % BT, results, ... + exp_params
-    mfmUHS = eUHS.(fitDataMFM);  mfmUHS.exp_params = eUHS.exp_params;
+    mfmCT  = eCT.(fitData);   mfmCT.exp_params  = eCT.exp_params;    % BT, results, ... + exp_params
+    mfmUHS = eUHS.(fitData);  mfmUHS.exp_params = eUHS.exp_params;
 
     % exp params (shared, from the MFM analog experiment)
     Fluid1      = eCT.exp_params.Fluid1;
@@ -191,6 +190,7 @@ for i = 1:nExp
     expFolderNameAll{i} = expFolderName;
     pathExportAllVec{i} = pathExportAll;
     dataSourceAll{i}    = dataSource;
+    fitDataAll{i}       = fitData;
 
 end   
 
@@ -922,8 +922,8 @@ end
 
 %% Countour map (batch save, multi-level overlay C=0.1/0.5/0.9)
 
-% widthPairs = [0.1 0.9; 0.3 0.7; 0.4 0.6];
-widthPairs = [0.4 0.6];
+widthPairs = [0.1 0.9; 0.2 0.8; 0.3 0.7; 0.4 0.6];
+% widthPairs = [0.4 0.6];
 levelsFull = 0:0.1:1;   % fixed grid; covers every level requested
  
 for i = 1:nExp
