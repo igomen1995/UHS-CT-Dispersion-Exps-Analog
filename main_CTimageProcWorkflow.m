@@ -1,4 +1,5 @@
-%% CT figure for the paper: one projection (i, j, k), current (old) processing
+%% main_CTimageProcWorkflow.m
+% CT figure for the paper: one projection (i, j, k), current (old) processing
 %
 % Five panels, left to right:
 %   (a) Xe reference (refInit)   normalized + cropped
@@ -10,9 +11,14 @@
 % unsmoothed image with contours of the imgaussfilt(sigmaCont) field, exactly
 % as in main_CTimaging (for C_molar the smoothing is applied after REFPROP).
 %
-% Processing (same as main_CTextract):
+% Processing (same as main_CTextract / main_CTpreproc):
 %   raw -> normImage -> findCropWindow_xAxis (cropWidth) on refInit -> cropImage
 %       -> satImage -> rhoNorm_wVacRef -> interpFcn
+%   The rhoNorm -> C_molar interpolant is built, as in main_CTpreproc, at the
+%   MEASURED average conditions of the matching MFM analog run
+%   (exp_params.T_mean, Pavg_avg, with T_std, Pavg_std for the uncertainty),
+%   not at the set T and P of the input file. The C_molar uncertainty
+%   (T +/- dT, P +/- dP, in quadrature) is reported in the command window.
 %
 % Figure 2: same as figure 1 but the saturation is computed on ln(I).
 % Figure 3: I vs ln(I) side by side - row 1 rhoNorm, row 2 C_molar:
@@ -27,7 +33,7 @@ clear;
 
 %% IMPORT input
 
-CT_setupPaths;
+Root = CT_setupPaths;
 
 inputFileConfigName = 'inputCTExpConfig.xlsx';
 inputFileConfig = readtable(inputFileConfigName);
@@ -82,6 +88,25 @@ if ~isfolder(pathExportAll), mkdir(pathExportAll); end
 filedataExp   = import_inputCTExp(filenameExp);
 key           = char(filedataExp.Key);
 
+% MFM analog (CT) data for this experiment -- measured average T and P (as main_CTpreproc)
+pathImport_MFM_CT = regexprep(inputFileConfig.MFM_BTC_CT_Path{iSel}, '^(\.\./)+', '');
+MFM_CT_name = inputFileConfig.MFM_BTC_CT_Key{iSel};
+MFM_CT_file = fullfile(Root, pathImport_MFM_CT, 'expProcFullData.mat');
+if ~isfile(MFM_CT_file)
+    error('MFM results file not found: %s', MFM_CT_file);
+end
+MFM_CT_Data = load(MFM_CT_file);
+expProcFullData_MFM_CT = MFM_CT_Data.expProcFullData.(MFM_CT_name);
+
+Fluid1      = expProcFullData_MFM_CT.exp_params.Fluid1;
+Fluid2      = expProcFullData_MFM_CT.exp_params.Fluid2;
+T_C_avg     = expProcFullData_MFM_CT.exp_params.T_mean;
+dT_C_avg    = expProcFullData_MFM_CT.exp_params.T_std;
+P_psig_avg  = expProcFullData_MFM_CT.exp_params.Pavg_avg;
+dP_psig_avg = expProcFullData_MFM_CT.exp_params.Pavg_std;
+fprintf('%s: interpolant at measured T = %.2f +/- %.2f C, P = %.1f +/- %.1f psig (set: %g C, %g psig)\n', ...
+    key, T_C_avg, dT_C_avg, P_psig_avg, dP_psig_avg, mean(filedataExp.T), mean(filedataExp.P));
+
 refInitFolderContent = dir(filedataExp.path+filedataExp.CT_data_ref_init);      % Xe
 refInitFolderContent = refInitFolderContent([refInitFolderContent.isdir] & ~startsWith({refInitFolderContent.name},'.'));
 refInitFolderPathCT  = fullfile(refInitFolderContent.folder, refInitFolderContent.name);
@@ -117,7 +142,10 @@ fprintf('%s run %02d k %d: crop x = [%d %d]\n', key, jSel, kSel, crop_xCoords_k(
 refInitCropped  = double(cropImage(refInitImage,  crop_xCoords_k, crop_yCoords));
 refFinalCropped = double(cropImage(refFinalImage, crop_xCoords_k, crop_yCoords));
 expCropped      = double(cropImage(expImage,      crop_xCoords_k, crop_yCoords));
-interpFcn = buildInterpolant(filedataExp.Fluid1, filedataExp.Fluid2, filedataExp.T, filedataExp.P);
+
+% rhoNorm -> C_molar at the measured average conditions, plus T/P-perturbed versions
+[interpFcn, interpFcn_Tp, interpFcn_Tm, interpFcn_Pp, interpFcn_Pm] = ...
+    buildInterpolant(Fluid1, Fluid2, T_C_avg, P_psig_avg, dT_C_avg, dP_psig_avg);
 
 % sat with I
 rhoNormNoCorr = satImage(expCropped, refInitCropped, refFinalCropped);       % (exp, min, max)
@@ -125,6 +153,13 @@ rhoNorm = double(rhoNorm_wVacRef(single(rhoNormNoCorr), filedataExp.Fluid1, ...
     filedataExp.Fluid2, filedataExp.T, filedataExp.P));
 
 Cmolar    = double(interpFcn(rhoNorm));
+
+% C_molar uncertainty from T and P (same convention as main_CTpreproc)
+dC_dT   = (double(interpFcn_Tp(rhoNorm)) - double(interpFcn_Tm(rhoNorm)))/2;
+dC_dP   = (double(interpFcn_Pp(rhoNorm)) - double(interpFcn_Pm(rhoNorm)))/2;
+dCmolar = sqrt(dC_dT.^2 + dC_dP.^2);
+fprintf('C_molar uncertainty from T/P: mean %.4f, std %.4f, max %.4f\n', ...
+    mean(dCmolar(:),'omitnan'), std(dCmolar(:),'omitnan'), max(dCmolar(:)));
 
 rhoNormSmooth = imgaussfilt(rhoNorm, sigmaCont);
 CmolarSmooth  = imgaussfilt(Cmolar,  sigmaCont);
@@ -215,7 +250,7 @@ else
 end
 baseName = fullfile(pathExportAll, sprintf('paperFig_%s_run_%02d_k%04d_%s', key, jSel, kSel, angStr));
 exportgraphics(fig, baseName + ".png", 'Resolution', 600);
-% savefig(fig, baseName + ".fig");
+savefig(fig, baseName + ".fig");
 fprintf('Saved %s.(png)\n', baseName);
 
 %% FIGURE 2
@@ -267,7 +302,7 @@ else
 end
 baseName = fullfile(pathExportAll, sprintf('paperFig_%s_run_%02d_k%04d_%s', key, jSel, kSel, angStr));
 exportgraphics(fig, baseName + "_lnI.png", 'Resolution', 600);
-% savefig(fig, baseName + "_lnI.fig");
+savefig(fig, baseName + "_lnI.fig");
 fprintf('Saved %s_lnI.(png)\n', baseName);
 
 %% FIGURE 3: I vs ln(I) - row 1 rhoNorm, row 2 C_molar
@@ -376,7 +411,7 @@ if ~any(frontRows)
 end
 
 exportgraphics(fig3, baseName + "_IvsLnI.png", 'Resolution', 600);
-% savefig(fig3, baseName + "_IvsLnI.fig");
+savefig(fig3, baseName + "_IvsLnI.fig");
 fprintf('Saved %s_IvsLnI.(png)\n', baseName);
 
 %% local functions
@@ -434,9 +469,18 @@ function [infoStr, rotPos] = getScanInfo(pathExportAll, key, j, k)
     rotPos  = NaN;
     try
         S = load(fullfile(pathExportAll, key + ".mat"), 'expCTDataSave');
-        runVars = S.expCTDataSave.exp.(sprintf('run_%02d', j)).vars;
-        f = fieldnames(runVars);
-        v = runVars.(f{1})(k);   % tDtotal / time / angle are the same for rhoNorm and conc
+        E = S.expCTDataSave;
+        runName = sprintf('run_%02d', j);
+        if isfield(E, 'varsAll')                     % current main_CTpreproc layout
+            f = fieldnames(E.varsAll);
+            V = E.varsAll.(f{1});                    % time / angle are the same for rhoNorm and conc
+            V = V(string(V.runName) == runName, :);
+            v = table2struct(V(k,:));
+        else                                         % older layout
+            runVars = E.exp.(runName).vars;
+            f = fieldnames(runVars);
+            v = runVars.(f{1})(k);
+        end
         rotPos  = v.rotPos;
         infoStr = sprintf('t_D = %.2f,  t = %g s,  \\theta = %.0f°', v.tDtotal, v.secondsElapsed, v.rotPos);
     catch
