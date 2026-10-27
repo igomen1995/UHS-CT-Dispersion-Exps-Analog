@@ -223,8 +223,12 @@ cbGapCm  = 0.12;  cbWcm = 0.22;  cbLabCm = 1.05;   % colour bar: gap, width, roo
 cbTickCm = 0.62;        % width of the colour-bar tick labels (header line ends here) [cm]
 fsAx     = 9;           % axes ticks / labels / colour-bar ticks
 fsTitle  = 10;          % panel titles
-fsHead   = 10;          % group headers
+fsHead   = 9;          % group headers
 fsCb     = 9;           % colour-bar labels
+titleUpCm = 0.22;       % panel-title baseline above the top of the images [cm]
+hdrLineCm = 0.72;       % group-header line above the top of the images [cm]
+hdrPadCm  = 0.14;       % header baseline above its line (room for a subscript descent) [cm]
+
 
 if useLogChain
     imgG = rhoNorm_log;  imgH = Cmolar_log;   chainStr = 'attenuation';
@@ -262,7 +266,7 @@ figHcm = botCm + ph + topCm;
 fig = figure('Units','centimeters', 'Position',[2 2 figWcm figHcm], 'Color','w', ...
     'PaperUnits','centimeters', 'PaperSize',[figWcm figHcm]);
 
-x = leftCm;  grpX0 = nan(1,nG);  grpX1 = nan(1,nG);
+x = leftCm;  grpX0 = nan(1,nG);  grpX1 = nan(1,nG);  panX = nan(1,nP);
 for p = 1:nP
     g = panels{p,5};
     if isnan(grpX0(g)), grpX0(g) = x; end
@@ -281,7 +285,7 @@ for p = 1:nP
     ax.XTickLabelRotation = 45;         % angled x_D tick labels
     xlabel(ax, xLab, 'FontSize',fsAx);
     if p == 1, ylabel(ax, zLab, 'FontSize',fsAx); else, set(ax, 'YTickLabel',[]); end
-    title(ax, panels{p,2}, 'FontWeight','bold', 'FontSize',fsTitle, 'Interpreter','tex');
+    panX(p) = x;                                             % left edge of this panel (title drawn later)
 
     lastInGroup = p == nP || panels{p+1,5} ~= g;
     if lastInGroup
@@ -301,19 +305,31 @@ for p = 1:nP
     end
 end
 
+% panel titles and group headers on one overlay, all aligned on text BASELINES
+% (subscripts such as C_1, C^*_1, I/I_0 no longer shift the text up)
+axO = axes(fig, 'Units','centimeters', 'Position',[0 0 figWcm figHcm], ...
+    'XLim',[0 figWcm], 'YLim',[0 figHcm], 'Visible','off', 'HitTest','off', ...
+    'HandleVisibility','off');
+hold(axO, 'on');
+yTop = botCm + ph;                                           % top edge of the images
+
+% panel titles: same baseline for all
+for p = 1:nP
+    text(axO, panX(p) + pw/2, yTop + titleUpCm, panels{p,2}, ...
+        'HorizontalAlignment','center', 'VerticalAlignment','baseline', ...
+        'FontName',fontName, 'FontSize',fsTitle, 'FontWeight','bold', 'Interpreter','tex');
+end
+
 % group headers: line from the first panel to the end of the colour-bar tick labels,
-% title centred on that line
-yHead = botCm + ph + 0.78;           % height of the header line above the panels [cm]
+% title centred on the line, all on the same baseline
+yHead = yTop + hdrLineCm;
 for g = 1:nG
-    xL = grpX0(g);                                   % left edge of the first panel
-    xR = grpX1(g) + cbGapCm + cbWcm + cbTickCm;      % end of the colour-bar tick labels
-    annotation(fig, 'line', 'Units','centimeters', ...
-        'X',[xL xR], 'Y',[yHead yHead], 'LineWidth',0.6);
-    annotation(fig, 'textbox', 'Units','centimeters', ...
-        'Position',[xL yHead+0.05 (xR-xL) 0.5], 'String',grpHead{g}, ...
-        'EdgeColor','none', 'HorizontalAlignment','center', 'VerticalAlignment','bottom', ...
-        'FontName',fontName, 'FontSize',fsHead, 'FontWeight','bold', 'Interpreter','tex', ...
-        'Margin',0, 'FitBoxToText','off');
+    xL = grpX0(g);
+    xR = grpX1(g) + cbGapCm + cbWcm + cbTickCm;
+    plot(axO, [xL xR], [yHead yHead], 'k-', 'LineWidth',0.6);
+    text(axO, (xL + xR)/2, yHead + hdrPadCm, grpHead{g}, ...
+        'HorizontalAlignment','center', 'VerticalAlignment','baseline', ...
+        'FontName',fontName, 'FontSize',fsHead, 'FontWeight','bold', 'Interpreter','tex');
 end
 
 if isnan(rotPos)
