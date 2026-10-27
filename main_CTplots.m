@@ -743,6 +743,157 @@ for m = 1:numel(zDcompare)
         cmpVariant, cmpXVar), closeAfterSave)
 end
 
+%% 14) Flow capacity vs storage capacity (F-Phi) from the BTC at several zD, and predicted sweep vs measured
+
+fpZD       = [0.5 0.6 0.7 0.8 0.9 1.0];   % BTC levels (columns CD1_zD0p5 ... CD1_zD1p0)
+fpXVar     = 'tD_corr_lines';  % time axis: 'tD_corr_lines' (lines volume removed) or 'tDtotal'
+fpLocalT   = true;             % true: plot vs t/zD (pore volumes of the section 0..zD)
+fpSmooth   = 5;                % points, moving-median window on the BTC before cummax
+fpEffTag   = "50";             % sweepEff level shown at zD = 1 (C > 0.50)
+fpVariant  = "";               % "" = full image, "_xtrim" = x-trimmed
+fpXLim     = [0 1.5];
+
+overallColFP = "overallRecovery_" + ternaryStr(fpVariant == "", "full", "xtrim");
+profColFP    = "CVert" + fpVariant;          % column of C1Profile used for the section mean
+fpSummary = table();
+
+for ds = dataSources
+    for z = fpZD
+        btcCol = "CD1_zD" + strrep(sprintf('%.1f', z), '.', 'p');
+        if fpLocalT, tScale = z; xLab = 't_D / z_D  [section PV]'; else, tScale = 1; xLab = 't_D [-]'; end
+
+        fig = figure('Position',[50 50 1600 520]);
+        tl  = tiledlayout(fig, 1, 3, 'TileSpacing','compact');
+        axB = nexttile(tl);  hold(axB,'on')     % (a) BTC used
+        axF = nexttile(tl);  hold(axF,'on')     % (b) F-Phi
+        axE = nexttile(tl);  hold(axE,'on')     % (c) predicted Ev vs measured
+
+        plot(axF, [0 1], [0 1], 'k--', 'LineWidth', 1, 'DisplayName', 'homogeneous (piston)')
+
+        for i = 1:nExp
+            vars   = expCTDataAll{i}.varsAll.(ds);
+            cols_i = string(vars.Properties.VariableNames);
+            if ~all(ismember([string(fpXVar) btcCol], cols_i))
+                warning('%s (%s): %s or %s missing, skipped', expKeys(i), ds, fpXVar, btcCol);
+                continue
+            end
+            mk = markers{mod(i-1,numel(markers))+1};
+
+            % --- clean BTC at this zD: sorted, unique times, 0..1, monotonic
+            t = vars.(fpXVar);  C = vars.(btcCol);
+            ok = isfinite(t) & isfinite(C);
+            [t, o] = sort(t(ok));  C = C(ok);  C = C(o);
+            [t, iu] = unique(t);   C = C(iu);
+            C = min(max(C, 0), 1);
+            Craw = C;
+            C = cummax(movmedian(C, fpSmooth));
+            keep = t >= 0;  t = t(keep);  C = C(keep);  Craw = Craw(keep);
+            if numel(t) < 5, continue, end
+            if t(1) > 0, t = [0; t];  C = [0; C];  Craw = [0; Craw]; end
+
+            % --- F-Phi (step injection), mean residence time, Lorenz coefficient
+            intC = cumtrapz(t, C);
+            tbar = trapz(t, 1 - C);                 % lower bound if C never reaches 1
+            F    = C;
+            Phi  = (t.*C - intC) / tbar;
+            Ev   = (t - intC) / tbar;               % fraction of section 0..zD filled
+            Lc   = 2*(trapz([Phi; 1], [F; 1]) - 0.5);
+            Cend = C(end);
+
+            % --- (a) BTC
+            scatter(axB, t/tScale, Craw, 10, cols(i,:), mk, 'filled', 'MarkerFaceAlpha', 0.4, 'HandleVisibility','off')
+            plot(axB, t/tScale, C, '-', 'Color', cols(i,:), 'LineWidth', 1.3, 'DisplayName', expKeys(i))
+
+            % --- (b) F-Phi
+            plot(axF, Phi, F, '-', 'Color', cols(i,:), 'LineWidth', 1.6, ...
+                'DisplayName', sprintf('%s  Lc = %.3f', expKeys(i), Lc))
+
+            % --- (c) predicted Ev (line) vs measured mean C over the section 0..zD (filled)
+            plot(axE, t/tScale, Ev, '-', 'Color', cols(i,:), 'LineWidth', 1.6, ...
+                'DisplayName', expKeys(i) + " E_v from F-Phi")
+            tm = vars.(fpXVar);
+            if z >= 1 && ismember(overallColFP, cols_i)
+                yS = vars.(overallColFP);
+            elseif ismember("C1Profile", cols_i)
+                yS = sectionMeanC(vars.C1Profile, z, profColFP);
+            else
+                yS = NaN(size(tm));
+            end
+            okm = isfinite(tm) & isfinite(yS);
+            scatter(axE, tm(okm)/tScale, yS(okm), 14, cols(i,:), mk, 'filled', ...
+                'DisplayName', expKeys(i) + " mean C over 0..zD")
+            effCol = "sweepEff" + fpEffTag + fpVariant;
+            if z >= 1 && ismember(effCol, cols_i)
+                y = vars.(effCol);  okm = isfinite(tm) & isfinite(y);
+                scatter(axE, tm(okm)/tScale, y(okm), 14, cols(i,:), mk, ...
+                    'DisplayName', expKeys(i) + " E_A (C > 0." + fpEffTag + ")")
+            end
+
+            fpSummary = [fpSummary; table(string(ds), expKeys(i), z, Lc, tbar, tbar/z, Cend, ...
+                'VariableNames', {'dataSource','experiment','zD','Lc','tbar','tbar_over_zD','C_end'})]; %#ok<AGROW>
+            if Cend < 0.95
+                warning('%s (%s, zD = %.1f): BTC ends at C = %.2f -- tbar and Lc are lower bounds', ...
+                    expKeys(i), ds, z, Cend);
+            end
+        end
+
+        xlabel(axB, xLab, 'FontSize',12);  ylabel(axB, sprintf('C_D at z_D = %.1f [-]', z), 'FontSize',12)
+        title(axB, 'BTC (markers raw, line cleaned)', 'FontSize',11)
+        xlim(axB, fpXLim);  ylim(axB, [-0.02 1.02])
+
+        xlabel(axF, '\Phi  storage capacity [-]', 'FontSize',12);  ylabel(axF, 'F  flow capacity [-]', 'FontSize',12)
+        title(axF, 'F-\Phi (Lorenz coefficient in legend)', 'FontSize',11)
+        xlim(axF, [0 1]);  ylim(axF, [0 1]);  axis(axF, 'square')
+
+        xlabel(axE, xLab, 'FontSize',12);  ylabel(axE, 'E_v, mean C [-]', 'FontSize',12)
+        if z >= 1
+            title(axE, 'Predicted E_v (line) vs CT: mean C (filled), E_A (open)', 'FontSize',11)
+        else
+            title(axE, sprintf('Predicted E_v (line) vs CT mean C over z_D \\leq %.1f', z), 'FontSize',11)
+        end
+        xlim(axE, fpXLim);  ylim(axE, [-0.02 1.02])
+
+        for ax = [axB axF axE]
+            set(ax, 'FontSize',11);  grid(ax,'on')
+            legend(ax, 'Location','southeast', 'FontSize',7, 'Interpreter','none')
+        end
+
+        title(tl, sprintf('Flow vs storage capacity from the BTC at z_D = %.1f (%s, x = %s)', z, ds, fpXVar), ...
+            'Interpreter','none')
+        saveFigBoth(fig, exportPath, sprintf('FPhi_zD%s_allExp_%s%s_%s', ...
+            strrep(sprintf('%.1f', z), '.', 'p'), ds, fpVariant, fpXVar), closeAfterSave)
+    end
+
+    % --- summary: Lc and tbar/zD vs zD, one line per experiment
+    fig = figure('Position',[50 50 1100 450]);
+    tl  = tiledlayout(fig, 1, 2, 'TileSpacing','compact');
+    axL = nexttile(tl);  hold(axL,'on')
+    axT = nexttile(tl);  hold(axT,'on')
+    for i = 1:nExp
+        S = fpSummary(fpSummary.dataSource == string(ds) & fpSummary.experiment == expKeys(i), :);
+        if isempty(S), continue, end
+        S = sortrows(S, 'zD');
+        mk = markers{mod(i-1,numel(markers))+1};
+        plot(axL, S.zD, S.Lc, ['-' mk], 'Color', cols(i,:), 'MarkerFaceColor', cols(i,:), ...
+            'LineWidth', 1.4, 'DisplayName', expKeys(i))
+        plot(axT, S.zD, S.tbar_over_zD, ['-' mk], 'Color', cols(i,:), 'MarkerFaceColor', cols(i,:), ...
+            'LineWidth', 1.4, 'DisplayName', expKeys(i))
+    end
+    yline(axT, 1, 'k--', 'HandleVisibility','off');
+    xlabel(axL, 'z_D [-]', 'FontSize',12);  ylabel(axL, 'L_c [-]', 'FontSize',12)
+    title(axL, 'Lorenz coefficient vs distance', 'FontSize',11)
+    xlabel(axT, 'z_D [-]', 'FontSize',12);  ylabel(axT, 't̄ / z_D [-]', 'FontSize',12)
+    title(axT, 'Mean residence time per section length (1 = uniform speed)', 'FontSize',11)
+    for ax = [axL axT]
+        set(ax, 'FontSize',11);  grid(ax,'on');  xlim(ax, [min(fpZD)-0.05 max(fpZD)+0.05])
+        legend(ax, 'Location','best', 'FontSize',7, 'Interpreter','none')
+    end
+    title(tl, sprintf('F-\\Phi summary vs z_D (%s, x = %s)', ds, fpXVar), 'Interpreter','tex')
+    saveFigBoth(fig, exportPath, sprintf('FPhi_summary_vs_zD_%s%s_%s', ds, fpVariant, fpXVar), closeAfterSave)
+end
+
+disp(fpSummary)
+writetable(fpSummary, fullfile(exportPath, 'FPhi_summary.xlsx'));
 %% Local functions
 
 function out = loadMFMbyDataSource(fileMat, key, fitDataOf)
@@ -781,4 +932,18 @@ end
 
 function out = ternaryStr(cond, a, b)
     if cond, out = a; else, out = b; end
+end
+
+function m = sectionMeanC(profCol, zD, cCol)
+% SECTIONMEANC  Mean C over the section zDimLess <= zD for each frame, from the
+% per-frame vertical profiles stored in varsAll.C1Profile (cell of tables or table).
+nF = height(profCol);
+if istable(profCol), nF = 1; end
+m = NaN(nF, 1);
+for k = 1:nF
+    if iscell(profCol), pr = profCol{k}; else, pr = profCol; end
+    if isempty(pr) || ~istable(pr) || ~ismember(cCol, string(pr.Properties.VariableNames)), continue, end
+    sel = pr.zDimLess <= zD + 1e-9;
+    if any(sel), m(k) = mean(pr.(cCol)(sel), 'omitnan'); end
+end
 end
