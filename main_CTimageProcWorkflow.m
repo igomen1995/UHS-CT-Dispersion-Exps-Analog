@@ -193,8 +193,8 @@ switch axisUnits
         zAx = (1:nz) * exppca.Geometry.VoxelSizeY / 10;
         xLab = 'x [cm]';  zLab = 'z [cm]';
     otherwise
-        xAx = (1:nx) / nx;
-        zAx = (1:nz) / nz;
+        xAx = ((1:nx) - 0.5) / nx;          % pixel centres -> image edges exactly at 0 and 1
+        zAx = ((1:nz) - 0.5) / nz;
         xLab = 'x_D [-]'; zLab = 'z_D [-]';
 end
 
@@ -203,107 +203,130 @@ if isempty(climNorm)
     climNorm = prctile(allNorm(isfinite(allNorm)), [0.5 99.5]);
 end
 
-%% FIGURE 1
+%% FIGURE 1: processing steps in one row (8 panels, page width)
+%   (A-C) normalized intensity I/I0      : Xe (cushion), He (working gas), experiment
+%   (D-F) attenuation -ln(I/I0)          : Xe, He, experiment
+%   (G)   C*_He = rho_norm               (H) C_He = molar concentration (REFPROP)
+% Sized in centimetres -> font sizes are the printed sizes.
 
-[infoStr, rotPos] = getScanInfo(pathExportAll, key, jSel, kSel);   % rotPos = NaN if <Key>.mat is missing
+useLogChain = true;     % true: G-H from the attenuation chain (-ln I) | false: from I
 
-panelW = imgWpx + cbGapPx + cbWpx + cbLabelPx + hGapPx;     % one image + its colour bar
-figW   = leftPx + 5*panelW - hGapPx + rightPx;
-figH   = bottomPx + imgHpx + topPx;
+% ---- page layout [cm] and fonts [pt]
+figWcm   = 18.0;        % full text width (17-18 cm for A4 / letter, two columns ~ 18)
+leftCm   = 1.25;        % z label + ticks
+rightCm  = 0.25;
+botCm    = 1.65;        % x ticks + label
+topCm    = 1.45;        % panel titles + group headers (+ info line)
+gapCm    = 0.60;        % between panels of a group
+grpGapCm = 0.65;        % after a colour bar, before the next group
+cbGapCm  = 0.12;  cbWcm = 0.22;  cbLabCm = 1.05;   % colour bar: gap, width, room for ticks + label
+cbTickCm = 0.62;        % width of the colour-bar tick labels (header line ends here) [cm]
+fsAx     = 9;           % axes ticks / labels / colour-bar ticks
+fsTitle  = 10;          % panel titles
+fsHead   = 10;          % group headers
+fsCb     = 9;           % colour-bar labels
 
-fig = figure('Units','pixels', 'Position',[50 50 figW figH], 'Color','w');
-axPos = @(p) [leftPx + (p-1)*panelW, bottomPx, imgWpx, imgHpx];   % [left bottom W H] in px
-
-if showInfo
-    if ~isempty(infoStr)
-        annotation(fig, 'textbox', 'Units','pixels', 'Position',[0 figH-28 figW 24], ...
-            'String', infoStr, 'EdgeColor','none', 'HorizontalAlignment','center', ...
-            'FontName',fontName, 'FontSize',fontSize, 'Interpreter','tex');
-    end
-end
-
-normImgs   = {refInitCropped, refFinalCropped, expCropped};
-normTitles = {'(A) Xe reference', '(B) He reference', '(C) Experiment'};
-for p = 1:3
-    ax = axes(fig, 'Units','pixels', 'Position', axPos(p));
-    imagesc(ax, xAx, zAx, normImgs{p});
-    styleAxes(ax, normTitles{p}, xLab, zLab, p == 1, fontName, fontSize);
-    colormap(ax, gray); clim(ax, climNorm);
-    addColorbar(ax, 'CT normalized [-]', fontName, fontSize, cbGapPx, cbWpx, '%.2f');
-end
-
-ax = axes(fig, 'Units','pixels', 'Position', axPos(4));
-plotImageContours(ax, xAx, zAx, rhoNorm, rhoNormSmooth, levelsFull, labelContours, fontSize);
-styleAxes(ax, '(D) \rho_{norm}', xLab, zLab, false, fontName, fontSize);
-addColorbar(ax, '\rho_{norm} [-]', fontName, fontSize, cbGapPx, cbWpx, '%.1f');
-
-ax = axes(fig, 'Units','pixels', 'Position', axPos(5));
-plotImageContours(ax, xAx, zAx, Cmolar, CmolarSmooth, levelsFull, labelContours, fontSize);
-styleAxes(ax, '(E) C_{molar}', xLab, zLab, false, fontName, fontSize);
-addColorbar(ax, 'C_{molar} [-]', fontName, fontSize, cbGapPx, cbWpx, '%.1f');
-
-if isnan(rotPos)
-    angStr = 'angNA';
-    warning('Rotation angle not found (no %s.mat); file name uses angNA.', key);
+if useLogChain
+    imgG = rhoNorm_log;  imgH = Cmolar_log;   chainStr = 'attenuation';
 else
-    angStr = "ang" + strrep(sprintf('%.1f', rotPos), '.', 'p') + "deg";   % e.g. ang123p5deg
-end
-baseName = fullfile(pathExportAll, sprintf('paperFig_%s_run_%02d_k%04d_%s', key, jSel, kSel, angStr));
-exportgraphics(fig, baseName + ".png", 'Resolution', 600);
-savefig(fig, baseName + ".fig");
-fprintf('Saved %s.(png)\n', baseName);
-
-%% FIGURE 2
-
-[infoStr, rotPos] = getScanInfo(pathExportAll, key, jSel, kSel);   % rotPos = NaN if <Key>.mat is missing
-
-panelW = imgWpx + cbGapPx + cbWpx + cbLabelPx + hGapPx;     % one image + its colour bar
-figW   = leftPx + 5*panelW - hGapPx + rightPx;
-figH   = bottomPx + imgHpx + topPx;
-
-fig = figure('Units','pixels', 'Position',[50 50 figW figH], 'Color','w');
-axPos = @(p) [leftPx + (p-1)*panelW, bottomPx, imgWpx, imgHpx];   % [left bottom W H] in px
-
-if showInfo
-    if ~isempty(infoStr)
-        annotation(fig, 'textbox', 'Units','pixels', 'Position',[0 figH-28 figW 24], ...
-            'String', infoStr, 'EdgeColor','none', 'HorizontalAlignment','center', ...
-            'FontName',fontName, 'FontSize',fontSize, 'Interpreter','tex');
-    end
+    imgG = rhoNorm;      imgH = Cmolar;       chainStr = 'intensity';
 end
 
-normImgs   = {refInitCropped_log, refFinalCropped_log, expCropped_log};
-normTitles = {'(A) Xe reference, ln', '(B) He reference, ln', '(C) Experiment, ln'};
 allLog  = [refInitCropped_log(:); refFinalCropped_log(:); expCropped_log(:)];
-climLog = prctile(allLog(isfinite(allLog)), [0.5 99.5]);        % ln(I) is <= 0: own limits
-for p = 1:3
-    ax = axes(fig, 'Units','pixels', 'Position', axPos(p));
-    imagesc(ax, xAx, zAx, normImgs{p});
-    styleAxes(ax, normTitles{p}, xLab, zLab, p == 1, fontName, fontSize);
-    colormap(ax, gray); clim(ax, climLog);
-    addColorbar(ax, 'ln(CT normalized) [-]', fontName, fontSize, cbGapPx, cbWpx, '%.2f');
+climLog = prctile(allLog(isfinite(allLog)), [0.5 99.5]);
+
+% {image, title, colormap, clim, group}
+panels = { ...
+    refInitCropped,      '(A) Gas 2',  gray(256),  climNorm, 1; ...
+    refFinalCropped,     '(B) Gas 1',  gray(256),  climNorm, 1; ...
+    expCropped,          '(C) Exp.',   gray(256),  climNorm, 1; ...
+    refInitCropped_log,  '(D) Gas 2',  gray(256),  climLog,  2; ...
+    refFinalCropped_log, '(E) Gas 1',  gray(256),  climLog,  2; ...
+    expCropped_log,      '(F) Exp.',   gray(256),  climLog,  2; ...
+    imgG,                '(G) C^*_1',  turbo(256), [0 1],    3; ...
+    imgH,                '(H) C_1',    turbo(256), [0 1],    3};
+grpHead = {'Normalized intensity I/I_0', 'Attenuation -ln(I/I_0)', 'Gas 1 concentration'};
+grpCb   = {'I/I_0 [-]', '-ln(I/I_0) [-]', 'C_1 [-]'};
+grpFmt  = {'%.2f', '%.1f', '%.1f'};
+nP = size(panels,1);  nG = 3;
+
+% ---- panel size: fill the width, keep the physical aspect of the image
+nGapIn = nP - nG;                                            % gaps inside groups
+pw  = (figWcm - leftCm - rightCm - nGapIn*gapCm - nG*(cbGapCm + cbWcm + cbLabCm) - (nG-1)*grpGapCm) / nP;
+hw  = (nz*exppca.Geometry.VoxelSizeY) / (nx*exppca.Geometry.VoxelSizeX);   % image height/width
+ph  = pw*hw;
+figHcm = botCm + ph + topCm;
+
+[infoStr, rotPos] = getScanInfo(pathExportAll, key, jSel, kSel);
+
+fig = figure('Units','centimeters', 'Position',[2 2 figWcm figHcm], 'Color','w', ...
+    'PaperUnits','centimeters', 'PaperSize',[figWcm figHcm]);
+
+x = leftCm;  grpX0 = nan(1,nG);  grpX1 = nan(1,nG);
+for p = 1:nP
+    g = panels{p,5};
+    if isnan(grpX0(g)), grpX0(g) = x; end
+
+    ax = axes(fig, 'Units','centimeters', 'Position',[x botCm pw ph]);
+    imagesc(ax, xAx, zAx, panels{p,1});
+    colormap(ax, panels{p,3});  clim(ax, panels{p,4});
+    set(ax, 'YDir','reverse', 'FontName',fontName, 'FontSize',fsAx, 'TickDir','out', ...
+        'Box','on', 'Layer','top', 'TickLength',[0.03 0.03], 'LineWidth',0.6);
+    axis(ax, 'tight');
+    if axisUnits == "D"
+        xlim(ax, [0 1]);  ylim(ax, [0 1]);
+        set(ax, 'XTick',[0 0.5 1], 'XTickLabel',{'0','0.5','1'}, ...
+                'YTick',0:0.2:1,   'YTickLabel',{'0','0.2','0.4','0.6','0.8','1'});
+    end
+    ax.XTickLabelRotation = 45;         % angled x_D tick labels
+    xlabel(ax, xLab, 'FontSize',fsAx);
+    if p == 1, ylabel(ax, zLab, 'FontSize',fsAx); else, set(ax, 'YTickLabel',[]); end
+    title(ax, panels{p,2}, 'FontWeight','bold', 'FontSize',fsTitle, 'Interpreter','tex');
+
+    lastInGroup = p == nP || panels{p+1,5} ~= g;
+    if lastInGroup
+        grpX1(g) = x + pw;
+        pos = ax.Position;
+        cb = colorbar(ax);
+        cb.Units = 'centimeters';
+        ax.Position = pos;                                   % colorbar() shrinks the axes: restore
+        cb.Position = [pos(1)+pos(3)+cbGapCm, pos(2), cbWcm, pos(4)];
+        cb.FontName = fontName;  cb.FontSize = fsAx;  cb.TickDirection = 'out';
+        cb.TickLength = 0.03;                               % tick mark length (default 0.01)
+        cb.Ruler.TickLabelFormat = grpFmt{g};
+        cb.Label.String = grpCb{g};  cb.Label.FontSize = fsCb;  cb.Label.Interpreter = 'tex';
+        x = pos(1) + pos(3) + cbGapCm + cbWcm + cbLabCm + grpGapCm;
+    else
+        x = x + pw + gapCm;
+    end
 end
 
-ax = axes(fig, 'Units','pixels', 'Position', axPos(4));
-plotImageContours(ax, xAx, zAx, rhoNorm_log, rhoNormSmooth_log, levelsFull, labelContours, fontSize);
-styleAxes(ax, '(D) \rho_{norm}, ln(I)', xLab, zLab, false, fontName, fontSize);
-addColorbar(ax, '\rho_{norm} [-]', fontName, fontSize, cbGapPx, cbWpx, '%.1f');
-
-ax = axes(fig, 'Units','pixels', 'Position', axPos(5));
-plotImageContours(ax, xAx, zAx, Cmolar_log, CmolarSmooth_log, levelsFull, labelContours, fontSize);
-styleAxes(ax, '(E) C_{molar}, ln(I)', xLab, zLab, false, fontName, fontSize);
-addColorbar(ax, 'C_{molar} [-]', fontName, fontSize, cbGapPx, cbWpx, '%.1f');
+% group headers: line from the first panel to the end of the colour-bar tick labels,
+% title centred on that line
+yHead = botCm + ph + 0.78;           % height of the header line above the panels [cm]
+for g = 1:nG
+    xL = grpX0(g);                                   % left edge of the first panel
+    xR = grpX1(g) + cbGapCm + cbWcm + cbTickCm;      % end of the colour-bar tick labels
+    annotation(fig, 'line', 'Units','centimeters', ...
+        'X',[xL xR], 'Y',[yHead yHead], 'LineWidth',0.6);
+    annotation(fig, 'textbox', 'Units','centimeters', ...
+        'Position',[xL yHead+0.05 (xR-xL) 0.5], 'String',grpHead{g}, ...
+        'EdgeColor','none', 'HorizontalAlignment','center', 'VerticalAlignment','bottom', ...
+        'FontName',fontName, 'FontSize',fsHead, 'FontWeight','bold', 'Interpreter','tex', ...
+        'Margin',0, 'FitBoxToText','off');
+end
 
 if isnan(rotPos)
     angStr = 'angNA';
     warning('Rotation angle not found (no %s.mat); file name uses angNA.', key);
 else
-    angStr = "ang" + strrep(sprintf('%.1f', rotPos), '.', 'p') + "deg";   % e.g. ang123p5deg
+    angStr = "ang" + strrep(sprintf('%.1f', rotPos), '.', 'p') + "deg";
 end
 baseName = fullfile(pathExportAll, sprintf('paperFig_%s_run_%02d_k%04d_%s', key, jSel, kSel, angStr));
-exportgraphics(fig, baseName + "_lnI.png", 'Resolution', 600);
-savefig(fig, baseName + "_lnI.fig");
-fprintf('Saved %s_lnI.(png)\n', baseName);
+exportgraphics(fig, baseName + "_steps.png", 'Resolution', 600);
+savefig(fig, baseName + "_steps.fig");
+fprintf('Saved %s_steps.(png/fig), %s chain for G-H, panels %.2f x %.2f cm\n', ...
+    baseName, chainStr, pw, ph);
 
 %% FIGURE 3: I vs ln(I) - row 1 rhoNorm, row 2 C_molar
 
