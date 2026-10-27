@@ -1733,44 +1733,28 @@ for aIdx = 1:numel(angleTargets)
     saveas(fig, fullfile('results/', fnameAngle), 'fig');
 end
 
-%% Front velocity field by fixed angle: arrows = dz_front/dtD at each xD
-% one figure per target angle, one tile per experiment
-% frames: theta, theta+180 (flipped), 360 (= 0, not flipped) -> one time series per angle
-% arrow: starts on the earlier front, length ~ local front velocity, colour = tD
+%% Velocity field (0): shared data -- one smoothed, flip-corrected image per pass
+% For each angle family (theta, theta+180 flipped, 360 = 0 not flipped) and each
+% experiment: the frame closest to the angle in every pass, smoothed like the
+% contour maps and downsampled. Used by sections (1)-(3).
 
-angleTargets = [0 45 90 135];
-angleTol_deg = 3;
-level        = 0.5;               % contour level traced as "the front"
-nXbins       = 15;                % number of arrows across xD
-dtDmin       = 0.02;              % skip pass pairs closer than this in tD
-velMode      = "abs";             % "abs": w = dzD/dtD (shared scale) | "rel": w / mean_x(w)
-arrowMax     = 0.08;              % 95th-percentile arrow length in zD units ("abs")
-relScale     = 0.05;              % arrow length for w/mean(w) = 1 ("rel")
-tDminContours = 0;
-tDmaxContours = tDmax;
-cmap = flipud(winter(256));
+vfAngles  = [0 45 90 135];
+vfTol     = 3;          % deg, angle matching tolerance
+vfLevel   = 0.5;        % front = this C_D contour
+vfSigma   = 20;         % px, Gaussian smoothing (as the contour maps)
+vfDs      = 4;          % downsampling factor after smoothing (speed / memory)
+vfDtDmin  = 0.02;       % passes closer than this in tD are dropped
+vfNbins   = 40;         % xD bins for the front profile z_front(xD)
+vfFlip    = [false true false];   % n = 0,1,2 -> theta, theta+180 (flip), theta+360
 
-nHalfMax = 2;
-flipHalf = [false true false];    % theta+180 flipped, 360 not
-
-xEdges = linspace(0, 1, nXbins+1);
-xGrid  = 0.5*(xEdges(1:end-1) + xEdges(2:end));
+vfEdges  = linspace(0,1,vfNbins+1);
+vfXc     = 0.5*(vfEdges(1:end-1) + vfEdges(2:end));
+cmap     = flipud(winter(256));
 tileW_px = 230;
 
-% physical aspect from the first experiment
-info0 = h5info(HDF5filenameAll{1}, '/exp/run_01/conc');
-geom0 = expCTDataAll{1}.exp.run_01.pca.Geometry;
-aspHW = (info0.Dataspace.Size(1)*geom0.VoxelSizeY) / (info0.Dataspace.Size(2)*geom0.VoxelSizeX);
-
-if ~isfolder('results/'), mkdir('results/'); end
-tD2c = @(tD) cmap(max(1,min(256, round(1 + 255*min(tD/tDmaxContours,1)))), :);
-
-for aIdx = 1:numel(angleTargets)
-    targetAngle = angleTargets(aIdx);
-
-    % ---------- 1) collect passes (front profiles) for every experiment ----------
-    P    = cell(1, nExp);          % P{i}: struct array of passes
-    geomE = cell(1, nExp);
+VF = cell(numel(vfAngles), nExp);
+for aIdx = 1:numel(vfAngles)
+    targetAngle = vfAngles(aIdx);
     for i = 1:nExp
         filedataExp   = filedataExpAll{i};
         dataSource    = dataSourceAll{i};
@@ -1778,10 +1762,9 @@ for aIdx = 1:numel(angleTargets)
         interpFcn     = interpFcnAll{i};
         expFolderName = expFolderNameAll{i};
         expData       = expCTDataAll{i};
+        fprintf('Velocity-field data %d deg, %s\n', targetAngle, filedataExp.Key)
 
-        fprintf('Front velocity %d deg, %s\n', targetAngle, filedataExp.Key)
-        passes = struct('tD',{},'z',{},'xc',{},'zc',{},'n',{});
-
+        imgs = {}; tDs = []; ns = []; js = []; Wimg = NaN; Himg = NaN;
         for j = 1:length(expFolderName)
             run_name = "run_" + sprintf('%02d', j);
             HDF5dataPath = ['/exp/' char(run_name) '/conc'];
@@ -1791,67 +1774,114 @@ for aIdx = 1:numel(angleTargets)
             varsRun = expData.varsAll.(dataSource);
             varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
             if isempty(varsRun), continue, end
-            geomE{i} = [ny*expData.exp.(run_name).pca.Geometry.VoxelSizeX, ...
-                        nx*expData.exp.(run_name).pca.Geometry.VoxelSizeY];
-
-            xD = (0:ny-1)/(ny-1);
-            zD = (0:nx-1)/(nx-1);
+            geom = expData.exp.(run_name).pca.Geometry;
+            Wimg = ny*geom.VoxelSizeX/10;  Himg = nx*geom.VoxelSizeY/10;   % image size [cm]
             rot = varsRun.rotPos;
 
-            for n = 0:nHalfMax
+            for n = 0:2
                 angN = targetAngle + 180*n;
                 if angN > 360, break, end
-                idxN = find(abs(rot - angN) <= angleTol_deg);
+                idxN = find(abs(rot - angN) <= vfTol);
                 if isempty(idxN), continue, end
-
-                % consecutive frame indices = one pass through this angle
-                passId = cumsum([1; diff(idxN(:)) > 1]);
+                passId = cumsum([1; diff(idxN(:)) > 1]);          % one group per pass
                 for q = unique(passId)'
                     kq = idxN(passId == q);
-                    zFr = NaN(numel(kq), nXbins);
-                    xcMid = []; zcMid = [];
-                    for m = 1:numel(kq)
-                        [xs, zs] = getContourXY(HDF5filename, HDF5dataPath, kq(m), nx, ny, xD, zD, ...
-                            filedataExp, interpFcn, dataSource, level, flipHalf(n+1));
-                        if isempty(xs), continue, end
-                        zFr(m,:) = frontProfile(xs, zs, xEdges);
-                        if m == ceil(numel(kq)/2), xcMid = xs; zcMid = zs; end
-                    end
-                    passes(end+1) = struct('tD', mean(varsRun.tDtotal(kq)), ...
-                        'z', mean(zFr, 1, 'omitnan'), 'xc', xcMid, 'zc', zcMid, 'n', n); %#ok<SAGROW>
+                    [~, b] = min(abs(rot(kq) - angN));            % closest frame of the pass
+                    kk = kq(b);
+                    img = getSmoothImage(HDF5filename, HDF5dataPath, kk, nx, ny, ...
+                        filedataExp, interpFcn, dataSource, vfSigma, vfFlip(n+1));
+                    imgs{end+1} = single(imresize(img, 1/vfDs)); %#ok<SAGROW>
+                    tDs(end+1)  = varsRun.tDtotal(kk);           %#ok<SAGROW>
+                    ns(end+1)   = n;                             %#ok<SAGROW>
+                    js(end+1)   = j;                             %#ok<SAGROW>
                 end
             end
         end
 
-        % time series sorted by tD; drop passes too close in time
-        if ~isempty(passes)
-            [~, o] = sort([passes.tD]);
-            passes = passes(o);
-            keep = [true, diff([passes.tD]) >= dtDmin];
-            passes = passes(keep);
+        rec = struct('key', string(filedataExp.Key), 'W', Wimg, 'H', Himg, 'xD', [], 'zD', [], ...
+            'tD', [], 'n', [], 'run', [], 'C', [], 'xc', {{}}, 'zc', {{}}, 'zProf', []);
+        if ~isempty(imgs)
+            [tDs, o] = sort(tDs);  imgs = imgs(o);  ns = ns(o);  js = js(o);
+            keep   = [true, diff(tDs) >= vfDtDmin];
+            rec.tD = tDs(keep);  rec.n = ns(keep);  rec.run = js(keep);
+            rec.C  = cat(3, imgs{keep});
+            [nzs, nxs, P] = size(rec.C);
+            rec.xD = linspace(0,1,nxs);  rec.zD = linspace(0,1,nzs);
+            rec.xc = cell(1,P);  rec.zc = cell(1,P);  rec.zProf = NaN(P, vfNbins);
+            for p = 1:P
+                Cm = contourc(rec.xD, rec.zD, double(rec.C(:,:,p)), [vfLevel vfLevel]);
+                [xs, zs] = getLevelSegments(parseContourMatrix(Cm), vfLevel);
+                rec.xc{p} = xs;  rec.zc{p} = zs;
+                if ~isempty(xs), rec.zProf(p,:) = frontProfile(xs, zs, vfEdges); end
+            end
+        end
+        VF{aIdx,i} = rec;
+    end
+end
+
+r1 = [VF{:}];  r1 = r1(isfinite([r1.W]));
+aspHW = r1(1).H / r1(1).W;                 % physical height/width of the images
+
+if ~isfolder('results/'), mkdir('results/'); end
+save(fullfile('results','velField_data.mat'), 'VF', 'vfAngles', 'vfLevel', 'vfXc', '-v7.3');
+
+% Velocity field (1): front velocity arrows, dz_front/dtD at each xD
+% one figure per target angle, one tile per experiment (data from section 0)
+% arrow: starts on the earlier front, length ~ local front velocity, colour = tD
+% only pairs of passes from the same run are used
+
+nXbins   = 15;                % number of arrows across xD
+velMode  = "abs";             % "abs": w = dzD/dtD (shared scale) | "rel": w / mean_x(w)
+arrowMax = 0.08;              % 95th-percentile arrow length in zD units ("abs")
+relScale = 0.05;              % arrow length for w/mean(w) = 1 ("rel")
+tDminContours = 0;
+tDmaxContours = tDmax;
+
+xEdges = linspace(0, 1, nXbins+1);
+xGrid  = 0.5*(xEdges(1:end-1) + xEdges(2:end));
+tD2c   = @(tD) cmap(max(1,min(256, round(1 + 255*min(tD/tDmaxContours,1)))), :);
+
+for aIdx = 1:numel(vfAngles)
+    targetAngle = vfAngles(aIdx);
+
+    % ---------- 1) passes (front profiles) ----------
+    P     = cell(1, nExp);
+    geomE = cell(1, nExp);
+    for i = 1:nExp
+        rec = VF{aIdx,i};
+        passes = struct('tD',{},'z',{},'xc',{},'zc',{},'n',{},'run',{});
+        for p = 1:numel(rec.tD)
+            z = NaN(1, nXbins);
+            if ~isempty(rec.xc{p}), z = frontProfile(rec.xc{p}, rec.zc{p}, xEdges); end
+            passes(end+1) = struct('tD',rec.tD(p), 'z',z, 'xc',rec.xc{p}, 'zc',rec.zc{p}, ...
+                'n',rec.n(p), 'run',rec.run(p)); %#ok<SAGROW>
         end
         P{i} = passes;
+        if isfinite(rec.W), geomE{i} = [rec.W rec.H]; end
     end
 
-    % ---------- 2) velocities and a shared arrow scale ----------
-    W = cell(1, nExp);
+    % ---------- 2) velocities (same run only) and a shared arrow scale ----------
+    Wv = cell(1, nExp);
     for i = 1:nExp
         ps = P{i};
-        W{i} = NaN(max(numel(ps)-1,0), nXbins);
+        Wv{i} = NaN(max(numel(ps)-1,0), nXbins);
         for p = 1:numel(ps)-1
+            if ps(p+1).run ~= ps(p).run, continue, end             % no pairs across runs
             w = (ps(p+1).z - ps(p).z) / (ps(p+1).tD - ps(p).tD);   % dzD/dtD, >0 = moving down
             if velMode == "rel"
                 w = w / mean(w, 'omitnan');
             end
-            W{i}(p,:) = w;
+            Wv{i}(p,:) = w;
         end
     end
     if velMode == "abs"
-        wAll  = abs(cell2mat(cellfun(@(w) w(:), W, 'UniformOutput', false)'));
-        scale = arrowMax / prctile(wAll(isfinite(wAll)), 95);
+        tmp   = cellfun(@(w) w(:), Wv, 'UniformOutput', false);
+        wAll  = abs(vertcat(tmp{:}));
+        wAll  = wAll(isfinite(wAll));
+        if isempty(wAll), scale = 1; else, scale = arrowMax / prctile(wAll, 95); end
         velStr = 'dz_D/dt_D';
     else
-        scale = relScale;
+        scale  = relScale;
         velStr = 'w / mean_x(w)';
     end
 
@@ -1874,10 +1904,10 @@ for aIdx = 1:numel(angleTargets)
 
         % arrows: start on the earlier front, vertical, length ~ velocity
         for p = 1:numel(ps)-1
-            ok = isfinite(W{i}(p,:)) & isfinite(ps(p).z);
+            ok = isfinite(Wv{i}(p,:)) & isfinite(ps(p).z);
             if ~any(ok), continue, end
             tMid = 0.5*(ps(p).tD + ps(p+1).tD);
-            quiver(ax, xGrid(ok), ps(p).z(ok), zeros(1,nnz(ok)), scale*W{i}(p,ok), 0, ...
+            quiver(ax, xGrid(ok), ps(p).z(ok), zeros(1,nnz(ok)), scale*Wv{i}(p,ok), 0, ...
                 'Color', tD2c(tMid), 'LineWidth', 1.1, 'MaxHeadSize', 0.6);
         end
 
@@ -1907,107 +1937,15 @@ for aIdx = 1:numel(angleTargets)
         scStr = sprintf('arrow %.2f z_D = mean speed', relScale);
     end
     title(tl, sprintf('Front velocity %s @ C_D = %.2f, \\theta = %s  (%s)', ...
-        velStr, level, angStr, scStr))
+        velStr, vfLevel, angStr, scStr))
 
-    fname = sprintf('frontVelocity_%s_%03ddeg_%s', velMode, targetAngle, dataSourceAll{1});
-    saveas(fig, fullfile('results/', fname), 'png');
-    saveas(fig, fullfile('results/', fname), 'fig');
+    fname = sprintf('velField1_arrows_%s_%03ddeg_%s', velMode, targetAngle, dataSourceAll{1});
+    saveas(fig, fullfile('results', fname), 'png');
+    saveas(fig, fullfile('results', fname), 'fig');
 end
 
-%% Velocity field (0): shared data -- one smoothed, flip-corrected image per pass
-% For each angle family (theta, theta+180 flipped, 360 = 0 not flipped) and each
-% experiment: the frame closest to the angle in every pass, smoothed like the
-% contour maps and downsampled. Used by sections (1)-(4).
-
-vfAngles  = [0 45 90 135];
-vfTol     = 3;          % deg, angle matching tolerance
-vfLevel   = 0.5;        % front = this C_D contour
-vfSigma   = 20;         % px, Gaussian smoothing (as the contour maps)
-vfDs      = 4;          % downsampling factor after smoothing (speed / memory)
-vfDtDmin  = 0.02;       % passes closer than this in tD are dropped
-vfNbins   = 40;         % xD bins for the front profile z_front(xD)
-vfFlip    = [false true false];   % n = 0,1,2 -> theta, theta+180 (flip), theta+360
-
-vfEdges = linspace(0,1,vfNbins+1);
-vfXc    = 0.5*(vfEdges(1:end-1) + vfEdges(2:end));
-cmap    = flipud(winter(256));
-tileW_px = 230;
-
-VF = cell(numel(vfAngles), nExp);
-for aIdx = 1:numel(vfAngles)
-    targetAngle = vfAngles(aIdx);
-    for i = 1:nExp
-        filedataExp   = filedataExpAll{i};
-        dataSource    = dataSourceAll{i};
-        HDF5filename  = HDF5filenameAll{i};
-        interpFcn     = interpFcnAll{i};
-        expFolderName = expFolderNameAll{i};
-        expData       = expCTDataAll{i};
-        fprintf('Velocity-field data %d deg, %s\n', targetAngle, filedataExp.Key)
-
-        imgs = {}; tDs = []; ns = []; js = []; W = NaN; H = NaN;
-        for j = 1:length(expFolderName)
-            run_name = "run_" + sprintf('%02d', j);
-            HDF5dataPath = ['/exp/' char(run_name) '/conc'];
-            info = h5info(HDF5filename, HDF5dataPath);
-            nx = info.Dataspace.Size(1); ny = info.Dataspace.Size(2);
-
-            varsRun = expData.varsAll.(dataSource);
-            varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
-            if isempty(varsRun), continue, end
-            geom = expData.exp.(run_name).pca.Geometry;
-            W = ny*geom.VoxelSizeX/10;  H = nx*geom.VoxelSizeY/10;     % image size [cm]
-            rot = varsRun.rotPos;
-
-            for n = 0:2
-                angN = targetAngle + 180*n;
-                if angN > 360, break, end
-                idxN = find(abs(rot - angN) <= vfTol);
-                if isempty(idxN), continue, end
-                passId = cumsum([1; diff(idxN(:)) > 1]);          % one group per pass
-                for q = unique(passId)'
-                    kq = idxN(passId == q);
-                    [~, b] = min(abs(rot(kq) - angN));            % closest frame of the pass
-                    kk = kq(b);
-                    img = getSmoothImage(HDF5filename, HDF5dataPath, kk, nx, ny, ...
-                        filedataExp, interpFcn, dataSource, vfSigma, vfFlip(n+1));
-                    imgs{end+1} = single(imresize(img, 1/vfDs)); %#ok<SAGROW>
-                    tDs(end+1)  = varsRun.tDtotal(kk);           %#ok<SAGROW>
-                    ns(end+1)   = n;                             %#ok<SAGROW>
-                    js(end+1)   = j;                             %#ok<SAGROW>
-                end
-            end
-        end
-
-        rec = struct('key', string(filedataExp.Key), 'W', W, 'H', H, 'xD', [], 'zD', [], ...
-            'tD', [], 'n', [], 'run', [], 'C', [], 'xc', {{}}, 'zc', {{}}, 'zProf', []);
-        if ~isempty(imgs)
-            [tDs, o] = sort(tDs);  imgs = imgs(o);  ns = ns(o);  js = js(o);
-            keep   = [true, diff(tDs) >= vfDtDmin];
-            rec.tD = tDs(keep);  rec.n = ns(keep);  rec.run = js(keep);
-            rec.C  = cat(3, imgs{keep});
-            [nzs, nxs, P] = size(rec.C);
-            rec.xD = linspace(0,1,nxs);  rec.zD = linspace(0,1,nzs);
-            rec.xc = cell(1,P);  rec.zc = cell(1,P);  rec.zProf = NaN(P, vfNbins);
-            for p = 1:P
-                Cm = contourc(rec.xD, rec.zD, double(rec.C(:,:,p)), [vfLevel vfLevel]);
-                [xs, zs] = getLevelSegments(parseContourMatrix(Cm), vfLevel);
-                rec.xc{p} = xs;  rec.zc{p} = zs;
-                if ~isempty(xs), rec.zProf(p,:) = frontProfile(xs, zs, vfEdges); end
-            end
-        end
-        VF{aIdx,i} = rec;
-    end
-end
-
-r1 = [VF{:}];  r1 = r1(isfinite([r1.W]));
-aspHW = r1(1).H / r1(1).W;                 % physical height/width of the images
-
-if ~isfolder('results/'), mkdir('results/'); end
-save(fullfile('results','velField_data.mat'), 'VF', 'vfAngles', 'vfLevel', 'vfXc', '-v7.3');
-
-%% Velocity field (1): arrival-time map and front-speed map
-% t_arr(x,z) = tD at which C first crosses vfLevel (linear between passes)
+% Velocity field (2): arrival-time map and front-speed map
+% t_arr(x,z) = tD at which C first crosses vfLevel (linear between passes of the same run)
 % isochrones = contours of t_arr; front velocity v = grad(t_arr)/|grad(t_arr)|^2
 % top row: t_arr + isochrones + arrows (direction of motion); bottom row: speed |v|
 
@@ -2083,14 +2021,14 @@ for aIdx = 1:numel(vfAngles)
 
     title(tl, sprintf('Arrival time and front speed @ C_D = %.2f, \\theta = %d° family', ...
         vfLevel, targetAngle))
-    fname = sprintf('velField1_arrival_%03ddeg_%s', targetAngle, dataSourceAll{1});
+    fname = sprintf('velField2_arrival_%03ddeg_%s', targetAngle, dataSourceAll{1});
     saveas(fig, fullfile('results', fname), 'png');  saveas(fig, fullfile('results', fname), 'fig');
 end
 
-%% Velocity field (3): front contours coloured by local normal speed
+% Velocity field (3): front contours coloured by local normal speed
 % each point of the contour at pass p is coloured by its distance to the nearest
-% point of the contour at pass p+1, divided by delta tD [zD per tD]; + = moving down.
-% Last pass drawn in grey (no next contour).
+% point of the contour at pass p+1 (same run), divided by delta tD [zD per tD];
+% + = moving down. Last pass drawn in grey (no next contour).
 
 for aIdx = 1:numel(vfAngles)
     targetAngle = vfAngles(aIdx);
