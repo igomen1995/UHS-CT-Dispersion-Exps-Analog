@@ -5,6 +5,8 @@
 %   - weight the BTC fit by dConc_avg (not ones(...), as the old script did)
 %   - add front-width (all symmetric pairs) and moment (sigma) KL, full+xtrim
 %   - carry the MFM reference KL
+%   - KL from the vertical profile of the frame(s) with the front centre at
+%     mid-core (fitKL_midProfile: erfc fit of C(z), KL = w^2/(4 tau)), full+xtrim
 %   - plot fitted BTC vs scatter, and compare all methods
 
 %% IMPORT input
@@ -70,6 +72,11 @@ for i = 1:height(inputFileConfig)
 
     zDlevels_KLfit = 0.1:0.1:1.0;
 
+    % KL from the profile with the front centre (C = 0.5) at mid-core
+    zDtarget_mid = 0.5;       % target front position zD
+    zDwin_mid    = 0.05;      % frames with |z50 - target| <= window are averaged
+    tauMode_mid  = "front";   % tau = z50/v_front ("front") | t - t_lines ("lines") | z50/u ("nominal")
+
     % load the data produced by main_CTpreproc.m
     expCT_name = pathExportAll + filedataExp.Key;
     S = load(expCT_name + ".mat");
@@ -104,6 +111,13 @@ for i = 1:height(inputFileConfig)
 
         vars = expCTData.varsAll.(dataSource);
         t_arrival_min = max(tLines_min, 0);   % scalar, broadcasts in fitKL_frontWidth/fitKL_moments
+
+        % measured front velocity from main_CTpreproc (NaN -> fitKL_midProfile uses uint_cmmin)
+        vFront_cmmin = NaN;
+        if isfield(expCTData, 'resultsAll') && isfield(expCTData.resultsAll, dataSource) && ...
+                isfield(expCTData.resultsAll.(dataSource), 'vFront_cmmin')
+            vFront_cmmin = expCTData.resultsAll.(dataSource).vFront_cmmin;
+        end
 
         resultsOut = struct();
 
@@ -214,6 +228,16 @@ for i = 1:height(inputFileConfig)
             end
 
             resultsOut.(variant).KL_front_CT = KL_front;
+
+            % KL from the profile(s) with the front centre at zDtarget_mid
+            plotFile_mid = fullfile(pathExportAll, filedataExp.Key + "_KLmidProfile_" + dataSource + "_" + variant);
+            resultsOut.(variant).KL_midProfile = fitKL_midProfile(vars, variantSuffix, ...
+                zDtarget_mid, zDwin_mid, tLines_min, vFront_cmmin, uint_cmmin, L_cm, tauMode_mid, ...
+                Ci, Cj, plotFile_mid);
+            mp = resultsOut.(variant).KL_midProfile;
+            fprintf('  %s (%s): KL mid-profile = %.4g +/- %.2g cm2/min (closest frame, tD = %.2f, z50 = %.2f), mean of %d frames = %.4g +/- %.2g\n', ...
+                dataSource, variant, mp.KL_cm2min_best, mp.dKL_cm2min_best, mp.tD_best, mp.z50D_best, ...
+                mp.nFrames, mp.KL_cm2min_mean, mp.KL_cm2min_std);
         end
 
         resultsOut.MFM_fitData       = fitDataMFM;
@@ -264,6 +288,10 @@ for i = 1:height(inputFileConfig)
                                       'intercept_cm2','R2','nSelected','nValid','t_vertex_min'})]; %#ok<AGROW>
             end
             writetable(frontT, xlsxName, 'Sheet', "KL_front_" + variant);
+
+            if ~isempty(d.KL_midProfile.T)
+                writetable(d.KL_midProfile.T, xlsxName, 'Sheet', "KL_midProfile_" + variant);
+            end
         end
 
         summaryT = table(string(fitDataMFM), ...
@@ -272,6 +300,17 @@ for i = 1:height(inputFileConfig)
             'VariableNames', {'MFM_fitData', ...
             'KL_MFM_CT_cm2min','dKL_MFM_CT_cm2min','MFM_CT_bestModel','D12_CT_cm2min', ...
             'KL_MFM_UHS_cm2min','dKL_MFM_UHS_cm2min','MFM_UHS_bestModel','D12_UHS_cm2min'});
+        for variantArr = ["full","xtrim"]
+            mp = resultsOut.(variantArr).KL_midProfile;
+            sfx = ternary_str(variantArr=="full", "", "_xtrim");
+            summaryT.("KL_midProfile_cm2min" + sfx)      = mp.KL_cm2min_best;
+            summaryT.("dKL_midProfile_cm2min" + sfx)     = mp.dKL_cm2min_best;
+            summaryT.("KL_midProfile_mean_cm2min" + sfx) = mp.KL_cm2min_mean;
+            summaryT.("KL_midProfile_std_cm2min" + sfx)  = mp.KL_cm2min_std;
+            summaryT.("midProfile_tD" + sfx)             = mp.tD_best;
+        end
+        summaryT.midProfile_tauMode = string(tauMode_mid);
+        summaryT.vFront_used_cmmin  = resultsOut.full.KL_midProfile.v_used_cmmin;
         if ismember('tD_corr_vFrontC50', vars.Properties.VariableNames)
             summaryT.tD_corr_vFrontC50       = median(vars.tD_corr_vFrontC50,'omitnan');
             summaryT.tD_corr_vFrontC50_xtrim = median(vars.tD_corr_vFrontC50_xtrim,'omitnan');
