@@ -1,5 +1,9 @@
-function plotKLComparison(resultsOut, Key, dataSource, pathExportAll)
+function plotKLComparison(resultsOut, Key, dataSource, pathExportAll, plotSources, zDcompare, midMethod)
 % PLOTKLCOMPARISON
+%   Runs only for the data sources in plotSources (default "conc"); others return at once.
+%   0) mid-core comparison (KLmidCompare_<Key>_<ds>): BTC at zD = zDcompare (default 0.5),
+%      mid-profile KL (method midMethod, default "contour": w^2/(4 tau), tau from the
+%      contour arrival), full and xtrim, against MFM CT and MFM UHS
 %   1) KL bar chart (0-10 cm2/min): BTC per zD (full/xtrim), front
 %      width/sigma (full/xtrim), mid-core profile (full/xtrim, if computed),
 %      MFM CT and MFM UHS (with total uncertainty)
@@ -9,7 +13,11 @@ function plotKLComparison(resultsOut, Key, dataSource, pathExportAll)
 %      all frames, frames used, fitted line + overview per variant
 %   Individual fits -> <pathExportAll>/KLfits_<Key>_<dataSource>/
 
+if nargin < 5 || isempty(plotSources), plotSources = "conc"; end
+if nargin < 6 || isempty(zDcompare),   zDcompare   = 0.5;    end
+if nargin < 7 || isempty(midMethod),   midMethod   = "contour"; end
 Key = string(Key);  dataSource = string(dataSource);
+if ~ismember(dataSource, string(plotSources)), return, end
 if ~isfolder(pathExportAll), mkdir(pathExportAll); end
 fitDir = fullfile(pathExportAll, "KLfits_" + Key + "_" + dataSource);
 if ~isfolder(fitDir), mkdir(fitDir); end
@@ -19,6 +27,87 @@ if isfield(resultsOut, 'MFM_fitData'), mfmTag = " (" + string(resultsOut.MFM_fit
 
 variants = ["full","xtrim"];
 KLmax = 10;   % bar chart x-limit [cm2/min]
+
+%% 0) mid-core comparison: BTC at zDcompare vs mid-profile KL vs MFM
+zTag = "zD" + strrep(sprintf('%.1f', zDcompare), '.', 'p');
+cLab = strings(0,1);  cVal = [];  cErr = [];  cMean = [];  cStd = [];  cCol = zeros(0,3);
+colBTC = [0.00 0.45 0.74; 0.55 0.75 0.90];      % full / xtrim
+colMid = [0.55 0.35 0.65; 0.80 0.65 0.90];
+for v = 1:numel(variants)
+    variant = variants(v);
+    % BTC at zDcompare
+    kl = NaN;  dkl = NaN;
+    if isfield(resultsOut.(variant), 'KL_BTC_CT_byZD') && isfield(resultsOut.(variant).KL_BTC_CT_byZD, zTag)
+        e = resultsOut.(variant).KL_BTC_CT_byZD.(zTag);
+        if e.complete && isfield(e.best,'KL_cm2min')
+            kl = e.best.KL_cm2min;
+            if isfield(e.best,'dKL_cm2min'), dkl = e.best.dKL_cm2min; end
+        end
+    end
+    cLab(end+1,1) = sprintf("BTC z_D = %.1f, %s", zDcompare, variant);  %#ok<AGROW>
+    cVal(end+1) = kl;  cErr(end+1) = dkl;  cMean(end+1) = NaN;  cStd(end+1) = NaN;  %#ok<AGROW>
+    cCol(end+1,:) = colBTC(v,:);                                         %#ok<AGROW>
+    % mid-profile
+    kl = NaN;  dkl = NaN;  km = NaN;  ks = NaN;  zmid = zDcompare;  lblM = midMethod;
+    if isfield(resultsOut.(variant), 'KL_midProfile') && isfield(resultsOut.(variant).KL_midProfile, 'methods') ...
+            && isfield(resultsOut.(variant).KL_midProfile.methods, midMethod)
+        mp = resultsOut.(variant).KL_midProfile;  r = mp.methods.(midMethod);
+        kl = r.KL_cm2min_best;  dkl = r.dKL_cm2min_best;  km = r.KL_cm2min_mean;  ks = r.KL_cm2min_std;
+        zmid = mp.zDtarget;  lblM = r.label;
+    end
+    cLab(end+1,1) = sprintf("mid-profile z_{50} = %.1f, %s, %s", zmid, lblM, variant);  %#ok<AGROW>
+    cVal(end+1) = kl;  cErr(end+1) = dkl;  cMean(end+1) = km;  cStd(end+1) = ks;  %#ok<AGROW>
+    cCol(end+1,:) = colMid(v,:);                                         %#ok<AGROW>
+end
+mfmCols = lines(6);
+cLab(end+1,1) = "MFM CT"  + mfmTag + " - " + string(resultsOut.MFM_CT_bestModel);
+cVal(end+1) = resultsOut.KL_MFM_CT;   cErr(end+1) = resultsOut.dKL_MFM_CT;   cMean(end+1) = NaN;  cStd(end+1) = NaN;
+cCol(end+1,:) = mfmCols(5,:);
+cLab(end+1,1) = "MFM UHS" + mfmTag + " - " + string(resultsOut.MFM_UHS_bestModel);
+cVal(end+1) = resultsOut.KL_MFM_UHS;  cErr(end+1) = resultsOut.dKL_MFM_UHS;  cMean(end+1) = NaN;  cStd(end+1) = NaN;
+cCol(end+1,:) = mfmCols(6,:);
+cErr(~isfinite(cErr)) = 0;
+
+nC = numel(cVal);  yC = 1:nC;
+cPlot = cVal;  cPlot(~isfinite(cPlot)) = 0;
+figC = figure('Position',[100 100 850 60 + 45*nC]);
+axC = axes(figC);  hold(axC,'on')
+bC = barh(axC, yC, cPlot, 'FaceColor','flat', 'HandleVisibility','off');
+bC.CData = cCol;
+errorbar(axC, cPlot, yC, cErr, 'horizontal', 'k.', 'LineWidth',1, 'HandleVisibility','off')
+okC = isfinite(cMean);
+if any(okC)
+    sC = cStd;  sC(~isfinite(sC)) = 0;
+    errorbar(axC, cMean(okC), yC(okC), sC(okC), 'horizontal', 'LineStyle','none', ...
+        'Color',[0.15 0.15 0.15], 'LineWidth',0.8, 'HandleVisibility','off')
+    scatter(axC, cMean(okC), yC(okC), 32, 'd', 'filled', 'MarkerFaceColor','k', ...
+        'DisplayName','mid-profile: mean \pm std over the frames')
+    legend(axC, 'Location','southeast', 'FontSize',8)
+end
+if isfinite(resultsOut.KL_MFM_CT)
+    xline(axC, resultsOut.KL_MFM_CT, '--', 'Color',mfmCols(5,:), 'LineWidth',1.2, 'HandleVisibility','off')
+end
+if isfinite(resultsOut.KL_MFM_UHS)
+    xline(axC, resultsOut.KL_MFM_UHS, ':', 'Color',mfmCols(6,:), 'LineWidth',1.5, 'HandleVisibility','off')
+end
+for k = 1:nC                                    % value labels (or "n/a")
+    if isfinite(cVal(k))
+        txt = sprintf('  %.3g', cVal(k));  xt = min(cVal(k) + cErr(k), 0.97*KLmax);
+    else
+        txt = '  n/a';  xt = 0;
+    end
+    if isfinite(cVal(k)) && cVal(k) > KLmax, txt = sprintf('%.3g \\rightarrow', cVal(k)); end
+    text(axC, xt, yC(k), txt, 'VerticalAlignment','middle', 'FontSize',8, ...
+        'HorizontalAlignment', ternaryAlign(isfinite(cVal(k)) && cVal(k) > KLmax))
+end
+set(axC, 'YTick',yC, 'YTickLabel',cLab, 'TickLabelInterpreter','tex', 'FontSize',9, 'YDir','reverse')
+ylim(axC, [0.4, nC+0.6]);  xlim(axC, [0 KLmax]);  grid(axC,'on')
+xlabel(axC, 'K_L [cm^2/min]')
+title(axC, sprintf('%s (%s): K_L at mid-core -- BTC z_D = %.1f vs front profile vs MFM', ...
+    Key, dataSource, zDcompare), 'Interpreter','tex', 'FontSize',10)
+fnC = sprintf('KLmidCompare_%s_%s', Key, dataSource);
+saveas(figC, fullfile(pathExportAll, fnC), 'png');
+saveas(figC, fullfile(pathExportAll, fnC), 'fig');
 
 %% 1) KL bar chart
 labels = strings(0,1);  vals = [];  errs = [];  grp = [];  mVals = [];  sVals = [];
@@ -312,4 +401,8 @@ for v = 1:numel(variants)
         saveas(figAll, fullfile(pathExportAll, fnAll), 'fig');
     end
 end
+end
+
+function a = ternaryAlign(isRight)
+if isRight, a = 'right'; else, a = 'left'; end
 end
