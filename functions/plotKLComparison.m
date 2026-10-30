@@ -23,7 +23,7 @@ KLmax = 10;   % bar chart x-limit [cm2/min]
 %% 1) KL bar chart
 labels = strings(0,1);  vals = [];  errs = [];  grp = [];  mVals = [];  sVals = [];
 % groups: 1 BTC full, 2 BTC xtrim, 3/4 front no-int, 5 MFM CT, 6 MFM UHS, 7/8 front int,
-%         9/10 mid-core profile (full / xtrim)
+%         9-14 mid-core profile (contour / lines / sigma, full and xtrim)
 for v = 1:numel(variants)
     variant = variants(v);
 
@@ -54,16 +54,20 @@ for v = 1:numel(variants)
         if isfield(S2,'KL_cm2min_std'),  sVals(end+1) = S2.KL_cm2min_std;  else, sVals(end+1) = NaN; end %#ok<AGROW>
     end
 
-    % KL from the profile with the front centre at mid-core (fitKL_midProfile)
-    if isfield(resultsOut.(variant), 'KL_midProfile')
+    % KL from the profile with the front centre at mid-core (fitKL_midProfile),
+    % three methods: w^2/(4 tau) with t_arr contour, w^2/(4 tau) with t_arr lines, sigma
+    if isfield(resultsOut.(variant), 'KL_midProfile') && isfield(resultsOut.(variant).KL_midProfile, 'methods')
         mp = resultsOut.(variant).KL_midProfile;
-        if isfinite(mp.KL_cm2min_best)
-            labels(end+1,1) = sprintf("profile z_{50}=%.1f (\\tau %s) %s", mp.zDtarget, mp.tauMode, variant); %#ok<AGROW>
-            vals(end+1)  = mp.KL_cm2min_best;                    %#ok<AGROW>
-            errs(end+1)  = mp.dKL_cm2min_best;                   %#ok<AGROW>
-            grp(end+1)   = 8 + v;                                %#ok<AGROW>  % 9 full, 10 xtrim
-            mVals(end+1) = mp.KL_cm2min_mean;                    %#ok<AGROW>  % mean +/- std over the selected frames
-            sVals(end+1) = mp.KL_cm2min_std;                     %#ok<AGROW>
+        mNames = ["contour","lines","sigma"];
+        for mm = 1:numel(mNames)
+            r = mp.methods.(mNames(mm));
+            if ~isfinite(r.KL_cm2min_best), continue, end
+            labels(end+1,1) = sprintf("mid z_D=%.1f, %s %s", mp.zDtarget, r.label, variant); %#ok<AGROW>
+            vals(end+1)  = r.KL_cm2min_best;                     %#ok<AGROW>
+            errs(end+1)  = r.dKL_cm2min_best;                    %#ok<AGROW>
+            grp(end+1)   = 8 + 2*(mm-1) + v;                     %#ok<AGROW>  % 9/10 contour, 11/12 lines, 13/14 sigma
+            mVals(end+1) = r.KL_cm2min_mean;                     %#ok<AGROW>  % mean +/- std over the selected frames
+            sVals(end+1) = r.KL_cm2min_std;                      %#ok<AGROW>
         end
     end
 end
@@ -78,8 +82,13 @@ mVals(end+1) = NaN;  sVals(end+1) = NaN;
 errs(~isfinite(errs)) = 0;
 grpNames = ["BTC full","BTC xtrim","front full (no int)","front xtrim (no int)", ...
             "MFM CT","MFM UHS","front full (int)","front xtrim (int)", ...
-            "mid-core profile full","mid-core profile xtrim"];
-grpCol   = [lines(8); 0.55 0.35 0.65; 0.80 0.65 0.90];
+            "mid w^2/4\tau contour full","mid w^2/4\tau contour xtrim", ...
+            "mid w^2/4\tau lines full","mid w^2/4\tau lines xtrim", ...
+            "mid sigma full","mid sigma xtrim"];
+grpCol   = [lines(8); ...
+            0.55 0.35 0.65; 0.80 0.65 0.90; ...     % contour: purple
+            0.60 0.40 0.20; 0.85 0.70 0.50; ...     % lines: brown
+            0.20 0.55 0.55; 0.55 0.85 0.85];        % sigma: teal
 
 nBars = numel(vals);
 figBar = figure('Position',[100 100 900 max(450, 22*nBars)]);
