@@ -1,7 +1,8 @@
 function plotKLComparison(resultsOut, Key, dataSource, pathExportAll)
 % PLOTKLCOMPARISON
 %   1) KL bar chart (0-10 cm2/min): BTC per zD (full/xtrim), front
-%      width/sigma (full/xtrim), MFM CT and MFM UHS (with total uncertainty)
+%      width/sigma (full/xtrim), mid-core profile (full/xtrim, if computed),
+%      MFM CT and MFM UHS (with total uncertainty)
 %   2) one figure per completed BTC fit (variant x zD): data + fitted curve
 %   3) one overview per variant: all completed zD BTC fits overlaid
 %   4) one figure per front width pair / sigma fit (variant x method):
@@ -21,7 +22,8 @@ KLmax = 10;   % bar chart x-limit [cm2/min]
 
 %% 1) KL bar chart
 labels = strings(0,1);  vals = [];  errs = [];  grp = [];  mVals = [];  sVals = [];
-% groups: 1 BTC full, 2 BTC xtrim, 3/4 front no-int, 5 MFM CT, 6 MFM UHS, 7/8 front int
+% groups: 1 BTC full, 2 BTC xtrim, 3/4 front no-int, 5 MFM CT, 6 MFM UHS, 7/8 front int,
+%         9/10 mid-core profile (full / xtrim)
 for v = 1:numel(variants)
     variant = variants(v);
 
@@ -51,18 +53,33 @@ for v = 1:numel(variants)
         if isfield(S2,'KL_cm2min_mean'), mVals(end+1) = S2.KL_cm2min_mean; else, mVals(end+1) = NaN; end %#ok<AGROW>
         if isfield(S2,'KL_cm2min_std'),  sVals(end+1) = S2.KL_cm2min_std;  else, sVals(end+1) = NaN; end %#ok<AGROW>
     end
+
+    % KL from the profile with the front centre at mid-core (fitKL_midProfile)
+    if isfield(resultsOut.(variant), 'KL_midProfile')
+        mp = resultsOut.(variant).KL_midProfile;
+        if isfinite(mp.KL_cm2min_best)
+            labels(end+1,1) = sprintf("profile z_{50}=%.1f (\\tau %s) %s", mp.zDtarget, mp.tauMode, variant); %#ok<AGROW>
+            vals(end+1)  = mp.KL_cm2min_best;                    %#ok<AGROW>
+            errs(end+1)  = mp.dKL_cm2min_best;                   %#ok<AGROW>
+            grp(end+1)   = 8 + v;                                %#ok<AGROW>  % 9 full, 10 xtrim
+            mVals(end+1) = mp.KL_cm2min_mean;                    %#ok<AGROW>  % mean +/- std over the selected frames
+            sVals(end+1) = mp.KL_cm2min_std;                     %#ok<AGROW>
+        end
+    end
 end
 
 labels(end+1,1) = "MFM CT"  + mfmTag + " - " + string(resultsOut.MFM_CT_bestModel);
 vals(end+1) = resultsOut.KL_MFM_CT;   errs(end+1) = resultsOut.dKL_MFM_CT;   grp(end+1) = 5;
+mVals(end+1) = NaN;  sVals(end+1) = NaN;
 labels(end+1,1) = "MFM UHS" + mfmTag + " - " + string(resultsOut.MFM_UHS_bestModel);
 vals(end+1) = resultsOut.KL_MFM_UHS;  errs(end+1) = resultsOut.dKL_MFM_UHS;  grp(end+1) = 6;
 mVals(end+1) = NaN;  sVals(end+1) = NaN;
 
 errs(~isfinite(errs)) = 0;
 grpNames = ["BTC full","BTC xtrim","front full (no int)","front xtrim (no int)", ...
-            "MFM CT","MFM UHS","front full (int)","front xtrim (int)"];
-grpCol   = lines(8);
+            "MFM CT","MFM UHS","front full (int)","front xtrim (int)", ...
+            "mid-core profile full","mid-core profile xtrim"];
+grpCol   = [lines(8); 0.55 0.35 0.65; 0.80 0.65 0.90];
 
 nBars = numel(vals);
 figBar = figure('Position',[100 100 900 max(450, 22*nBars)]);
