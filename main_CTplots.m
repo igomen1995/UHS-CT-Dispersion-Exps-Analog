@@ -23,6 +23,7 @@
 %   4  MFM analog BTC
 %   4b MFM analog BTC with the fitted curve (16-84 %), vs time elapsed and vs t_D
 %   5  MFM UHS BTC
+%   5b MFM UHS BTC with the fitted curve (16-84 %), vs time elapsed and vs t_D
 %   6  MFM analog + UHS BTC together
 %   7  measured front width vs tD
 %   8  measured front envelope, all experiments together
@@ -474,6 +475,90 @@ for ds = dataSources
     legend('Interpreter','none','FontSize',8,'Location','northwest')
     title(sprintf('BT curves from MFM UHS (%s, %s)', ds, fitDataOf.(ds)), 'Interpreter','none')
     saveFigBoth(fig, exportPath, sprintf('BT_MFM_UHS_%s_tD', ds), closeAfterSave)
+end
+
+%% 5b) MFM UHS BTC with the fitted curve (best method of main_Processing, shown 16-84 %)
+% Same as 4b for the UHS experiment paired with each CT run (MFM_BTC_UHS_Key).
+% Legend names: H2-CO2 -> UHS-hiM, H2-CH4 -> UHS-loM; Q1 -> -loPe, Q5 -> -hiPe.
+% uhsRunSwap: for keys containing all tokens in {1}, use run {3} instead of {2}
+% (here H2-CH4 Q1: R1 is replaced by R2 from the same expProcFullData.mat).
+
+uhsRunSwap   = {["_H2_CH4_","_Q1_"], "_R1", "_R2"};    % {match tokens, from, to}; {} = none
+uhsColRules  = {"H2_CO2", [0.318 0.654 0.976], [0.090 0.306 0.525]; ...   % {token, light Q1, dark}
+                "H2_CH4", [0.435 0.753 0.251], [0.059 0.361 0.102]};
+uhsNameRules = {"H2_CO2", "UHS-hiM";  "H2_CH4", "UHS-loM"};
+uhsPeRules   = {"Q1", "-loPe";  "Q5", "-hiPe"};
+
+% UHS data per CT run (with the run swap), colour and name
+uhsData = cell(nExp,1);  uhsKey = strings(nExp,1);  uhsCol = zeros(nExp,3);  uhsName = strings(nExp,1);
+for i = 1:nExp
+    key = string(inputFileConfig.MFM_BTC_UHS_Key{i});  uhsData{i} = MFM_UHS_DataAll{i};
+    if ~isempty(uhsRunSwap) && all(arrayfun(@(t) contains(key, t), uhsRunSwap{1})) && contains(key, uhsRunSwap{2})
+        key2  = strrep(key, uhsRunSwap{2}, uhsRunSwap{3});
+        fUHS  = fullfile(Root, regexprep(inputFileConfig.MFM_BTC_UHS_Path{i}, '^(\.\./)+', ''), 'expProcFullData.mat');
+        try
+            uhsData{i} = loadMFMbyDataSource(fUHS, key2, fitDataOf);
+            fprintf('5b: %s replaced by %s\n', key, key2);  key = key2;
+        catch ME
+            warning('5b: %s not loaded (%s) -- %s left out', key2, ME.message, key);
+            uhsData{i} = [];
+        end
+    end
+    uhsKey(i) = key;
+    [uhsCol(i,:), uhsName(i)] = expStyle(key, uhsColRules, uhsNameRules, uhsPeRules, cols(i,:));
+end
+% the same UHS experiment can be paired with several CT runs: plot it once
+[~, uhsFirst] = unique(uhsKey, 'stable');
+
+for ds = dataSources
+    for v = 1:size(btFitX,1)
+        xVar = btFitX{v,1};  sc = btFitX{v,3};
+        fig = figure('Position',[100 100 1000 650]);  hold on
+        h = gobjects(0);  isDur = false;
+
+        for i = uhsFirst(:)'
+            if isempty(uhsData{i}) || ~isfield(uhsData{i}, ds) || isempty(uhsData{i}.(ds)), continue, end
+            mfm = uhsData{i}.(ds);
+            BT = mfm.BT;  vn = BT.Properties.VariableNames;
+            if ~ismember(xVar, vn)
+                warning('%s (%s): MFM BT has no %s, skipped', uhsKey(i), ds, xVar);  continue
+            end
+            x = BT.(xVar);
+
+            if ds == "rhoNorm"
+                C = BT.rho_norm;  Clo = C;  Chi = C;
+                if ismember('drho_norm', vn), Clo = C - BT.drho_norm;  Chi = C + BT.drho_norm; end
+            elseif sc == 100 && ismember('Ci', vn)              % time plot: C_1 in mol %
+                C = BT.Ci/100;  Clo = C;  Chi = C;
+                if all(ismember({'CiMin','CiMax'}, vn)), Clo = BT.CiMin/100;  Chi = BT.CiMax/100; end
+            else                                               % t_D plot: normalized C_D
+                C = BT.CDi;  Clo = C;  Chi = C;
+                if all(ismember({'CDiMin','CDiMax'}, vn)), Clo = BT.CDiMin;  Chi = BT.CDiMax; end
+            end
+            isDur = isduration(x);
+            errorbar(x, sc*C, sc*(C - Clo), sc*(Chi - C), 'LineStyle','none', ...
+                'Color',[0.88 0.88 0.88], 'HandleVisibility','off')
+            h(end+1) = scatter(x, sc*C, 6, uhsCol(i,:), 'filled', 'DisplayName', uhsName(i)); %#ok<SAGROW>
+
+            if ~ismember('C_fit_best', vn)
+                warning('%s (%s): no C_fit_best in the MFM BT, fit not drawn', uhsKey(i), ds);  continue
+            end
+            Cf   = BT.C_fit_best/100;
+            cond = Cf >= fitRange(1) & Cf <= fitRange(2);
+            h(end+1) = plot(x(cond), sc*Cf(cond), '-', 'Color',0.6*uhsCol(i,:), 'LineWidth',3, ...
+                'DisplayName', uhsName(i) + " fit"); %#ok<SAGROW>
+        end
+
+        if isempty(h), close(fig); continue, end
+        if isDur, xtickformat('hh:mm:ss'), end
+        xlabel(btFitX{v,2}, 'FontSize',14)
+        if sc == 100, ylabel('C_1 [mol %]','FontSize',14);  ylim([-0.1 100.1])
+        else,         ylabel('C_D [-]','FontSize',14);      ylim([-0.001 1.001]);  xlim([0 2]); end
+        set(gca,'FontSize',12);  grid on
+        lgd = legend(h, 'Interpreter','tex', 'FontSize',9, 'Location','southeast');
+        lgd.ItemTokenSize = [15 8];
+        saveFigBoth(fig, exportPath, sprintf('BT_MFM_UHS_fit_%s_%s', ds, btFitX{v,4}), closeAfterSave)
+    end
 end
 
 %% 6) MFM analog + UHS BTC together
