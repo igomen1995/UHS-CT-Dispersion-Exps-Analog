@@ -21,6 +21,7 @@
 %   2  Z profiles at a range of tD targets
 %   3  CT outlet BTC vs time, tD_total and front-velocity-scaled tD_core
 %   4  MFM analog BTC
+%   4b MFM analog BTC with the fitted curve (16-84 %), vs time elapsed and vs t_D
 %   5  MFM UHS BTC
 %   6  MFM analog + UHS BTC together
 %   7  measured front width vs tD
@@ -97,6 +98,17 @@ else
 end
 colsDark = 0.6*cols;
 markers  = {'o','s','^','d','v','>','<','p','h'};
+
+% experiment colours / names (same scheme as main_dimlessTranspNo and the paper figure):
+% P900 (high M) blue, P725 (low M) green; Q1 light (loPe), Q5 dark (hiPe)
+expColRules  = {"P900", [0.318 0.654 0.976], [0.090 0.306 0.525]; ...    % {key token, light, dark}
+                "P725", [0.435 0.753 0.251], [0.059 0.361 0.102]};
+expNameRules = {"P725", "XCT-loM";  "P900", "XCT-hiM"};
+expPeRules   = {"Q1", "-loPe";  "Q5", "-hiPe"};
+expCol  = zeros(nExp,3);  expName = expKeys;
+for i = 1:nExp
+    [expCol(i,:), expName(i)] = expStyle(expKeys(i), expColRules, expNameRules, expPeRules, cols(i,:));
+end
 
 %% 1) Z profile closest to (zD, CD) target
 % frame selection by findProfileFrame (same rule as KL_profileAt in main_CTpostproc):
@@ -382,6 +394,71 @@ for ds = dataSources
     saveFigBoth(fig, exportPath, sprintf('BT_MFM_CT_%s_tD', ds), closeAfterSave)
 end
 
+%% 4b) MFM analog BTC with the fitted curve (best method of main_Processing, shown 16-84 %)
+% Same layout as the BTfitting plots of main_Processing: grey error bars, data markers,
+% fitted curve (BT.C_fit_best) only where 0.16 <= C_fit <= 0.84. Two versions:
+%   time elapsed [hh:mm:ss] with C in %  (as <case>_BTfitting in main_Processing)
+%   t_D with C_D [-]                     (as <case>_BTfitting_dimless)
+
+fitRange = [0.16 0.84];
+% {x column, x label, C scale (100 = %, 1 = fraction), file tag}
+btFitX = {'TimeElapsed', 'Time elapsed [hh:mm:ss]', 100, 'time'; ...
+          mfmTimeVar,    't_D [-]',                  1,   'tD'};
+
+for ds = dataSources
+    for v = 1:size(btFitX,1)
+        xVar = btFitX{v,1};  sc = btFitX{v,3};
+        fig = figure('Position',[100 100 1000 650]);  hold on
+        h = gobjects(0);  isDur = false;
+
+        for i = 1:nExp
+            mfm = MFM_CT_DataAll{i}.(ds);
+            if isempty(mfm), continue, end
+            BT = mfm.BT;  vn = BT.Properties.VariableNames;
+            if ~ismember(xVar, vn)
+                warning('%s (%s): MFM BT has no %s, skipped', expKeys(i), ds, xVar);  continue
+            end
+            x = BT.(xVar);
+
+            % data and its uncertainty band, as main_Processing (fraction 0..1 here)
+            if ds == "rhoNorm"
+                C = BT.rho_norm;  Clo = C;  Chi = C;
+                if ismember('drho_norm', vn), Clo = C - BT.drho_norm;  Chi = C + BT.drho_norm; end
+            elseif sc == 100 && ismember('Ci', vn)              % time plot: C_1 in mol %, as main_Processing
+                C = BT.Ci/100;  Clo = C;  Chi = C;
+                if all(ismember({'CiMin','CiMax'}, vn)), Clo = BT.CiMin/100;  Chi = BT.CiMax/100; end
+            else                                               % t_D plot: normalized C_D
+                C = BT.CDi;  Clo = C;  Chi = C;
+                if all(ismember({'CDiMin','CDiMax'}, vn)), Clo = BT.CDiMin;  Chi = BT.CDiMax; end
+            end
+            isDur = isduration(x);
+            errorbar(x, sc*C, sc*(C - Clo), sc*(Chi - C), 'LineStyle','none', ...
+                'Color',[0.88 0.88 0.88], 'HandleVisibility','off')
+            h(end+1) = scatter(x, sc*C, 6, cols(i,:), 'filled', ...
+                'DisplayName', expName(i)); %#ok<SAGROW>
+
+            % fitted curve, 16-84 % only
+            if ~ismember('C_fit_best', vn)
+                warning('%s (%s): no C_fit_best in the MFM BT, fit not drawn', expKeys(i), ds);  continue
+            end
+            Cf   = BT.C_fit_best/100;                                % stored in %
+            cond = Cf >= fitRange(1) & Cf <= fitRange(2);
+            h(end+1) = plot(x(cond), sc*Cf(cond), '-', 'Color',colsDark(i,:), 'LineWidth',3, ...
+                'DisplayName', expName(i) + " fit"); %#ok<SAGROW>
+        end
+
+        if isempty(h), close(fig); continue, end
+        if isDur, xtickformat('hh:mm:ss'), end
+        xlabel(btFitX{v,2}, 'FontSize',14)
+        if sc == 100, ylabel('C_1 [mol %]','FontSize',14);  ylim([-0.1 100.1])
+        else,         ylabel('C_D [-]','FontSize',14);      ylim([-0.001 1.001]);  xlim([0 2]); end
+        set(gca,'FontSize',12);  grid on
+        lgd = legend(h, 'Interpreter','tex', 'FontSize',9, 'Location','southeast');
+        lgd.ItemTokenSize = [15 8];
+        saveFigBoth(fig, exportPath, sprintf('BT_MFM_CT_fit_%s_%s', ds, btFitX{v,4}), closeAfterSave)
+    end
+end
+
 %% 5) MFM UHS BTC
 
 for ds = dataSources
@@ -496,16 +573,7 @@ envPairs   = {'10_90','20_80','30_70','40_60'};
 envVariant = "";              % "" = full image, "_xtrim" = x-trimmed
 greyProf   = [0.55 0.55 0.55];
 
-% experiment colours / names (same scheme as main_dimlessTranspNo and the paper figure):
-% P900 (high M) blue, P725 (low M) green; Q1 light (loPe), Q5 dark (hiPe)
-expColRules  = {"P900", [0.318 0.654 0.976], [0.090 0.306 0.525]; ...    % {key token, light, dark}
-                "P725", [0.435 0.753 0.251], [0.059 0.361 0.102]};
-expNameRules = {"P725", "XCT-loM";  "P900", "XCT-hiM"};
-expPeRules   = {"Q1", "-loPe";  "Q5", "-hiPe"};
-expCol  = zeros(nExp,3);  expName = expKeys;
-for i = 1:nExp
-    [expCol(i,:), expName(i)] = expStyle(expKeys(i), expColRules, expNameRules, expPeRules, cols(i,:));
-end
+% experiment colours / names (expCol, expName): see the Load data section
 
 for ds = dataSources
     for i = 1:nExp
@@ -1078,4 +1146,9 @@ for r = 1:size(peRules,1)
     if contains(key, "_" + peRules{r,1} + "_"), nm = nm + peRules{r,2}; end
 end
 if nm ~= "", name = nm; end
+end
+
+function n = fieldOrVarNames(x)
+% field names of a struct or variable names of a table
+    if istable(x), n = x.Properties.VariableNames; elseif isstruct(x), n = fieldnames(x); else, n = {}; end
 end
