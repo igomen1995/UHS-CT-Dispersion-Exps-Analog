@@ -4,14 +4,18 @@
 %   - fit the BTC/CDE method for both full and x-trimmed CD1_zD* columns
 %   - weight the BTC fit by dConc_avg (not ones(...), as the old script did)
 %   - add front-width (all symmetric pairs) and moment (sigma) KL, full+xtrim
+%   - per-frame front widths of the AVERAGED profile (addProfileWidths: level pairs
+%     10/90 ... 40/60 and erfc-fit width of CVert / CVert_xtrim), stored in varsAll next
+%     to the contour widths (rebuilt every run) and fitted with the same fitKL_frontWidth
+%     as the contour widths: W^2/(4k^2) = KL t
 %   - carry the MFM reference KL
-%   - KL from the vertical profile of the frame(s) with the front centre at
-%     mid-core (fitKL_midProfile), full+xtrim, three methods:
-%       front-width method (Lake & Johns, Ekwere Peters): erfc fit of the profile
-%       (first ADE term, centre and width free), KL = w^2/(4 tau), with
-%       contour: tau = t - t_arrival from contour detection (first C = 0.01 contour)
-%       lines  : tau = t - t_arrival from the line volume
-%       sigma  : spatial second moment of the front, KL = sigma_z^2/(2 tau)
+%   - KL from single profiles at a fixed time (KL_profileAt): the frame whose averaged
+%     profile passes through (zD, C) = (zDtarget_mid, CDtarget_mid) (default mid-core,
+%     C = 0.5) and the frames within +/- zDwin_mid; width from profileWidth (same as the
+%     width-vs-time fit), first ADE term (Lake & Johns, Ekwere Peters):
+%       level pairs : KL = W^2/(4 k^2 tau),  erfc : KL = w^2/(4 tau),  sigma : sigma^2/(2 tau)
+%     for tau = t - t_arrival from contour detection ("contour", first C = 0.01 contour)
+%     and from the line volume ("lines"); aliases contour / lines = erfc, sigma = sigma
 %   - plot fitted BTC vs scatter, and compare all methods
 
 %% IMPORT input
@@ -78,9 +82,19 @@ for i = 1:height(inputFileConfig)
     zDlevels_KLfit = 0.1:0.1:1.0;
 
     % KL from the profile with the front centre (C = 0.5) at mid-core
-    zDtarget_mid = 0.5;       % target front position zD
-    zDwin_mid    = 0.05;      % frames with |z50 - target| <= window are averaged
+    zDtarget_mid = 0.5;       % target position zD of the profile ...
+    CDtarget_mid = 0.5;       % ... at this concentration (0.5 = front centre)
+    zDwin_mid    = 0.05;      % frames with |zD(C = CDtarget) - zDtarget| <= window are averaged
     sigmaTau_mid = "contour"; % arrival time used by the sigma method: "contour" | "lines"
+
+    % front width from the averaged profile (addProfileWidths -> columns of varsAll)
+    profWidthPairs = [0.10 0.90; 0.20 0.80; 0.30 0.70; 0.40 0.60];   % [low high] levels
+    profErfcFit    = true;    % also fit C = 0.5 erfc((z - z50)/w) to every profile (w, RMSE, R2);
+                              % false = level-pair widths and sigma only (much faster)
+    % width definitions fitted against time by fitKL_frontWidth: {column prefix, result tag}
+    widthSources   = {"zDWidth",         "width_"; ...      % 2D contours
+                      "zDWidthProf",     "profW_"; ...      % averaged profile, level pairs
+                      "zDWidthProfErfc", "profWerfc_"};     % averaged profile, erfc width
 
     % load the data produced by main_CTpreproc.m
     expCT_name = pathExportAll + filedataExp.Key;
@@ -115,10 +129,13 @@ for i = 1:height(inputFileConfig)
         dKL_MFM_UHS = mfmResUHS.totUncertKL_cm2min;
 
         vars = expCTData.varsAll.(dataSource);
+        % averaged-profile widths per frame: old columns deleted, rebuilt, stored with time
+        vars = addProfileWidths(vars, Ci, Cj, profWidthPairs, L_cm, profErfcFit);
+        expCTData.varsAll.(dataSource) = vars;
         t_arrival_min = max(tLines_min, 0);   % scalar, broadcasts in fitKL_frontWidth/fitKL_moments
 
         % measured front velocity and contour arrival from main_CTpreproc
-        % (missing -> fitKL_midProfile falls back to u_int / the line-volume arrival)
+        % (missing contour arrival -> KL_profileAt uses the line-volume arrival)
         vFront_cmmin = NaN;  tArrContour_min = NaN;
         if isfield(expCTData, 'resultsAll') && isfield(expCTData.resultsAll, dataSource)
             rA = expCTData.resultsAll.(dataSource);
@@ -204,30 +221,42 @@ for i = 1:height(inputFileConfig)
             resultsOut.(variant).KL_BTC_CT  = KL_fit_byZD.zD1p0;
             resultsOut.(variant).BTCMetrics = BTCMetrics_byZD.zD1p0;
 
+            % front width vs time: averaged profile vs 2D contours
+            plotWidthVsTime(vars, t_arrival_min, variantSuffix, ...
+                fullfile(pathExportAll, filedataExp.Key + "_widthVsTime_" + dataSource + "_" + variant), ...
+                "(" + filedataExp.Key + ", " + dataSource + ", " + variant + ")");
+
             % KL from front width growth and from moments (sigma),
             % each fitted twice: through the origin (int0) and with intercept (int1)
             KL_front = struct();
             for fitInt = [false true]
                 intTag = ternary_str(fitInt, "int1", "int0");
 
-                KL_width_byPair = fitKL_frontWidth(vars, t_arrival_min, variantSuffix, fitInt);
-                widthFns = fieldnames(KL_width_byPair);
-                for f = 1:numel(widthFns)
-                    S2 = KL_width_byPair.(widthFns{f});
-                    KL_front.("width_" + widthFns{f} + "_" + intTag) = struct( ...
-                        'KL_cm2min_best', S2.KL_cm2min, ...
-                        'KL_cm2min_se',   S2.KL_cm2min_se, ...
-                        'KL_cm2min_mean', S2.KL_mean, ...
-                        'KL_cm2min_std',  S2.KL_std, ...
-                        'R2',             S2.R2, ...
-                        'intercept_cm2',  S2.intercept_cm2, ...
-                        'nValidFrames',   S2.nPts, ...
-                        'nFramesTotal',   S2.nValid, ...
-                        'fitWithIntercept', fitInt, ...
-                        't_vertex_min',   S2.t_vertex, 'pQuad', S2.pQuad, ...
-                        'KL_pts', S2.KL_pts, ...
-                        't_all', S2.t_all, 'y_all', S2.y_all, ...
-                        't_fit', S2.t_fit, 'y_fit', S2.y_fit, 'y_pred', S2.y_pred);
+                % width growth W^2/(4k^2) = KL t, same function for every width definition:
+                %   width_     : 2D contours (zDWidth_*, populate_CTframeVars)
+                %   profW_     : averaged profile, level pairs (zDWidthProf_*, addProfileWidths)
+                %   profWerfc_ : averaged profile, erfc-fit width (zDWidthProfErfc_10_90)
+                for ws = 1:size(widthSources,1)
+                    KL_width_byPair = fitKL_frontWidth(vars, t_arrival_min, variantSuffix, fitInt, ...
+                        widthSources{ws,1});
+                    widthFns = fieldnames(KL_width_byPair);
+                    for f = 1:numel(widthFns)
+                        S2 = KL_width_byPair.(widthFns{f});
+                        KL_front.(widthSources{ws,2} + widthFns{f} + "_" + intTag) = struct( ...
+                            'KL_cm2min_best', S2.KL_cm2min, ...
+                            'KL_cm2min_se',   S2.KL_cm2min_se, ...
+                            'KL_cm2min_mean', S2.KL_mean, ...
+                            'KL_cm2min_std',  S2.KL_std, ...
+                            'R2',             S2.R2, ...
+                            'intercept_cm2',  S2.intercept_cm2, ...
+                            'nValidFrames',   S2.nPts, ...
+                            'nFramesTotal',   S2.nValid, ...
+                            'fitWithIntercept', fitInt, ...
+                            't_vertex_min',   S2.t_vertex, 'pQuad', S2.pQuad, ...
+                            'KL_pts', S2.KL_pts, ...
+                            't_all', S2.t_all, 'y_all', S2.y_all, ...
+                            't_fit', S2.t_fit, 'y_fit', S2.y_fit, 'y_pred', S2.y_pred);
+                    end
                 end
 
                 S3 = fitKL_moments(vars, t_arrival_min, variantSuffix, fitInt);
@@ -251,9 +280,11 @@ for i = 1:height(inputFileConfig)
 
             % KL from the profile(s) with the front centre at zDtarget_mid
             plotFile_mid = fullfile(pathExportAll, filedataExp.Key + "_KLmidProfile_" + dataSource + "_" + variant);
-            resultsOut.(variant).KL_midProfile = fitKL_midProfile(vars, variantSuffix, ...
-                zDtarget_mid, zDwin_mid, tArrContour_min, vFront_cmmin, tLines_min, uint_cmmin, L_cm, ...
-                Ci, Cj, sigmaTau_mid, plotFile_mid);
+            tArrC = tArrContour_min;  if ~isfinite(tArrC), tArrC = tLines_min; end   % no contour arrival -> lines
+            tArr  = struct('contour', tArrC, 'lines', tLines_min);
+            resultsOut.(variant).KL_midProfile = KL_profileAt(vars, variantSuffix, ...
+                zDtarget_mid, CDtarget_mid, zDwin_mid, tArr, Ci, Cj, profWidthPairs, L_cm, ...
+                plotFile_mid, sigmaTau_mid);
             mp = resultsOut.(variant).KL_midProfile;
             for mm = ["contour","lines","sigma"]
                 r = mp.methods.(mm);
@@ -315,6 +346,16 @@ for i = 1:height(inputFileConfig)
             if ~isempty(d.KL_midProfile.T)
                 writetable(d.KL_midProfile.T, xlsxName, 'Sheet', "KL_midProfile_" + variant);
             end
+            % per-frame widths vs time: 2D contours and averaged profile, side by side
+            wCols = string(vars.Properties.VariableNames);
+            if variant == "full"
+                wSel = ~cellfun(@isempty, regexp(wCols, '^(zDWidth|zDWidthProf|zDWidthProfErfc)_\d+_\d+_cm$', 'once'));
+            else
+                wSel = ~cellfun(@isempty, regexp(wCols, '^(zDWidth|zDWidthProf|zDWidthProfErfc)_\d+_\d+_xtrim_cm$', 'once'));
+            end
+            wTab = [table(vars.tDtotal, vars.secondsElapsed/60 - t_arrival_min, ...
+                'VariableNames', {'tDtotal','t_core_min'}), vars(:, wCols(wSel))];
+            writetable(wTab, xlsxName, 'Sheet', "widths_vs_time_" + variant);
         end
 
         summaryT = table(string(fitDataMFM), ...

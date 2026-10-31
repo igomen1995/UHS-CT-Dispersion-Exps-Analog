@@ -97,27 +97,17 @@ colsDark = 0.6*cols;
 markers  = {'o','s','^','d','v','>','<','p','h'};
 
 %% 1) Z profile closest to (zD, CD) target
-
+% frame selection by findProfileFrame (same rule as KL_profileAt in main_CTpostproc):
+% the frame whose averaged profile crosses C = CD_target closest to zD = ZD_target
 ZD_target = 0.5;
 CD_target = 0.5;
-
 for ds = dataSources
     fig = figure;  hold on
     legendEntries = strings(1,nExp);
-
     for i = 1:nExp
-        vars = expCTDataAll{i}.varsAll.(ds);
-
-        best_dist = inf;  best_l = NaN;
-        for l = 1:height(vars)
-            prof = cellRow(vars.C1Profile, l);
-            dist = min((prof.zDimLess - ZD_target).^2 + (prof.CVert - CD_target).^2);
-            if dist < best_dist
-                best_dist = dist;  best_l = l;
-            end
-        end
+        vars   = expCTDataAll{i}.varsAll.(ds);
+        best_l = findProfileFrame(vars, ZD_target, CD_target, "");
         if isnan(best_l), continue, end
-
         prof = cellRow(vars.C1Profile, best_l);
         plot(prof.zDimLess, prof.CVert, 'LineWidth',3, 'Color',cols(i,:))
         legendEntries(i) = sprintf('%s_tD_%.2f', expKeys(i), vars.tDtotal(best_l));
@@ -127,7 +117,6 @@ for ds = dataSources
     legend(legendEntries(legendEntries ~= ""), 'Interpreter','none','FontSize',9)
     title(sprintf('Z profiles through (z_D, C_D) = (%.1f, %.1f) (%s)', ZD_target, CD_target, ds), ...
         'Interpreter','tex')
-
     fname = sprintf('CT_profile_zD_%s_CD_%s_%s', strrep(sprintf('%.1f',ZD_target),'.','p'), ...
         strrep(sprintf('%.1f',CD_target),'.','p'), ds);
     saveFigBoth(fig, exportPath, fname, closeAfterSave)

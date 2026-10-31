@@ -1,6 +1,11 @@
-function KL_width_byPair = fitKL_frontWidth(vars, t_arrival_min, variantSuffix, fitWithIntercept)
+function KL_width_byPair = fitKL_frontWidth(vars, t_arrival_min, variantSuffix, fitWithIntercept, widthPrefix)
 % FITKL_FRONTWIDTH  One KL per symmetric width pair from normWidth2 = W^2/(4k^2)
 % vs t_core_min (time since arrival) -- erfc growth law normWidth2 = KL*t.
+%
+% widthPrefix selects which widths are fitted (columns <prefix>_<lo>_<hi>[_xtrim]_cm):
+%   "zDWidth"         (default) widths between the traced 2D contours (populate_CTframeVars)
+%   "zDWidthProf"     widths of the averaged profile CVert (addProfileWidths)
+%   "zDWidthProfErfc" erfc-fit width of the averaged profile, as its 10-90 equivalent
 %
 %   1) frames with finite width and t_core > 0
 %   2) positive-slope selection: quadratic fit, keep the rising branch
@@ -12,13 +17,14 @@ function KL_width_byPair = fitKL_frontWidth(vars, t_arrival_min, variantSuffix, 
 % nValid, KL_mean, KL_std, KL_pts, pQuad, t_vertex, and for plotting
 % t_all/y_all (every frame), t_fit/y_fit (selected), y_pred.
 if nargin < 4, fitWithIntercept = false; end
+if nargin < 5 || isempty(widthPrefix), widthPrefix = "zDWidth"; end
 minPtsSel = 5;
 
 allCols = string(vars.Properties.VariableNames);
 if variantSuffix == ""
-    pat = '^zDWidth_(\d+)_(\d+)_cm$';
+    pat = '^' + string(widthPrefix) + '_(\d+)_(\d+)_cm$';
 else
-    pat = '^zDWidth_(\d+)_(\d+)_xtrim_cm$';
+    pat = '^' + string(widthPrefix) + '_(\d+)_(\d+)_xtrim_cm$';
 end
 matchIdx = find(~cellfun(@isempty, regexp(allCols, pat, 'once')));
 t_core_min = max(vars.secondsElapsed/60 - t_arrival_min, 0);

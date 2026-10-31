@@ -132,18 +132,23 @@ for v = 1:numel(variants)
     for f = 1:numel(frontFns)
         nm = string(frontFns{f});
         S2 = resultsOut.(variant).KL_front_CT.(nm);
-        isInt = isfield(S2,'fitWithIntercept') && S2.fitWithIntercept;
+        isInt  = isfield(S2,'fitWithIntercept') && S2.fitWithIntercept;
+        isProf = startsWith(nm, "profW");                  % width of the averaged profile (profW_, profWerfc_)
         base  = strrep(erase(erase(nm,"_int1"),"_int0"), "_", "/");
         if isInt, intLbl = " int"; else, intLbl = " no-int"; end
         labels(end+1,1) = base + intLbl + " " + variant;   %#ok<AGROW>
         vals(end+1) = S2.KL_cm2min_best;                    %#ok<AGROW>
         errs(end+1) = S2.KL_cm2min_se;                      %#ok<AGROW>
-        grp(end+1)  = 2 + v + 4*isInt;                      %#ok<AGROW>  % 3/4 no-int, 7/8 int
+        if isProf
+            grp(end+1) = 14 + v + 2*isInt;                  %#ok<AGROW>  % 15/16 no-int, 17/18 int
+        else
+            grp(end+1) = 2 + v + 4*isInt;                   %#ok<AGROW>  % 3/4 no-int, 7/8 int
+        end
         if isfield(S2,'KL_cm2min_mean'), mVals(end+1) = S2.KL_cm2min_mean; else, mVals(end+1) = NaN; end %#ok<AGROW>
         if isfield(S2,'KL_cm2min_std'),  sVals(end+1) = S2.KL_cm2min_std;  else, sVals(end+1) = NaN; end %#ok<AGROW>
     end
 
-    % KL from the profile with the front centre at mid-core (fitKL_midProfile),
+    % KL from the profile with the front centre at mid-core (KL_profileAt),
     % three methods: w^2/(4 tau) with t_arr contour, w^2/(4 tau) with t_arr lines, sigma
     if isfield(resultsOut.(variant), 'KL_midProfile') && isfield(resultsOut.(variant).KL_midProfile, 'methods')
         mp = resultsOut.(variant).KL_midProfile;
@@ -173,11 +178,15 @@ grpNames = ["BTC full","BTC xtrim","front full (no int)","front xtrim (no int)",
             "MFM CT","MFM UHS","front full (int)","front xtrim (int)", ...
             "mid w^2/4\tau contour full","mid w^2/4\tau contour xtrim", ...
             "mid w^2/4\tau lines full","mid w^2/4\tau lines xtrim", ...
-            "mid sigma full","mid sigma xtrim"];
+            "mid sigma full","mid sigma xtrim", ...
+            "profile width full (no int)","profile width xtrim (no int)", ...
+            "profile width full (int)","profile width xtrim (int)"];
 grpCol   = [lines(8); ...
             0.55 0.35 0.65; 0.80 0.65 0.90; ...     % contour: purple
             0.60 0.40 0.20; 0.85 0.70 0.50; ...     % lines: brown
-            0.20 0.55 0.55; 0.55 0.85 0.85];        % sigma: teal
+            0.20 0.55 0.55; 0.55 0.85 0.85; ...     % sigma: teal
+            0.85 0.40 0.00; 1.00 0.70 0.40; ...     % profile width, no int: orange
+            0.60 0.25 0.00; 0.85 0.55 0.30];        % profile width, int: dark orange
 
 nBars = numel(vals);
 figBar = figure('Position',[100 100 900 max(450, 22*nBars)]);
