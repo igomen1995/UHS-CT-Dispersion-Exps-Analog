@@ -25,6 +25,8 @@
 %   6  MFM analog + UHS BTC together
 %   7  measured front width vs tD
 %   8  measured front envelope, all experiments together
+%   8b front envelope per experiment: 2D-contour width vs averaged-profile width (grey)
+%   8c contour width vs averaged-profile width (same scan), all experiments, 1:1 line
 %   9  front tilt / shape diagnostics vs tD and rotation
 %   10 KL vs tD (pointwise front KL) + BTC-CT and MFM reference KL
 %   11 outlet BTC width (tD16-tD84) per experiment
@@ -484,6 +486,119 @@ for ds = dataSources
     end
 end
 
+%% 8b) Front envelope per experiment: 2D-contour width (colour) vs averaged-profile width (grey)
+% Contour widths zDWidth_<lo>_<hi> (populate_CTframeVars) and averaged-profile widths
+% zDWidthProf_<lo>_<hi> (addProfileWidths, written by main_CTpostproc into <Key>_postproc.mat).
+% Both envelopes are centred on the same front centre (C = 0.5 contour, zDFront50), so the
+% panels compare the WIDTHS only. One figure per experiment, one panel per level pair.
+
+envPairs   = {'10_90','20_80','30_70','40_60'};
+envVariant = "";              % "" = full image, "_xtrim" = x-trimmed
+greyProf   = [0.55 0.55 0.55];
+
+% experiment colours / names (same scheme as main_dimlessTranspNo and the paper figure):
+% P900 (high M) blue, P725 (low M) green; Q1 light (loPe), Q5 dark (hiPe)
+expColRules  = {"P900", [0.318 0.654 0.976], [0.090 0.306 0.525]; ...    % {key token, light, dark}
+                "P725", [0.435 0.753 0.251], [0.059 0.361 0.102]};
+expNameRules = {"P725", "XCT-loM";  "P900", "XCT-hiM"};
+expPeRules   = {"Q1", "-loPe";  "Q5", "-hiPe"};
+expCol  = zeros(nExp,3);  expName = expKeys;
+for i = 1:nExp
+    [expCol(i,:), expName(i)] = expStyle(expKeys(i), expColRules, expNameRules, expPeRules, cols(i,:));
+end
+
+for ds = dataSources
+    for i = 1:nExp
+        vars   = expCTDataAll{i}.varsAll.(ds);
+        cols_i = string(vars.Properties.VariableNames);
+        if ~any(startsWith(cols_i, "zDWidthProf_"))
+            warning('%s (%s): no zDWidthProf_* columns -- run main_CTpostproc (addProfileWidths) first', ...
+                expKeys(i), ds);
+            continue
+        end
+
+        fig = figure('Position',[60 60 1400 950]);
+        tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
+        tD  = vars.tDtotal;
+        zc  = vars.("zDFront50" + envVariant);
+
+        for p = 1:numel(envPairs)
+            ax = nexttile(tl);  hold(ax,'on')
+            cCol = "zDWidth_"     + envPairs{p} + envVariant;
+            pCol = "zDWidthProf_" + envPairs{p} + envVariant;
+            if ~all(ismember([cCol pCol], cols_i))
+                text(ax, 0.5, 0.5, cCol + " / " + pCol + " not available", 'Units','normalized', ...
+                    'HorizontalAlignment','center', 'Interpreter','none');  continue
+            end
+            % averaged profile (grey, wide, behind) and 2D contours (colour, on top)
+            envSegments(ax, tD, zc, abs(vars.(pCol))/2, greyProf, 5, 0.5, "averaged profile")
+            envSegments(ax, tD, zc, abs(vars.(cCol))/2, expCol(i,:), 1.8, 0.9, "2D contours")
+            ok = isfinite(tD) & isfinite(zc);
+            scatter(ax, tD(ok), zc(ok), 10, 0.6*expCol(i,:), 'filled', 'DisplayName','front centre (C = 0.5)')
+
+            xlabel(ax, 't_D [-]', 'FontSize',13);  ylabel(ax, 'z_D [-]', 'FontSize',13)
+            ylim(ax, [-0.02 1.02]);  xlim(ax, [0 1.2]);  set(ax, 'FontSize',12);  grid(ax,'on')
+            title(ax, "width " + strrep(envPairs{p},'_','-'), 'FontSize',12)
+            legend(ax, 'Location','southeast', 'FontSize',9)
+        end
+        title(tl, sprintf('%s (%s): front envelope, 2D contours (colour) vs averaged profile (grey)', ...
+            expName(i), ds), 'Interpreter','none')
+        saveFigBoth(fig, exportPath, sprintf('frontEnvelope_contour_vs_profile_%s_%s%s', ...
+            expKeys(i), ds, envVariant), closeAfterSave)
+    end
+end
+
+%% 8c) Contour width vs averaged-profile width, same frame, all experiments
+% x = width between the 2D contours, y = width of the averaged profile, same scan (same t).
+% A sharp, planar front gives the same width either way (1:1 line). Fingering / an uneven
+% front stretches the contours (which follow the fingers) more than the x-averaged profile
+% -> points move away from the 1:1 line; the distance from it measures the instability.
+
+parPairs   = {'10_90','20_80','30_70','40_60'};
+parVariant = "";              % "" = full image, "_xtrim" = x-trimmed
+parQmk     = {"Q1",'o'; "Q5",'s'};   % marker by flow rate (colour already light/dark)
+
+for ds = dataSources
+    fig = figure('Position',[60 60 1250 1100]);
+    tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
+
+    for p = 1:numel(parPairs)
+        ax = nexttile(tl);  hold(ax,'on');  allW = [];
+        for i = 1:nExp
+            vars   = expCTDataAll{i}.varsAll.(ds);
+            cols_i = string(vars.Properties.VariableNames);
+            cCol = "zDWidth_"     + parPairs{p} + parVariant;
+            pCol = "zDWidthProf_" + parPairs{p} + parVariant;
+            if ~all(ismember([cCol pCol], cols_i)), continue, end
+            wC = abs(vars.(cCol));  wP = abs(vars.(pCol));
+            ok = isfinite(wC) & isfinite(wP) & wC > 0 & wP > 0;
+            if ~any(ok), continue, end
+            mk = 'o';
+            for q = 1:size(parQmk,1)
+                if contains(expKeys(i), "_" + parQmk{q,1} + "_"), mk = parQmk{q,2}; end
+            end
+            scatter(ax, wC(ok), wP(ok), 26, expCol(i,:), mk, 'filled', 'MarkerEdgeColor','k', ...
+                'LineWidth',0.3, 'MarkerFaceAlpha',0.8, 'DisplayName', expName(i))
+            allW = [allW; wC(ok); wP(ok)]; %#ok<AGROW>
+        end
+        if isempty(allW)
+            text(ax, 0.5, 0.5, "no contour / profile widths for " + strrep(parPairs{p},'_','-'), ...
+                'Units','normalized', 'HorizontalAlignment','center');  continue
+        end
+        lim = [0, 1.05*max(allW)];
+        plot(ax, lim, lim, 'k-', 'LineWidth',1.2, 'DisplayName','1:1 (stable front)')
+        xlim(ax, lim);  ylim(ax, lim);  axis(ax, 'square')
+        xlabel(ax, '\Deltaz_D, 2D contours [-]', 'FontSize',13)
+        ylabel(ax, '\Deltaz_D, averaged profile [-]', 'FontSize',13)
+        title(ax, "width " + strrep(parPairs{p},'_','-'), 'FontSize',12)
+        set(ax, 'FontSize',12);  grid(ax,'on')
+        legend(ax, 'Location','northwest', 'FontSize',9, 'Interpreter','none')
+    end
+    title(tl, sprintf('Front width: 2D contours vs averaged profile, same scan (%s%s)', ds, parVariant), ...
+        'Interpreter','none')
+    saveFigBoth(fig, exportPath, sprintf('width_contour_vs_profile_allExp_%s%s', ds, parVariant), closeAfterSave)
+end
+
 %% 9) Front tilt and shape diagnostics
 
 for ds = dataSources
@@ -935,4 +1050,32 @@ for k = 1:nF
     sel = pr.zDimLess <= zD + 1e-9;
     if any(sel), m(k) = mean(pr.(cCol)(sel), 'omitnan'); end
 end
+end
+
+function envSegments(ax, tD, zc, half, col, lw, alpha, name)
+% one vertical segment per scan: centre +/- half width
+ok = isfinite(tD) & isfinite(zc) & isfinite(half);
+if ~any(ok), return, end
+t = tD(ok)';  c = zc(ok)';  h = half(ok)';
+xs = [t; t; nan(1,numel(t))];
+ys = [c - h; c + h; nan(1,numel(t))];
+plot(ax, xs(:), ys(:), '-', 'Color',[col alpha], 'LineWidth',lw, 'DisplayName',name)
+end
+
+function [col, name] = expStyle(key, colRules, nameRules, peRules, colDefault)
+% colour (light for Q1, dark otherwise) and short name from tokens in the experiment key
+col = colDefault;  name = string(key);  nm = "";
+isQ1 = contains(key, "_Q1_");
+for r = 1:size(colRules,1)
+    if contains(key, "_" + colRules{r,1} + "_")
+        if isQ1, col = colRules{r,2}; else, col = colRules{r,3}; end
+    end
+end
+for r = 1:size(nameRules,1)
+    if contains(key, "_" + nameRules{r,1} + "_"), nm = nameRules{r,2}; end
+end
+for r = 1:size(peRules,1)
+    if contains(key, "_" + peRules{r,1} + "_"), nm = nm + peRules{r,2}; end
+end
+if nm ~= "", name = nm; end
 end
