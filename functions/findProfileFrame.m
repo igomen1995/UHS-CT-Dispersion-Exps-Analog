@@ -1,7 +1,7 @@
 function [lBest, lWin, zCross] = findProfileFrame(vars, zDtarget, CDtarget, variantSuffix, zDwin)
 % FINDPROFILEFRAME  Frame(s) whose averaged profile passes through (zD, C) = (zDtarget, CDtarget).
-% For every frame the position zCross where CVert<suffix> first crosses CDtarget (along zD,
-% from the injection end) is found; the best frame is the one with zCross closest to
+% For every frame the position zCross where CVert<suffix> crosses CDtarget at the front
+% (steepest crossing, end slices ignored) is found; the best frame is the one with zCross closest to
 % zDtarget, the window frames those with |zCross - zDtarget| <= zDwin.
 % Used by main_CTplots (profile through a target point) and KL_profileAt (KL at fixed time).
 %
@@ -28,14 +28,20 @@ if ~ismember(lBest, lWin), lWin = sort([lWin; lBest]); end
 end
 
 function zc = firstCrossing(zD, C, c0)
+% crossing of c0 along zD with the steepest slope (the front), ignoring 2 % of the core
+% at each end (edge slices often hold 0 / garbage); NaN if C never crosses c0
 zc = NaN;
 ok = isfinite(zD) & isfinite(C);  zD = zD(ok);  C = C(ok);
-if numel(zD) < 2, return, end
+if numel(zD) < 5, return, end
 [zD, o] = sort(zD);  C = C(o);
-d = C - c0;
-k = find(d(1:end-1).*d(2:end) <= 0, 1);
+L  = zD(end) - zD(1);
+in = zD >= zD(1) + 0.02*L & zD <= zD(end) - 0.02*L;
+zD = zD(in);  C = movmedian(C(in), 5);
+d  = C - c0;
+k  = find(d(1:end-1).*d(2:end) <= 0 & d(1:end-1) ~= d(2:end));
 if isempty(k), return, end
-if d(k+1) == d(k), zc = zD(k); return, end
+g  = abs(gradient(C, zD));
+[~, b] = max(g(k));  k = k(b);
 zc = zD(k) - d(k)*(zD(k+1) - zD(k))/(d(k+1) - d(k));
 end
 

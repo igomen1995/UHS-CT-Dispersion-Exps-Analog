@@ -1,4 +1,4 @@
-function vars = addProfileWidths(vars, Ci, Cj, levelPairs, L_cm, doErfc)
+function vars = addProfileWidths(vars, Ci, Cj, levelPairs, L_cm, doErfc, trimFrac)
 % ADDPROFILEWIDTHS  Per-frame front widths of the AVERAGED vertical profile
 % (C1Profile.CVert and CVert_xtrim), stored as columns of vars next to the contour
 % widths zDWidth_* so that they are saved with time and fitted by the same function
@@ -17,11 +17,14 @@ function vars = addProfileWidths(vars, Ci, Cj, levelPairs, L_cm, doErfc)
 %   (the fitted curve of any frame: Cn = 0.5 erfc((z - z50)/w), z from the injection end)
 %   sigmaProf<sfx>_cm, skewProf<sfx>, kurtProf<sfx>   moments of -dC/dz around the front
 % doErfc = false (default true) skips the erfc fit: erfc columns are NaN, much faster.
+% trimFrac (default 0.02): fraction of the core dropped at each end of every profile.
 %
-% Widths are NaN for frames where the levels are not both crossed inside the core.
+% A pair is NaN only for frames where ITS two levels are not crossed inside the core
+% (no 10-90 requirement); the erfc fit needs only the C = 0.5 crossing.
 
 if nargin < 4 || isempty(levelPairs), levelPairs = [0.1 0.9; 0.2 0.8; 0.3 0.7; 0.4 0.6]; end
 if nargin < 6 || isempty(doErfc), doErfc = true; end
+if nargin < 7 || isempty(trimFrac), trimFrac = 0.02; end
 n  = height(vars);
 nP = size(levelPairs,1);
 
@@ -35,14 +38,31 @@ kErfc = 2*erfcinv(0.2);                    % 10-90 width of erfc((z - z50)/w) is
 for sfx = ["", "_xtrim"]
     cCol = "CVert" + sfx;
     W = nan(n,nP);  z50 = nan(n,1);  w = nan(n,1);  dw = nan(n,1);  rm = nan(n,1);  r2 = nan(n,1);
-    sg = nan(n,1);  sk = nan(n,1);  ku = nan(n,1);  tags = strings(1,nP);
+    sg = nan(n,1);  sk = nan(n,1);  ku = nan(n,1);  tags = strings(1,nP);  notes = strings(n,1);
     for r = 1:n
         pr = getProf(vars.C1Profile, r);
         if isempty(pr) || ~ismember(cCol, string(pr.Properties.VariableNames)), continue, end
-        P = profileWidth(pr.zVertcm, pr.(cCol), Ci, Cj, levelPairs, [], doErfc);
+        P = profileWidth(pr.zVertcm, pr.(cCol), Ci, Cj, levelPairs, [], doErfc, trimFrac);
+        notes(r) = P.note;
         W(r,:) = P.W;  z50(r) = P.z50_erfc;  w(r) = P.w_erfc;  dw(r) = P.dw_erfc;
         rm(r) = P.rmse_erfc;  r2(r) = P.r2_erfc;
         sg(r) = P.sigma;  sk(r) = P.skew;  ku(r) = P.kurt;
+    end
+    % report how many frames gave a width per pair (and why not, if none did)
+    nOKp = sum(isfinite(W), 1);
+    fprintf('    addProfileWidths CVert%s, frames with a width (of %d):', sfx, n);
+    for p = 1:nP
+        fprintf('  %02d-%02d: %d', round(100*levelPairs(p,1)), round(100*levelPairs(p,2)), nOKp(p));
+    end
+    fprintf('  erfc: %d\n', nnz(isfinite(w)));
+    nOK = max([nOKp, nnz(isfinite(w))]);
+    if nOK == 0
+        nn = notes(notes ~= "");
+        if ~isempty(nn)
+            [u, ~, ic] = unique(nn);  [~, im] = max(accumarray(ic, 1));
+            warning('addProfileWidths CVert%s: no width in any frame, most common reason: %s (Ci = %g, Cj = %g)', ...
+                sfx, u(im), Ci, Cj);
+        end
     end
     for p = 1:nP
         tags(p) = sprintf("%02d_%02d", round(100*levelPairs(p,1)), round(100*levelPairs(p,2)));

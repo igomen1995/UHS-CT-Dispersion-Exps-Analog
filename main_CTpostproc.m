@@ -286,11 +286,14 @@ for i = 1:height(inputFileConfig)
                 zDtarget_mid, CDtarget_mid, zDwin_mid, tArr, Ci, Cj, profWidthPairs, L_cm, ...
                 plotFile_mid, sigmaTau_mid);
             mp = resultsOut.(variant).KL_midProfile;
-            for mm = ["contour","lines","sigma"]
+            % every method: level pairs C10_90 ... C40_60 (KL = W^2/(4 k^2 tau)), erfc (w^2/(4 tau)),
+            % sigma, each with the contour and the lines arrival (aliases contour/lines/sigma skipped)
+            fprintf('  %s (%s) mid-profile, closest frame tD = %.2f, %d frame(s) in the window:\n', ...
+                dataSource, variant, mp.tD_best, mp.nFrames);
+            for mm = setdiff(string(fieldnames(mp.methods))', ["contour","lines","sigma"], 'stable')
                 r = mp.methods.(mm);
-                fprintf('  %s (%s) mid-profile %-7s: KL = %.4g +/- %.2g (closest frame, tD = %.2f), mean of %d = %.4g +/- %.2g cm2/min\n', ...
-                    dataSource, variant, mm, r.KL_cm2min_best, r.dKL_cm2min_best, mp.tD_best, ...
-                    mp.nFrames, r.KL_cm2min_mean, r.KL_cm2min_std);
+                fprintf('    %-16s KL = %.4g +/- %.2g (closest), mean = %.4g +/- %.2g cm2/min\n', ...
+                    mm, r.KL_cm2min_best, r.dKL_cm2min_best, r.KL_cm2min_mean, r.KL_cm2min_std);
             end
         end
 
@@ -367,7 +370,7 @@ for i = 1:height(inputFileConfig)
         for variantArr = ["full","xtrim"]
             mp = resultsOut.(variantArr).KL_midProfile;
             sfx = ternary_str(variantArr=="full", "", "_xtrim");
-            for mm = ["contour","lines","sigma"]
+            for mm = string(fieldnames(mp.methods))'        % C10_90_contour, ..., erfc_lines, sigma_*, aliases
                 r = mp.methods.(mm);
                 summaryT.("KL_mid_" + mm + "_cm2min" + sfx)      = r.KL_cm2min_best;
                 summaryT.("dKL_mid_" + mm + "_cm2min" + sfx)     = r.dKL_cm2min_best;
