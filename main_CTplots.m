@@ -403,6 +403,7 @@ end
 %   t_D with C_D [-]                     (as <case>_BTfitting_dimless)
 
 fitRange = [0.16 0.84];
+fsBT     = 16;              % font size of everything in the 4b / 5b figures (axes, labels, legend)
 % {x column, x label, C scale (100 = %, 1 = fraction), file tag}
 btFitX = {'TimeElapsed', 'Time elapsed [hh:mm:ss]', 100, 'time'; ...
           mfmTimeVar,    't_D [-]',                  1,   'tD'};
@@ -434,8 +435,8 @@ for ds = dataSources
                 if all(ismember({'CDiMin','CDiMax'}, vn)), Clo = BT.CDiMin;  Chi = BT.CDiMax; end
             end
             isDur = isduration(x);
-            errorbar(x, sc*C, sc*(C - Clo), sc*(Chi - C), 'LineStyle','none', ...
-                'Color',[0.88 0.88 0.88], 'HandleVisibility','off')
+            %errorbar(x, sc*C, sc*(C - Clo), sc*(Chi - C), 'LineStyle','none', ...
+            %    'Color',[0.88 0.88 0.88], 'HandleVisibility','off')
             h(end+1) = scatter(x, sc*C, 6, cols(i,:), 'filled', ...
                 'DisplayName', expName(i)); %#ok<SAGROW>
 
@@ -451,11 +452,11 @@ for ds = dataSources
 
         if isempty(h), close(fig); continue, end
         if isDur, xtickformat('hh:mm:ss'), end
-        xlabel(btFitX{v,2}, 'FontSize',14)
-        if sc == 100, ylabel('C_1 [mol %]','FontSize',14);  ylim([-0.1 100.1])
-        else,         ylabel('C_D [-]','FontSize',14);      ylim([-0.001 1.001]);  xlim([0 2]); end
-        set(gca,'FontSize',12);  grid on
-        lgd = legend(h, 'Interpreter','tex', 'FontSize',9, 'Location','southeast');
+        xlabel(btFitX{v,2}, 'FontSize',fsBT)
+        if sc == 100, ylabel('C_1 [mol %]','FontSize',fsBT);  ylim([0 105])
+        else,         ylabel('C_D [-]','FontSize',fsBT);      ylim([0 1.05]);  xlim([0 2]); end
+        set(gca,'FontSize',fsBT);  grid on
+        lgd = legend(h, 'Interpreter','tex', 'FontSize',fsBT, 'Location','southeast');
         lgd.ItemTokenSize = [15 8];
         saveFigBoth(fig, exportPath, sprintf('BT_MFM_CT_fit_%s_%s', ds, btFitX{v,4}), closeAfterSave)
     end
@@ -537,8 +538,6 @@ for ds = dataSources
                 if all(ismember({'CDiMin','CDiMax'}, vn)), Clo = BT.CDiMin;  Chi = BT.CDiMax; end
             end
             isDur = isduration(x);
-            errorbar(x, sc*C, sc*(C - Clo), sc*(Chi - C), 'LineStyle','none', ...
-                'Color',[0.88 0.88 0.88], 'HandleVisibility','off')
             h(end+1) = scatter(x, sc*C, 6, uhsCol(i,:), 'filled', 'DisplayName', uhsName(i)); %#ok<SAGROW>
 
             if ~ismember('C_fit_best', vn)
@@ -552,11 +551,11 @@ for ds = dataSources
 
         if isempty(h), close(fig); continue, end
         if isDur, xtickformat('hh:mm:ss'), end
-        xlabel(btFitX{v,2}, 'FontSize',14)
-        if sc == 100, ylabel('C_1 [mol %]','FontSize',14);  ylim([-0.1 100.1])
-        else,         ylabel('C_D [-]','FontSize',14);      ylim([-0.001 1.001]);  xlim([0 2]); end
-        set(gca,'FontSize',12);  grid on
-        lgd = legend(h, 'Interpreter','tex', 'FontSize',9, 'Location','southeast');
+        xlabel(btFitX{v,2}, 'FontSize',fsBT)
+        if sc == 100, ylabel('C_1 [mol %]','FontSize',fsBT);  ylim([0 105])
+        else,         ylabel('C_D [-]','FontSize',fsBT);      ylim([0 1.05]);  xlim([0 2]); end
+        set(gca,'FontSize',fsBT);  grid on
+        lgd = legend(h, 'Interpreter','tex', 'FontSize',fsBT, 'Location','southeast');
         lgd.ItemTokenSize = [15 8];
         saveFigBoth(fig, exportPath, sprintf('BT_MFM_UHS_fit_%s_%s', ds, btFitX{v,4}), closeAfterSave)
     end
