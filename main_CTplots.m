@@ -26,6 +26,7 @@
 %   5b MFM UHS BTC with the fitted curve (16-84 %), vs time elapsed and vs t_D
 %   6  MFM analog + UHS BTC together
 %   7  measured front width vs tD
+%   7b front width vs tD: 2D contours (circles) + averaged profile (squares)
 %   8  measured front envelope, all experiments together
 %   8b front envelope per experiment: 2D-contour width vs averaged-profile width (grey)
 %   8c contour width vs averaged-profile width (same scan), all experiments, 1:1 line
@@ -612,6 +613,48 @@ for ds = dataSources
     end
 end
 
+%% 7b) Front width vs tD: 2D contours (circles) and averaged profile (squares) together
+% Section 7 with the averaged-profile width (zDWidthProf_*, from main_CTpostproc /
+% addProfileWidths) drawn on top as squares, same colour per experiment.
+
+widthPairsCmp = {'10_90','20_80','30_70','40_60'};
+widthVarCmp   = "";           % "" = full image, "_xtrim" = x-trimmed
+
+for ds = dataSources
+    for p = 1:numel(widthPairsCmp)
+        cField = "zDWidth_"     + widthPairsCmp{p} + widthVarCmp;   % 2D contours
+        pField = "zDWidthProf_" + widthPairsCmp{p} + widthVarCmp;   % averaged profile
+        fig = figure('Position',[100 100 1000 650]);  hold on
+        nPlotted = 0;
+
+        for i = 1:nExp
+            vars = expCTDataAll{i}.varsAll.(ds);
+            vn   = string(vars.Properties.VariableNames);
+            if ismember(cField, vn)
+                scatter(vars.tDtotal, abs(vars.(cField)), 10, 'filled', 'o', ...
+                    'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor','none', ...
+                    'DisplayName', expName(i) + " contours")
+                nPlotted = nPlotted + 1;
+            end
+            if ismember(pField, vn)
+                scatter(vars.tDtotal, abs(vars.(pField)), 26, 's', ...
+                    'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor',colsDark(i,:), 'LineWidth',0.8, ...
+                    'DisplayName', expName(i) + " profile")
+                nPlotted = nPlotted + 1;
+            end
+        end
+        if nPlotted == 0, close(fig); continue, end
+
+        xlabel('t_D [-]','FontSize',14);  ylabel('\DeltaZ_D [-]','FontSize',14)
+        ylim([-0.02 1]);  xlim([0 1.2]);  set(gca,'FontSize',14);  grid on
+        legend('Interpreter','none','FontSize',8,'Location','northeast','NumColumns',2)
+        title(sprintf('Front width (%s): 2D contours (circles) vs averaged profile (squares) (%s%s)', ...
+            strrep(widthPairsCmp{p},'_','-'), ds, widthVarCmp), 'Interpreter','tex')
+        saveFigBoth(fig, exportPath, sprintf('width_contour_profile_%s_%s%s_tD', ...
+            widthPairsCmp{p}, ds, widthVarCmp), closeAfterSave)
+    end
+end
+
 %% 8) Measured front envelope, all experiments together
 
 widthPairsEnv = {'10_90','30_70','40_60'};
@@ -684,8 +727,8 @@ for ds = dataSources
                     'HorizontalAlignment','center', 'Interpreter','none');  continue
             end
             % averaged profile (grey, wide, behind) and 2D contours (colour, on top)
-            envSegments(ax, tD, zc, abs(vars.(pCol))/2, greyProf, 5, 0.5, "averaged profile")
             envSegments(ax, tD, zc, abs(vars.(cCol))/2, expCol(i,:), 1.8, 0.9, "2D contours")
+            envSegments(ax, tD, zc, abs(vars.(pCol))/2, greyProf, 5, 0.5, "averaged profile")
             ok = isfinite(tD) & isfinite(zc);
             scatter(ax, tD(ok), zc(ok), 10, 0.6*expCol(i,:), 'filled', 'DisplayName','front centre (C = 0.5)')
 
