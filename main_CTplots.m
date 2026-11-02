@@ -617,7 +617,7 @@ end
 % addProfileWidths) drawn on top as squares, same colour per experiment.
 
 widthPairsCmp = {'10_90','20_80','30_70','40_60'};
-widthVarCmp   = "";           % "" = full image, "_xtrim" = x-trimmed
+widthVarCmp   = "_xtrim";           % "" = full image, "_xtrim" = x-trimmed
 
 for ds = dataSources
     for p = 1:numel(widthPairsCmp)
@@ -697,7 +697,7 @@ end
 % panels compare the WIDTHS only. One figure per experiment, one panel per level pair.
 
 envPairs   = {'10_90','20_80','30_70','40_60'};
-envVariant = "";              % "" = full image, "_xtrim" = x-trimmed
+envVariant = "_xtrim";              % "" = full image, "_xtrim" = x-trimmed
 greyProf   = [0.55 0.55 0.55];
 
 % experiment colours / names (expCol, expName): see the Load data section
@@ -750,7 +750,7 @@ end
 % -> points move away from the 1:1 line; the distance from it measures the instability.
 
 parPairs   = {'10_90','20_80','30_70','40_60'};
-parVariant = "";              % "" = full image, "_xtrim" = x-trimmed
+parVariant = "_xtrim";              % "" = full image, "_xtrim" = x-trimmed
 parQmk     = {"Q1",'o'; "Q5",'s'};   % marker by flow rate (colour already light/dark)
 
 for ds = dataSources
