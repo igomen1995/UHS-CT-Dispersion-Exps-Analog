@@ -264,7 +264,7 @@ end
 %% 2) Z profiles at a range of tD targets (all experiments, one figure per tD)
 
 tD_target = 0.5:0.1:1.2;
-var2      = "";                % "" = full image (CVert), "_xtrim" = x-trimmed (CVert_xtrim)
+var2      = "_xtrim";                % "" = full image (CVert), "_xtrim" = x-trimmed (CVert_xtrim)
 
 for ds = dataSources
     for m = 1:numel(tD_target)
@@ -296,7 +296,7 @@ end
 %% 2b) Profile evolution with time, one figure per experiment
 
 tD_evol = 0.3:0.1:1.2;         % t_D of the profiles drawn (nearest scan, within 0.05)
-var2b   = "";                  % "" = full image, "_xtrim" = x-trimmed
+var2b   = "_xtrim";                  % "" = full image, "_xtrim" = x-trimmed
 
 for ds = dataSources
     for i = 1:nExp
@@ -324,7 +324,8 @@ end
 
 %% 3) CT outlet BTC: time, tD_total, front-velocity-scaled tD_core
 
-CfieldOutlet = 'CD1_zD1p0';
+btcVar3      = "_xtrim";                       % "" = full image | "_xtrim" = x-trimmed (x_D 0.25-0.75)
+CfieldOutlet = "CD1_zD1p0" + btcVar3;
 % {x column, x label, file tag, x limits ([] = auto)}
 btcAxes = {'timeElapsed',            'time elapsed [hh:mm:ss]',                   'time',         []; ...
            'tDtotal',                't_D [-]',                                   'tD',           [0 1.2]; ...
@@ -338,8 +339,8 @@ for ds = dataSources
 
         for i = 1:nExp
             vars = expCTDataAll{i}.varsAll.(ds);
-            if ~ismember(xVar, vars.Properties.VariableNames)
-                warning('%s (%s): column %s missing, skipped', expKeys(i), ds, xVar);
+            if ~all(ismember([string(xVar) CfieldOutlet], string(vars.Properties.VariableNames)))
+                warning('%s (%s): column %s or %s missing, skipped', expKeys(i), ds, xVar, CfieldOutlet);
                 continue
             end
             plot(vars.(xVar), vars.(CfieldOutlet), 'LineWidth',2.5, 'Color',expCol(i,:), ...
@@ -352,12 +353,11 @@ for ds = dataSources
         ylim([-0.02 1.02]);  set(gca,'FontSize',14);  grid on;  box on
         if ~isempty(btcAxes{a,4}), xlim(btcAxes{a,4}); end
         legend('Interpreter','none','FontSize',12,'Location','southeast')
-        title(sprintf('Outlet BT curves from CT (%s)', ds), 'Interpreter','none')
+        title(sprintf('Outlet BT curves from CT (%s%s)', ds, btcVar3), 'Interpreter','none')
 
-        saveFigBoth(fig, exportPath, sprintf('BT_CT_%s_%s', ds, btcAxes{a,3}), closeAfterSave)
+        saveFigBoth(fig, exportPath, sprintf('BT_CT_%s%s_%s', ds, btcVar3, btcAxes{a,3}), closeAfterSave)
     end
 end
-
 %% 3b) CT BTCs at every zD level vs tD_total and tD_core (one figure per experiment)
 
 zDlevelsPlot = 0:0.1:1.0;
@@ -839,6 +839,7 @@ for ds = dataSources
         end
         if nPlotted == 0, close(fig); continue, end
 
+        set(ax, 'FontSize',fs7c, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
         xlabel(ax, 't_D [-]', 'FontSize',fs7c)
         if widthUnitProf == "_cm"
             ylabel(ax, "W_{" + strrep(widthPairsProf{p},'_','-') + "}, averaged profile [cm]", 'FontSize',fs7c)
@@ -846,7 +847,7 @@ for ds = dataSources
             ylabel(ax, "\Deltaz_{D," + strrep(widthPairsProf{p},'_','-') + "}, averaged profile [-]", 'FontSize',fs7c)
             ylim(ax, [0 inf])
         end
-        xlim(ax, [0 1.2]);  set(ax, 'FontSize',fs7c);  grid(ax,'on');  box(ax,'on')
+        xlim(ax, [0 1.2]);  grid(ax,'on');  box(ax,'on')
         legend(ax, 'Location','northwest', 'FontSize',fs7c, 'Interpreter','none')
         saveFigBoth(fig, exportPath, sprintf('width_profile_%s_%s%s%s_tD', ...
             widthPairsProf{p}, ds, widthVarProf, widthUnitProf), closeAfterSave)
@@ -893,6 +894,59 @@ for ds = dataSources
     end
 end
 
+%% 8a) Front envelope from the AVERAGED PROFILE, all experiments together
+% Centre = front centre of the averaged profile (zDFrontProf50: erfc-fit z50, addProfileWidths),
+% bar = centre +/- W/2 with W = averaged-profile width zDWidthProf_<lo>_<hi> (the width used for
+% the profile KL). If the erfc centre is missing for a scan, the C = 0.5 contour centre is used.
+% Legend XCT-loM-hiPe etc. (expName, expCol).
+
+widthPairsEnvP = {'10_90','20_80','30_70','40_60'};
+envVarP        = "_xtrim";      % "" = full image | "_xtrim" = x-trimmed (as the mid-profile KL)
+fsEnvP         = 16;
+
+for ds = dataSources
+    for p = 1:numel(widthPairsEnvP)
+        wField = "zDWidthProf_" + widthPairsEnvP{p} + envVarP;
+        cField = "zDFrontProf50" + envVarP;          % profile centre
+        cFall  = "zDFront50" + envVarP;              % fallback: C = 0.5 contour centre
+        figName = sprintf('Averaged-profile front envelope %s (%s%s)', ...
+            strrep(widthPairsEnvP{p},'_','-'), ds, envVarP);
+        fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
+        ax  = axes(fig);  hold(ax,'on')
+        nPlotted = 0;
+
+        for i = 1:nExp
+            vars = expCTDataAll{i}.varsAll.(ds);
+            vn   = string(vars.Properties.VariableNames);
+            if ~ismember(wField, vn), continue, end
+
+            tD   = vars.tDtotal;
+            half = abs(vars.(wField))/2;
+            cen  = nan(size(tD));
+            if ismember(cField, vn), cen = vars.(cField); end
+            if ismember(cFall, vn)
+                miss = ~isfinite(cen);  cen(miss) = vars.(cFall)(miss);
+            end
+            ok = isfinite(tD) & isfinite(cen) & isfinite(half);
+            if ~any(ok), continue, end
+
+            % one vertical segment per scan: centre +/- half width
+            xs = [tD(ok)'; tD(ok)'; nan(1,nnz(ok))];
+            ys = [cen(ok)' - half(ok)'; cen(ok)' + half(ok)'; nan(1,nnz(ok))];
+            plot(ax, xs(:), ys(:), '-', 'Color',[expCol(i,:) 0.6], 'LineWidth',1.5, 'HandleVisibility','off')
+            scatter(ax, tD(ok), cen(ok), 18, 0.6*expCol(i,:), 'filled', 'DisplayName', expName(i))
+            nPlotted = nPlotted + 1;
+        end
+        if nPlotted == 0, close(fig); continue, end
+
+        set(ax, 'FontSize',fsEnvP, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
+        xlabel(ax, 't_D [-]', 'FontSize',fsEnvP);  ylabel(ax, 'z_D [-]', 'FontSize',fsEnvP)
+        ylim(ax, [-0.02 1.02]);  xlim(ax, [0 1.2]);  grid(ax,'on');  box(ax,'on')
+        legend(ax, 'Interpreter','none', 'FontSize',fsEnvP, 'Location','southeast')
+        saveFigBoth(fig, exportPath, sprintf('frontEnvelope_profile_allExp_%s_%s%s_tD', ...
+            widthPairsEnvP{p}, ds, envVarP), closeAfterSave)
+    end
+end
 %% 8b) Front envelope per experiment: 2D-contour width (colour) vs averaged-profile width (grey)
 % Contour widths zDWidth_<lo>_<hi> (populate_CTframeVars) and averaged-profile widths
 % zDWidthProf_<lo>_<hi> (addProfileWidths, written by main_CTpostproc into <Key>_postproc.mat).
@@ -1078,7 +1132,7 @@ klMidContMethod = "contC40_60_contour";  % 2D-contour width at the same frames; 
 klMidContStat   = "mean";       % level pairs have no fit SE -> mean +/- std of the window frames
 klBTCVariant = "xtrim";         % CT BTC variant: "xtrim" | "full"
 %klBTCtags    = ["zD0p5","zD0p8","zD1p0"];   % CT BTC levels (one bar each, light -> dark along the core)
-klBTCtags    = ["zD1p0"];   % CT BTC levels (one bar each, light -> dark along the core)
+klBTCtags    = ["zD0p5","zD1p0"];   % CT BTC levels (one bar each, light -> dark along the core)
 fsKL         = 16;              % font size
 btcNames     = "XCT BTC z_D = " + strrep(extractAfter(klBTCtags,"zD"), "p", ".");
 nB           = numel(klBTCtags);
