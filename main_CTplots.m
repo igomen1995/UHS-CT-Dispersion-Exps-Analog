@@ -183,6 +183,84 @@ for ds = dataSources
     saveFigBoth(fig, exportPath, fname, closeAfterSave)
 end
 
+%% 1c) Mid-core profile with the C = 0.4 / 0.6 crossings (the width used for the mid-profile KL)
+% Same frame as the mid-profile KL (findProfileFrame: averaged profile crossing C = CD_target
+% closest to zD = ZD_target). Horizontal lines at the two levels, dots where each profile
+% crosses them (same front-anchored crossing as profileWidth); the distance between the two
+% dots of one colour is W_40-60. Prints frame, t_D, time elapsed, crossings, W and the
+% mid-profile KL of that frame (for the figure caption).
+
+ZD_target1c = 0.5;
+CD_target1c = 0.5;
+lv1c        = [0.4 0.6];       % levels (normalized Cn): lower, upper
+var1c       = "_xtrim";        % "" = full (CVert), "_xtrim" = x-trimmed (CVert_xtrim), as the mid-profile KL
+trim1c      = 0.02;            % fraction of the core ignored at each end (as profileWidth)
+fs1c        = 16;
+klTag1c     = "C40_60_contour";   % mid-profile KL method printed next to W
+
+for ds = dataSources
+    fig = figure('Position',[100 100 950 650], 'NumberTitle','off', 'Name', ...
+        sprintf('Mid-core profiles with the C = %.1f / %.1f crossings (%s%s)', lv1c(1), lv1c(2), ds, var1c));
+    ax = axes(fig);  hold(ax,'on')
+    h = gobjects(0);  rows1c = {};
+    for i = 1:nExp
+        vars   = expCTDataAll{i}.varsAll.(ds);
+        best_l = findProfileFrame(vars, ZD_target1c, CD_target1c, var1c);
+        if isnan(best_l), continue, end
+        prof = cellRow(vars.C1Profile, best_l);  if iscell(prof), prof = prof{1}; end
+        zD = prof.zDimLess(:);  C = prof.("CVert" + var1c)(:);
+        Ci = filedataExpAll{i}.C1init/100;  Cj = filedataExpAll{i}.C1j/100;
+        Lcm = max(prof.zVertcm);
+
+        h(end+1) = plot(ax, zD, C, '-', 'LineWidth',2.5, 'Color',expCol(i,:), ...
+            'DisplayName', sprintf('%s, t_D = %.2f', expName(i), vars.tDtotal(best_l))); %#ok<SAGROW>
+
+        zc = levelCrossings(zD, C, Ci, Cj, lv1c, trim1c);       % [z(lower) z(upper)] in zD
+        Cl = Ci + (Cj - Ci)*lv1c;
+        ok = isfinite(zc);
+        scatter(ax, zc(ok), Cl(ok), 90, expCol(i,:), 'filled', 'MarkerEdgeColor','k', ...
+            'LineWidth',0.8, 'HandleVisibility','off')
+
+        % mid-profile KL of this frame and the arrival time used for it (KL_profileAt)
+        KLf = NaN;  tauf = NaN;  tArr = NaN;
+        rs = [];  if hasPost(i), rs = expCTDataAll{i}.resultsAll.(ds); end
+        vName = "full";  if var1c == "_xtrim", vName = "xtrim"; end
+        if ~isempty(rs) && isfield(rs, vName) && isfield(rs.(vName), 'KL_midProfile')
+            mp = rs.(vName).KL_midProfile;
+            if isfield(mp.methods, klTag1c), tArr = mp.methods.(klTag1c).tArr_min; end
+            Tm = mp.T;
+            q  = find(Tm.frame == best_l, 1);
+            kc = "KL_" + klTag1c + "_cm2min";
+            if ~isempty(q) && ismember(kc, string(Tm.Properties.VariableNames))
+                KLf = Tm.(kc)(q);  tauf = Tm.tau_contour_min(q);
+            end
+        end
+        fd    = filedataExpAll{i};
+        tDarr = tArr*fd.Q/fd.Vtotal;                    % tD = Q t / Vtotal (t in min, Q in ml/min)
+        tEl   = vars.secondsElapsed(best_l);
+        names1c = ["experiment","frame","tD","t_elapsed_min","t_elapsed_hms", ...
+                   "t_arr_min","tD_arr","tD_core","t_core_min", ...
+                   "zD_C" + round(100*lv1c(1)), "zD_C" + round(100*lv1c(2)), "W_zD","W_cm","KL_cm2min"];
+        rows1c{end+1,1} = table(expName(i), best_l, vars.tDtotal(best_l), tEl/60, ...
+            string(sprintf('%02d:%02d:%02d', floor(tEl/3600), floor(mod(tEl,3600)/60), round(mod(tEl,60)))), ...
+            tArr, tDarr, vars.tDtotal(best_l) - tDarr, tauf, ...
+            zc(1), zc(2), zc(1) - zc(2), (zc(1) - zc(2))*Lcm, KLf, ...
+            'VariableNames', names1c); %#ok<SAGROW>
+    end
+    yline(ax, Ci + (Cj - Ci)*lv1c, '--k', 'LineWidth',1.2, 'HandleVisibility','off');
+    xlabel(ax, 'z_D [-]', 'FontSize',fs1c);  ylabel(ax, 'C_1 [-]', 'FontSize',fs1c)
+    xlim(ax, [0 1]);  ylim(ax, [0 1.02]);  set(ax, 'FontSize',fs1c);  grid(ax,'on');  box(ax,'on')
+    legend(ax, h, 'Location','northeast', 'FontSize',fs1c-2, 'Interpreter','tex')
+
+    T1c = vertcat(rows1c{:});
+    fprintf('\n1c) Mid-core profiles, %s%s: frame, time elapsed, C = %.1f / %.1f crossings, W and KL (%s):\n', ...
+        ds, var1c, lv1c(1), lv1c(2), klTag1c);
+    disp(T1c)
+    writetable(T1c, fullfile(exportPath, sprintf('CT_profile_mid_W%02d_%02d_%s%s.xlsx', ...
+        round(100*lv1c(1)), round(100*lv1c(2)), ds, var1c)));
+    saveFigBoth(fig, exportPath, sprintf('CT_profile_mid_W%02d_%02d_%s%s', ...
+        round(100*lv1c(1)), round(100*lv1c(2)), ds, var1c), closeAfterSave)
+end
 %% 2) Z profiles at a range of tD targets
 
 tD_target = 0.5:0.1:1.2;
@@ -1694,4 +1772,22 @@ if ~isempty(groupNames) && all(groupNames ~= "")
     set(ax, 'XTick', 1:nG, 'XTickLabel', groupNames, 'TickLabelInterpreter','none')
 end
 set(ax, 'FontSize',fs);  grid(ax,'on');  box(ax,'on')
+end
+
+function zc = levelCrossings(zD, C, Ci, Cj, lv, trimFrac)
+% zD where the profile crosses the normalized levels lv = [lower upper], searched outward
+% from the front centre (steepest Cn = 0.5 crossing), end slices left out (as profileWidth);
+% returns [z(lower) z(upper)] in zD from the injection end (NaN if not crossed)
+zc = [NaN NaN];
+ok = isfinite(zD) & isfinite(C) & zD >= trimFrac & zD <= 1 - trimFrac;
+z = zD(ok);  Cn = movmedian((C(ok) - Ci)/(Cj - Ci), 5);
+[z, o] = sort(z);  Cn = Cn(o);
+if numel(z) < 10, return, end
+k50 = find(Cn(1:end-1) >= 0.5 & Cn(2:end) < 0.5);
+if isempty(k50), return, end
+g = -gradient(Cn, z);  [~, b] = max(g(k50));  k0 = k50(b);
+j = find(Cn(k0+1:end) < lv(1), 1);                       % lower level: downstream
+if ~isempty(j), j = k0 + j;  zc(1) = z(j-1) + (Cn(j-1) - lv(1))*(z(j) - z(j-1))/(Cn(j-1) - Cn(j)); end
+j = find(Cn(1:k0) > lv(2), 1, 'last');                   % upper level: upstream
+if ~isempty(j) && j < numel(Cn), zc(2) = z(j) + (Cn(j) - lv(2))*(z(j+1) - z(j))/(Cn(j) - Cn(j+1)); end
 end
