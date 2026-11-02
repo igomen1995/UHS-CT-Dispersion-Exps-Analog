@@ -699,6 +699,51 @@ for ds = dataSources
     end
 end
 
+%% 7c) Averaged-profile front width vs tD only (one figure per level pair)
+% zDWidthProf_<lo>_<hi> (addProfileWidths, main_CTpostproc), one colour per experiment
+% (expCol: P900 blue / P725 green, light = Q1, dark = Q5), legend XCT-loM-hiPe etc.
+% No axes title: the description is the figure name.
+
+widthPairsProf = {'10_90','20_80','30_70','40_60'};
+widthVarProf   = "_xtrim";         % "" = full image, "_xtrim" = x-trimmed
+widthUnitProf  = "";               % "" = zD [-], "_cm" = cm
+fs7c           = 16;               % font size
+mk7c           = 30;               % marker size
+
+for ds = dataSources
+    for p = 1:numel(widthPairsProf)
+        pField  = "zDWidthProf_" + widthPairsProf{p} + widthVarProf + widthUnitProf;
+        figName = sprintf('Averaged-profile front width %s vs t_D (%s%s)', ...
+            strrep(widthPairsProf{p},'_','-'), ds, widthVarProf);
+        fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
+        ax  = axes(fig);  hold(ax,'on')
+        nPlotted = 0;
+
+        for i = 1:nExp
+            vars = expCTDataAll{i}.varsAll.(ds);
+            if ~ismember(pField, string(vars.Properties.VariableNames)), continue, end
+            w  = abs(vars.(pField));
+            ok = isfinite(vars.tDtotal) & isfinite(w);
+            if ~any(ok), continue, end
+            scatter(ax, vars.tDtotal(ok), w(ok), mk7c, expCol(i,:), 'o', 'filled', ...
+                'MarkerEdgeColor',0.6*expCol(i,:), 'LineWidth',0.5, 'DisplayName', expName(i))
+            nPlotted = nPlotted + 1;
+        end
+        if nPlotted == 0, close(fig); continue, end
+
+        xlabel(ax, 't_D [-]', 'FontSize',fs7c)
+        if widthUnitProf == "_cm"
+            ylabel(ax, "W_{" + strrep(widthPairsProf{p},'_','-') + "}, averaged profile [cm]", 'FontSize',fs7c)
+        else
+            ylabel(ax, "\Deltaz_{D," + strrep(widthPairsProf{p},'_','-') + "}, averaged profile [-]", 'FontSize',fs7c)
+            ylim(ax, [0 inf])
+        end
+        xlim(ax, [0 1.2]);  set(ax, 'FontSize',fs7c);  grid(ax,'on');  box(ax,'on')
+        legend(ax, 'Location','northwest', 'FontSize',fs7c, 'Interpreter','none')
+        saveFigBoth(fig, exportPath, sprintf('width_profile_%s_%s%s%s_tD', ...
+            widthPairsProf{p}, ds, widthVarProf, widthUnitProf), closeAfterSave)
+    end
+end
 %% 8) Measured front envelope, all experiments together
 
 widthPairsEnv = {'10_90','30_70','40_60'};
@@ -902,7 +947,10 @@ end
 %% 8e) KL by method for the four cases: bar chart and M-Pe quadrant chart
 % Four KL estimates per XCT experiment, all with error bars:
 %   XCT 1D profile    mid-profile KL (KL_profileAt, x-trimmed): front centre C = 0.5 at zD = 0.5
-%   XCT BTC zD = ...  CT breakthrough curve at each level in klBTCtags (default zD = 0.5 and 1.0)
+%   XCT 2D contours   same frames and tau, width between the 2D contours (klMidContMethod, "" = no bar)
+%   XCT BTC zD = ...  CT breakthrough curve at each level in klBTCtags (zD = 0.5, 0.8, 1.0):
+%                     a KL that decreases with zD means the front sharpens towards the outlet
+%                     (end / boundary effect), it does not keep spreading as the ADE predicts
 %   XCT MFM           MFM of the analog (He-Xe) experiment
 %   UHS MFM           MFM of the paired UHS experiment (with the run swap of 5b: H2-CH4 Q1 -> R2)
 % Figure 1: grouped bars, one group per case (loM-loPe, loM-hiPe, hiM-loPe, hiM-hiPe).
@@ -913,14 +961,20 @@ end
 klMidVariant = "xtrim";         % mid-profile variant: "xtrim" | "full"
 klMidMethod  = "contour";       % erfc width with contour arrival; or "C20_80_contour", "C40_60_contour", ...
 klMidStat    = "best";          % "best" (closest frame +/- fit SE) | "mean" (mean +/- std of the window frames)
+klMidContMethod = "contC40_60_contour";  % 2D-contour width at the same frames; "" = no bar
+klMidContStat   = "mean";       % level pairs have no fit SE -> mean +/- std of the window frames
 klBTCVariant = "xtrim";         % CT BTC variant: "xtrim" | "full"
-klBTCtags    = ["zD0p5","zD1p0"];   % CT BTC levels (one bar each)
+klBTCtags    = ["zD0p5","zD0p8","zD1p0"];   % CT BTC levels (one bar each, light -> dark along the core)
 fsKL         = 16;              % font size
 btcNames     = "XCT BTC z_D = " + strrep(extractAfter(klBTCtags,"zD"), "p", ".");
-klSrcNames   = ["XCT 1D profile", btcNames, "XCT MFM", "UHS MFM"];
-btcCols      = [0.49 0.18 0.56; 0.75 0.55 0.85; 0.93 0.69 0.13; 0.40 0.10 0.40];   % one per BTC level
-klSrcCols    = [0.85 0.33 0.10; btcCols(1:numel(klBTCtags),:); 0.35 0.35 0.35; 0.30 0.75 0.93];
+nB           = numel(klBTCtags);
+btcCols      = [linspace(0.85,0.35,nB)', linspace(0.70,0.08,nB)', linspace(0.95,0.45,nB)'];  % purple, light -> dark
+hasCont      = double(klMidContMethod ~= "");   % 1 = contour bar, 0 = none
+klSrcNames   = ["XCT 1D profile", repmat("XCT 2D contours",1,hasCont), btcNames, "XCT MFM", "UHS MFM"];
+klSrcCols    = [0.85 0.33 0.10; repmat([0.98 0.70 0.45],hasCont,1); btcCols; 0.35 0.35 0.35; 0.30 0.75 0.93];
 nSrc         = numel(klSrcNames);
+iCont        = 2*hasCont;              % column of the contour bar (0 = none)
+iBTC0        = 1 + hasCont;            % BTC bars are columns iBTC0+1 ... iBTC0+nB
 iMFMx = nSrc - 1;  iMFMu = nSrc;          % columns of the two MFM bars
 % cases: {name, M token in key, Pe token in key, quadrant tile (1 = up-left ... 4 = down-right)}
 klCases = {"XCT-loM-loPe", "P725", "Q1", 3; ...
@@ -951,14 +1005,29 @@ for ds = dataSources
                 KL(c,1) = r.KL_cm2min_best;  dKL(c,1) = r.dKL_cm2min_best;
             end
         end
+        % XCT 2D contours, same frames
+        if hasCont
+            if isfield(rs, klMidVariant) && isfield(rs.(klMidVariant), 'KL_midProfile') && ...
+                    isfield(rs.(klMidVariant).KL_midProfile.methods, klMidContMethod)
+                r = rs.(klMidVariant).KL_midProfile.methods.(klMidContMethod);
+                if klMidContStat == "mean"
+                    KL(c,iCont) = r.KL_cm2min_mean;  dKL(c,iCont) = r.KL_cm2min_std;
+                else
+                    KL(c,iCont) = r.KL_cm2min_best;  dKL(c,iCont) = r.dKL_cm2min_best;
+                end
+            else
+                warning('8e: %s has no mid-profile method %s (re-run main_CTpostproc with the new KL_profileAt)', ...
+                    expKeys(i), klMidContMethod);
+            end
+        end
         % XCT BTC at each zD level
         for b = 1:numel(klBTCtags)
             if isfield(rs, klBTCVariant) && isfield(rs.(klBTCVariant), 'KL_BTC_CT_byZD') && ...
                     isfield(rs.(klBTCVariant).KL_BTC_CT_byZD, klBTCtags(b))
                 e = rs.(klBTCVariant).KL_BTC_CT_byZD.(klBTCtags(b));
                 if isfield(e,'best') && isfield(e.best,'KL_cm2min')
-                    KL(c,1+b) = e.best.KL_cm2min;
-                    if isfield(e.best,'dKL_cm2min'), dKL(c,1+b) = e.best.dKL_cm2min; end
+                    KL(c,iBTC0+b) = e.best.KL_cm2min;
+                    if isfield(e.best,'dKL_cm2min'), dKL(c,iBTC0+b) = e.best.dKL_cm2min; end
                 end
             end
         end
@@ -972,13 +1041,20 @@ for ds = dataSources
     end
     dKL(~isfinite(dKL)) = 0;
     caseNames = string(klCases(:,1));
-    srcTags = ["profile", "BTC_" + klBTCtags, "MFM_XCT", "MFM_UHS"];
+    srcTags = ["profile", repmat("contour",1,hasCont), "BTC_" + klBTCtags, "MFM_XCT", "MFM_UHS"];
     T8e = table(caseNames, 'VariableNames', {'case'});
     for s = 1:nSrc
         T8e.("KL_" + srcTags(s))  = KL(:,s);
         T8e.("dKL_" + srcTags(s)) = dKL(:,s);
     end
     T8e = [T8e, table(Mx, Px, uhsLbl, Mu, Pu, 'VariableNames', {'M_XCT','Pe_XCT','UHS_key','M_UHS','Pe_UHS'})];
+    % trend of the BTC KL along the core: slope of KL vs zD (< 0: front sharpens towards the outlet)
+    zDb = str2double(strrep(extractAfter(klBTCtags,"zD"), "p", "."));
+    T8e.BTC_KL_slope_per_zD = nan(nC,1);
+    for c = 1:nC
+        y = KL(c, iBTC0 + (1:nB));  okb = isfinite(y);
+        if nnz(okb) >= 2, pp = polyfit(zDb(okb), y(okb), 1);  T8e.BTC_KL_slope_per_zD(c) = pp(1); end
+    end
     fprintf('\n8e) KL [cm2/min] by method (%s):\n', ds);  disp(T8e)
     writetable(T8e, fullfile(exportPath, "KL_byMethod_4cases_" + ds + ".xlsx"));
     yMax = 1.1*max(KL(:) + dKL(:), [], 'omitnan');  if ~(isfinite(yMax) && yMax > 0), yMax = 1; end
@@ -1000,13 +1076,16 @@ for ds = dataSources
         set(ax, 'XTick', []);  ylim(ax, [0 yMax]);  ylabel(ax, 'K_L [cm^2/min]', 'FontSize',fsKL)
         title(ax, {caseNames(c), sprintf('XCT: M = %.2f, Pe = %.3g   UHS: M = %.2f, Pe = %.3g', ...
             Mx(c), Px(c), Mu(c), Pu(c))}, 'FontSize',fsKL-2, 'FontWeight','normal')
-        if klCases{c,4} == 2, legend(ax, 'Location','northeast', 'FontSize',fsKL-2), end
     end
+    % one legend for all panels, below the grid, single row
+    lgd = legend(ax, 'Orientation','horizontal', 'NumColumns',nSrc, 'FontSize',fsKL-2, 'Box','off');
+    lgd.Layout.Tile = 'south';
+    lgd.ItemTokenSize = [18 12];
+    xlabel(tl, 'viscosity ratio M  \rightarrow  (left: low M, right: high M)', 'FontSize',fsKL)
     xlabel(tl, 'viscosity ratio M  \rightarrow  (left: low M, right: high M)', 'FontSize',fsKL)
     ylabel(tl, 'Pe  \rightarrow  (bottom: low Pe, top: high Pe)', 'FontSize',fsKL)
     saveFigBoth(fig, exportPath, "KL_byMethod_MPe_quadrants_" + ds, closeAfterSave)
 end
-
 %% 9) Front tilt and shape diagnostics
 
 for ds = dataSources

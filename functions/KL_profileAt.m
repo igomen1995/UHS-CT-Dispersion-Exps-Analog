@@ -8,7 +8,9 @@ function S = KL_profileAt(vars, variantSuffix, zDtarget, CDtarget, zDwin, tArr, 
 % that fitKL_frontWidth fits against time); they are computed here if missing.
 % Frame selection: findProfileFrame (same rule as the profile plot in main_CTplots).
 % Per frame and arrival time (tau = t - t_arr), first ADE term (Lake & Johns / Peters):
-%   C10_90 ... : KL = W^2/(4 k^2 tau)      zDWidthProf_<lo>_<hi><sfx>_cm
+%   C10_90 ... : KL = W^2/(4 k^2 tau)      zDWidthProf_<lo>_<hi><sfx>_cm   (averaged profile)
+%   contC10_90 : KL = W^2/(4 k^2 tau)      zDWidth_<lo>_<hi><sfx>_cm       (2D contours, same frames,
+%                                           populate_CTframeVars: mean contour positions)
 %   erfc       : KL = w^2/(4 tau)          wProfErfc<sfx>_cm, dKL = 2 KL dw/w
 %   sigma      : KL = sigma^2/(2 tau)      sigmaProf<sfx>_cm
 % One value per method: the closest frame ("best") and the mean +/- std over the
@@ -48,7 +50,18 @@ for p = 1:numel(tok)
     tags(p) = "C" + tt(1) + "_" + tt(2);
     kP(p)   = erfcinv(2*str2double(tt(1))/100) - erfcinv(2*str2double(tt(2))/100);
 end
-mets = [tags "erfc" "sigma"];
+% contour widths of the same frames (2D contours, populate_CTframeVars)
+tokC = regexp(allCols, "^zDWidth_(\d+)_(\d+)" + sfx + "_cm$", 'tokens', 'once');
+hasC = ~cellfun(@isempty, tokC);
+cPairCols = allCols(hasC);  tokC = tokC(hasC);
+ctags = strings(1,numel(tokC));  kC = nan(1,numel(tokC));
+for p = 1:numel(tokC)
+    tt = string(tokC{p});
+    ctags(p) = "contC" + tt(1) + "_" + tt(2);
+    kC(p)    = erfcinv(2*str2double(tt(1))/100) - erfcinv(2*str2double(tt(2))/100);
+end
+wTags = [tags ctags];  wK = [kP kC];  wCols = [pairCols cPairCols];   % every width-based method
+mets  = [wTags "erfc" "sigma"];
 
 emptyM = struct('KL_cm2min_best',NaN, 'dKL_cm2min_best',NaN, 'KL_cm2min_mean',NaN, ...
     'KL_cm2min_std',NaN, 'tArr_min',NaN, 'label',"");
@@ -84,12 +97,12 @@ T = table(lWin, vars.tDtotal(lWin), t_min, zCross(lWin), vars.("zDFrontProf50" +
     vars.("skewProf" + sfx)(lWin), vars.("kurtProf" + sfx)(lWin), ...
     'VariableNames', {'frame','tDtotal','t_min','zD_cross','z50D_erfc','w_erfc_cm','dw_erfc_cm', ...
     'rmse_erfc','r2_erfc','sigma_z_cm','skew_front','kurt_front'});
-for p = 1:numel(tags), T.("W_" + tags(p) + "_cm") = vars.(pairCols(p))(lWin); end
+for p = 1:numel(wTags), T.("W_" + wTags(p) + "_cm") = abs(vars.(wCols(p))(lWin)); end
 for a = arrs
     tau = t_min - tArr.(a);  tau(~(tau > 0)) = NaN;
     T.("tau_" + a + "_min") = tau;
-    for p = 1:numel(tags)
-        T.("KL_" + tags(p) + "_" + a + "_cm2min") = T.("W_" + tags(p) + "_cm").^2 ./ (4*kP(p)^2*tau);
+    for p = 1:numel(wTags)
+        T.("KL_" + wTags(p) + "_" + a + "_cm2min") = T.("W_" + wTags(p) + "_cm").^2 ./ (4*wK(p)^2*tau);
     end
     KLe = w.^2 ./ (4*tau);
     T.("KL_erfc_"  + a + "_cm2min") = KLe;
@@ -160,7 +173,12 @@ function s = labelOf(m, a)
 switch m
     case "erfc",  s = "w^2/(4\tau), t_{arr} " + a;
     case "sigma", s = "\sigma_z^2/(2\tau), t_{arr} " + a;
-    otherwise,    s = "W_{" + strrep(extractAfter(m,"C"),"_","-") + "}^2/(4k^2\tau), t_{arr} " + a;
+    otherwise
+        if startsWith(m, "contC")
+            s = "contour W_{" + strrep(extractAfter(m,"contC"),"_","-") + "}^2/(4k^2\tau), t_{arr} " + a;
+        else
+            s = "W_{" + strrep(extractAfter(m,"C"),"_","-") + "}^2/(4k^2\tau), t_{arr} " + a;
+        end
 end
 end
 
