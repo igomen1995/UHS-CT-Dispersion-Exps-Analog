@@ -261,14 +261,15 @@ for ds = dataSources
     saveFigBoth(fig, exportPath, sprintf('CT_profile_mid_W%02d_%02d_%s%s', ...
         round(100*lv1c(1)), round(100*lv1c(2)), ds, var1c), closeAfterSave)
 end
-%% 2) Z profiles at a range of tD targets
+%% 2) Z profiles at a range of tD targets (all experiments, one figure per tD)
 
 tD_target = 0.5:0.1:1.2;
+var2      = "";                % "" = full image (CVert), "_xtrim" = x-trimmed (CVert_xtrim)
 
 for ds = dataSources
     for m = 1:numel(tD_target)
-        fig = figure;  hold on
-        legendEntries = strings(1,nExp);
+        fig = figure('Position',[100 100 900 600]);  hold on
+        h = gobjects(0);
 
         for i = 1:nExp
             vars = expCTDataAll{i}.varsAll.(ds);
@@ -277,18 +278,47 @@ for ds = dataSources
                 warning('%s (%s): nearest scan is tD=%.3f (target %.2f)', ...
                     expKeys(i), ds, vars.tDtotal(l), tD_target(m));
             end
-            prof = cellRow(vars.C1Profile, l);
-            plot(prof.zDimLess, prof.CVert, 'LineWidth',3, 'Color',cols(i,:))
-            legendEntries(i) = expKeys(i) + sprintf(" (tD=%.2f)", vars.tDtotal(l));
+            prof = cellRow(vars.C1Profile, l);  if iscell(prof), prof = prof{1}; end
+            h(end+1) = plot(prof.zDimLess, prof.("CVert" + var2), 'LineWidth',3, 'Color',expCol(i,:), ...
+                'DisplayName', expName(i) + sprintf(", t_D = %.2f", vars.tDtotal(l))); %#ok<SAGROW>
         end
-        xlabel('Z_D [-]','FontSize',14);  ylabel('C_1 [-]','FontSize',14)
-        xlim([0 1]);  ylim([0 1]);  set(gca,'FontSize',14);  grid on
+        xlabel('z_D [-]','FontSize',14);  ylabel('C_1 [-]','FontSize',14)
+        xlim([0 1]);  ylim([0 1.02]);  set(gca,'FontSize',14);  grid on;  box on
         if tD_target(m) < 0.8, loc = 'northeast'; else, loc = 'southwest'; end
-        legend(legendEntries, 'Interpreter','none','FontSize',8,'Location',loc)
-        title(sprintf('Z profiles (%s) @ tD = %.1f', ds, tD_target(m)), 'Interpreter','none')
+        legend(h, 'Interpreter','tex','FontSize',12,'Location',loc)
+        title(sprintf('Z profiles (%s%s) @ t_D = %.1f', ds, var2, tD_target(m)), 'Interpreter','tex')
 
-        fname = sprintf('Zprofiles_%s_tD%s', ds, strrep(sprintf('%.1f',tD_target(m)),'.','p'));
+        fname = sprintf('Zprofiles_%s%s_tD%s', ds, var2, strrep(sprintf('%.1f',tD_target(m)),'.','p'));
         saveFigBoth(fig, exportPath, fname, closeAfterSave)
+    end
+end
+
+%% 2b) Profile evolution with time, one figure per experiment
+
+tD_evol = 0.3:0.1:1.2;         % t_D of the profiles drawn (nearest scan, within 0.05)
+var2b   = "";                  % "" = full image, "_xtrim" = x-trimmed
+
+for ds = dataSources
+    for i = 1:nExp
+        vars = expCTDataAll{i}.varsAll.(ds);
+        fig = figure('Position',[100 100 900 600]);  hold on
+        h = gobjects(0);
+        nT = numel(tD_evol);
+        for m = 1:nT
+            [minDist, l] = min(abs(vars.tDtotal - tD_evol(m)));
+            if minDist > 0.05, continue, end
+            prof = cellRow(vars.C1Profile, l);  if iscell(prof), prof = prof{1}; end
+            f  = (m - 1)/max(nT - 1, 1);                         % 0 = early, 1 = late
+            cm = (1 - f)*(0.25 + 0.75*expCol(i,:)) + f*(0.45*expCol(i,:));   % light -> dark
+            h(end+1) = plot(prof.zDimLess, prof.("CVert" + var2b), 'LineWidth',2.5, 'Color',cm, ...
+                'DisplayName', sprintf('t_D = %.2f', vars.tDtotal(l))); %#ok<SAGROW>
+        end
+        if isempty(h), close(fig); continue, end
+        xlabel('z_D [-]','FontSize',14);  ylabel('C_1 [-]','FontSize',14)
+        xlim([0 1]);  ylim([0 1.02]);  set(gca,'FontSize',14);  grid on;  box on
+        legend(h, 'Interpreter','tex','FontSize',11,'Location','eastoutside')
+        title(sprintf('%s: Z profiles vs time (%s%s)', expName(i), ds, var2b), 'Interpreter','none')
+        saveFigBoth(fig, exportPath, sprintf('Zprofiles_evolution_%s_%s%s', expKeys(i), ds, var2b), closeAfterSave)
     end
 end
 
@@ -303,7 +333,7 @@ btcAxes = {'timeElapsed',            'time elapsed [hh:mm:ss]',                 
 for ds = dataSources
     for a = 1:size(btcAxes,1)
         xVar = btcAxes{a,1};
-        fig = figure;  hold on
+        fig = figure('Position',[100 100 900 600]);  hold on
         nPlotted = 0;
 
         for i = 1:nExp
@@ -312,16 +342,16 @@ for ds = dataSources
                 warning('%s (%s): column %s missing, skipped', expKeys(i), ds, xVar);
                 continue
             end
-            plot(vars.(xVar), vars.(CfieldOutlet), 'LineWidth',2, 'Color',cols(i,:), ...
-                'DisplayName', "CT " + expKeys(i))
+            plot(vars.(xVar), vars.(CfieldOutlet), 'LineWidth',2.5, 'Color',expCol(i,:), ...
+                'DisplayName', expName(i))
             nPlotted = nPlotted + 1;
         end
         if nPlotted == 0, close(fig); continue, end
 
-        xlabel(btcAxes{a,2},'FontSize',14);  ylabel('C_1 [-]','FontSize',14)
-        ylim([-0.02 1]);  set(gca,'FontSize',14);  grid on
+        xlabel(btcAxes{a,2},'FontSize',14);  ylabel('C_1 at the outlet [-]','FontSize',14)
+        ylim([-0.02 1.02]);  set(gca,'FontSize',14);  grid on;  box on
         if ~isempty(btcAxes{a,4}), xlim(btcAxes{a,4}); end
-        legend('Interpreter','none','FontSize',8,'Location','southeast')
+        legend('Interpreter','none','FontSize',12,'Location','southeast')
         title(sprintf('Outlet BT curves from CT (%s)', ds), 'Interpreter','none')
 
         saveFigBoth(fig, exportPath, sprintf('BT_CT_%s_%s', ds, btcAxes{a,3}), closeAfterSave)
