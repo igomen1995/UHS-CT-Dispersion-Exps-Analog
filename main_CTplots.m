@@ -823,38 +823,43 @@ for ds = dataSources
     end
 end
 %% 8) Measured front envelope, all experiments together
+% front centre (C = 0.5) +/- half width per scan; legend XCT-loM-hiPe etc. (expName, expCol)
 
 widthPairsEnv = {'10_90','30_70','40_60'};
+envSrc8       = "zDWidth_";    % "zDWidth_" = 2D contours | "zDWidthProf_" = averaged profile
+envVar8       = "";            % "" = full image | "_xtrim" = x-trimmed (width and front centre)
 
 for ds = dataSources
     for p = 1:numel(widthPairsEnv)
-        measField = ['zDWidth_' widthPairsEnv{p}];
+        measField = envSrc8 + widthPairsEnv{p} + envVar8;
+        cenField  = "zDFront50" + envVar8;
         fig = figure('Position',[100 100 1000 650]);  hold on
 
         for i = 1:nExp
             vars = expCTDataAll{i}.varsAll.(ds);
-            if ~ismember(measField, vars.Properties.VariableNames), continue, end
+            if ~all(ismember([measField cenField], string(vars.Properties.VariableNames))), continue, end
 
             tD = vars.tDtotal;
-            centerMeas = vars.zDFront50;
-            halfMeas   = vars.(measField)/2;
+            centerMeas = vars.(cenField);
+            halfMeas   = abs(vars.(measField))/2;
             validMeas  = isfinite(centerMeas) & isfinite(halfMeas);
 
             % one vertical segment per scan: front centre +/- half width
             xs = [tD(validMeas)'; tD(validMeas)'; nan(1,nnz(validMeas))];
             ys = [centerMeas(validMeas)' - halfMeas(validMeas)'; ...
                   centerMeas(validMeas)' + halfMeas(validMeas)'; nan(1,nnz(validMeas))];
-            plot(xs(:), ys(:), '-', 'Color',[cols(i,:) 0.6], 'LineWidth',1.5, 'HandleVisibility','off')
-            scatter(tD(validMeas), centerMeas(validMeas), 18, colsDark(i,:), 'filled', ...
-                'DisplayName', expKeys(i))
+            plot(xs(:), ys(:), '-', 'Color',[expCol(i,:) 0.6], 'LineWidth',1.5, 'HandleVisibility','off')
+            scatter(tD(validMeas), centerMeas(validMeas), 18, 0.6*expCol(i,:), 'filled', ...
+                'DisplayName', expName(i))
         end
 
         xlabel('t_D [-]','FontSize',14);  ylabel('z_D [-]','FontSize',14)
         ylim([-0.02 1.02]);  xlim([0 1.2]);  set(gca,'FontSize',14);  grid on
-        legend('Interpreter','none','FontSize',8,'Location','southeast')
-        title(sprintf('Measured front envelope (%s, centred on C=0.5) (%s)', ...
-            strrep(widthPairsEnv{p},'_','-'), ds), 'Interpreter','none')
-        saveFigBoth(fig, exportPath, sprintf('frontEnvelope_CT_allExp_%s_%s_tD', widthPairsEnv{p}, ds), closeAfterSave)
+        legend('Interpreter','none','FontSize',12,'Location','southeast')
+        title(sprintf('Measured front envelope (%s, centred on C=0.5) (%s%s)', ...
+            strrep(widthPairsEnv{p},'_','-'), ds, envVar8), 'Interpreter','none')
+        saveFigBoth(fig, exportPath, sprintf('frontEnvelope_CT_allExp_%s_%s%s_tD', ...
+            widthPairsEnv{p}, ds, envVar8), closeAfterSave)
     end
 end
 
