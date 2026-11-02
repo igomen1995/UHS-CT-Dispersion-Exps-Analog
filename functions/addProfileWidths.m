@@ -6,12 +6,16 @@ function vars = addProfileWidths(vars, Ci, Cj, levelPairs, L_cm, doErfc, trimFra
 %
 % Any existing profile-width columns are deleted first and rebuilt.
 %
+% Dimensionless columns are divided by the IMAGE length of each frame (C1Profile.zVertcm(end),
+% the same length populate_CTframeVars uses for zDFront* / zDWidth_*), so profile and contour
+% zD widths are directly comparable; L_cm (core length) is only the fallback.
+%
 % Columns (sfx = "" full image, "_xtrim" x-trimmed; lo/hi = level pair, e.g. 10_90):
 %   zDWidthProf_<lo>_<hi><sfx>      width between the Cn = lo and Cn = hi crossings [-]
 %   zDWidthProf_<lo>_<hi><sfx>_cm   same in cm
 %   zDWidthProfErfc_10_90<sfx>[_cm] erfc-fit width as its 10-90 equivalent, 2 erfcinv(0.2) w,
 %                                   so that W^2/(4k^2) = w^2/4 in fitKL_frontWidth
-%   zDFrontProf50<sfx>              front centre z50 of the erfc fit [-, from the injection end]
+%   zDFrontProf50<sfx>[_cm]         front centre z50 of the erfc fit [-, cm; from the injection end]
 %   wProfErfc<sfx>_cm, dwProfErfc<sfx>_cm   erfc width w and its standard error [cm]
 %   rmseProfErfc<sfx>, r2ProfErfc<sfx>      goodness of the erfc fit (normalized C)
 %   (the fitted curve of any frame: Cn = 0.5 erfc((z - z50)/w), z from the injection end)
@@ -39,9 +43,11 @@ for sfx = ["", "_xtrim"]
     cCol = "CVert" + sfx;
     W = nan(n,nP);  z50 = nan(n,1);  w = nan(n,1);  dw = nan(n,1);  rm = nan(n,1);  r2 = nan(n,1);
     sg = nan(n,1);  sk = nan(n,1);  ku = nan(n,1);  tags = strings(1,nP);  notes = strings(n,1);
+    Limg = L_cm*ones(n,1);                 % image length per frame [cm] (fallback: core length)
     for r = 1:n
         pr = getProf(vars.C1Profile, r);
         if isempty(pr) || ~ismember(cCol, string(pr.Properties.VariableNames)), continue, end
+        zc = pr.zVertcm;  if any(isfinite(zc)), Limg(r) = max(zc); end   % = Lcm of populate_CTframeVars
         P = profileWidth(pr.zVertcm, pr.(cCol), Ci, Cj, levelPairs, [], doErfc, trimFrac);
         notes(r) = P.note;
         W(r,:) = P.W;  z50(r) = P.z50_erfc;  w(r) = P.w_erfc;  dw(r) = P.dw_erfc;
@@ -66,12 +72,13 @@ for sfx = ["", "_xtrim"]
     end
     for p = 1:nP
         tags(p) = sprintf("%02d_%02d", round(100*levelPairs(p,1)), round(100*levelPairs(p,2)));
-        vars.("zDWidthProf_" + tags(p) + sfx)         = W(:,p)/L_cm;
+        vars.("zDWidthProf_" + tags(p) + sfx)         = W(:,p)./Limg;
         vars.("zDWidthProf_" + tags(p) + sfx + "_cm") = W(:,p);
     end
-    vars.("zDWidthProfErfc_10_90" + sfx)         = kErfc*w/L_cm;
+    vars.("zDWidthProfErfc_10_90" + sfx)         = kErfc*w./Limg;
     vars.("zDWidthProfErfc_10_90" + sfx + "_cm") = kErfc*w;
-    vars.("zDFrontProf50" + sfx)   = z50/L_cm;
+    vars.("zDFrontProf50" + sfx)          = z50./Limg;
+    vars.("zDFrontProf50" + sfx + "_cm")  = z50;
     vars.("wProfErfc" + sfx + "_cm")  = w;
     vars.("dwProfErfc" + sfx + "_cm") = dw;
     vars.("rmseProfErfc" + sfx) = rm;

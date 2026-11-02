@@ -73,6 +73,12 @@ t_min = vars.secondsElapsed(lWin)/60;
 w     = vars.("wProfErfc"  + sfx + "_cm")(lWin);
 dw    = vars.("dwProfErfc" + sfx + "_cm")(lWin);
 sg    = vars.("sigmaProf"  + sfx + "_cm")(lWin);
+z50cmCol = "zDFrontProf50" + sfx + "_cm";             % front centre in cm (addProfileWidths)
+if ismember(z50cmCol, string(vars.Properties.VariableNames))
+    z50cm = vars.(z50cmCol)(lWin);
+else
+    z50cm = vars.("zDFrontProf50" + sfx)(lWin)*L_cm;    % older columns: zD on the core length
+end
 T = table(lWin, vars.tDtotal(lWin), t_min, zCross(lWin), vars.("zDFrontProf50" + sfx)(lWin), w, dw, ...
     vars.("rmseProfErfc" + sfx)(lWin), vars.("r2ProfErfc" + sfx)(lWin), sg, ...
     vars.("skewProf" + sfx)(lWin), vars.("kurtProf" + sfx)(lWin), ...
@@ -89,7 +95,7 @@ for a = arrs
     T.("KL_erfc_"  + a + "_cm2min") = KLe;
     T.("dKL_erfc_" + a + "_cm2min") = 2*KLe.*dw./w;
     T.("KL_sigma_" + a + "_cm2min") = sg.^2 ./ (2*tau);
-    T.("Pe_front_" + a) = (T.z50D_erfc*L_cm).^2 ./ (KLe.*tau);     % v z/KL with v = z50/tau
+    T.("Pe_front_" + a) = z50cm.^2 ./ (KLe.*tau);                 % v z/KL with v = z50/tau
 end
 S.T = T;  S.nFrames = height(T);  S.bestFrame = lBest;
 qb = find(T.frame == lBest, 1);
@@ -115,10 +121,11 @@ if strlength(plotFile) > 0
     fig = figure('Visible','off', 'Position',[80 80 1300 500]);
     tl  = tiledlayout(fig, 1, 2, 'TileSpacing','compact');
     ax = nexttile(tl);  hold(ax,'on')
-    plot(ax, Pb.zz/L_cm, Pb.Cn, 'k.', 'DisplayName', sprintf('profile, t_D = %.2f', S.tD_best))
-    wb = T.w_erfc_cm(qb);  zb = T.z50D_erfc(qb)*L_cm;
+    Lim = max(pr.zVertcm);                                       % image length (zD of the profiles)
+    plot(ax, Pb.zz/Lim, Pb.Cn, 'k.', 'DisplayName', sprintf('profile, t_D = %.2f', S.tD_best))
+    wb = T.w_erfc_cm(qb);  zb = z50cm(qb);
     if isfinite(wb)
-        plot(ax, Pb.zz/L_cm, 0.5*erfc((Pb.zz - zb)/wb), 'r-', 'LineWidth',2, ...
+        plot(ax, Pb.zz/Lim, 0.5*erfc((Pb.zz - zb)/wb), 'r-', 'LineWidth',2, ...
             'DisplayName', sprintf('erfc fit: w = %.3g cm', wb))
     end
     xline(ax, zDtarget, ':k', 'HandleVisibility','off');
