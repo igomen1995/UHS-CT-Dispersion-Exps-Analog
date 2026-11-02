@@ -1072,8 +1072,8 @@ end
 % Needs section 5b to have run before (uhsData, uhsKey); otherwise the configured UHS key is used.
 
 klMidVariant = "xtrim";         % mid-profile variant: "xtrim" | "full"
-klMidMethod  = "contour";       % erfc width with contour arrival; or "C20_80_contour", "C40_60_contour", ...
-klMidStat    = "best";          % "best" (closest frame +/- fit SE) | "mean" (mean +/- std of the window frames)
+klMidMethod  = "C40_60_contour";    % averaged profile, W_40-60
+klMidStat    = "mean";              % same statistic as the contour bar
 klMidContMethod = "contC40_60_contour";  % 2D-contour width at the same frames; "" = no bar
 klMidContStat   = "mean";       % level pairs have no fit SE -> mean +/- std of the window frames
 klBTCVariant = "xtrim";         % CT BTC variant: "xtrim" | "full"
