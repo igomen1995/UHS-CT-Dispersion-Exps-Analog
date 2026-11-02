@@ -1077,11 +1077,14 @@ klMidStat    = "mean";              % same statistic as the contour bar
 klMidContMethod = "contC40_60_contour";  % 2D-contour width at the same frames; "" = no bar
 klMidContStat   = "mean";       % level pairs have no fit SE -> mean +/- std of the window frames
 klBTCVariant = "xtrim";         % CT BTC variant: "xtrim" | "full"
-klBTCtags    = ["zD0p5","zD0p8","zD1p0"];   % CT BTC levels (one bar each, light -> dark along the core)
+%klBTCtags    = ["zD0p5","zD0p8","zD1p0"];   % CT BTC levels (one bar each, light -> dark along the core)
+klBTCtags    = ["zD1p0"];   % CT BTC levels (one bar each, light -> dark along the core)
 fsKL         = 16;              % font size
 btcNames     = "XCT BTC z_D = " + strrep(extractAfter(klBTCtags,"zD"), "p", ".");
 nB           = numel(klBTCtags);
+%btcCols      = [linspace(0.85,0.35,nB)', linspace(0.70,0.08,nB)', linspace(0.95,0.45,nB)'];  % purple, light -> dark
 btcCols      = [linspace(0.85,0.35,nB)', linspace(0.70,0.08,nB)', linspace(0.95,0.45,nB)'];  % purple, light -> dark
+if nB == 1, btcCols = [0.35 0.08 0.45]; end
 hasCont      = double(klMidContMethod ~= "");   % 1 = contour bar, 0 = none
 klSrcNames   = ["XCT 1D profile", repmat("XCT 2D contours",1,hasCont), btcNames, "XCT MFM", "UHS MFM"];
 klSrcCols    = [0.85 0.33 0.10; repmat([0.98 0.70 0.45],hasCont,1); btcCols; 0.35 0.35 0.35; 0.30 0.75 0.93];
@@ -1696,7 +1699,7 @@ hold(ax,'on');  allW = [];
 cCol = "zDWidth_"     + pair + variant;
 pCol = "zDWidthProf_" + pair + variant;
 h11 = plot(ax, [0 1], [0 1], 'k', 'LineStyle','--', 'LineWidth',1.2, ...
-    'DisplayName','1:1 (stable front)');               % end points set below
+    'DisplayName','1:1');               % end points set below
 for i = idx
     vars   = expCTDataAll{i}.varsAll.(ds);
     cols_i = string(vars.Properties.VariableNames);
