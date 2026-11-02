@@ -751,7 +751,7 @@ end
 
 parPairs   = {'10_90','20_80','30_70','40_60'};
 parVariant = "_xtrim";              % "" = full image, "_xtrim" = x-trimmed
-parQmk     = {"Q1",'o'; "Q5",'s'};   % marker by flow rate (colour already light/dark)
+parQmk     = {"Q1",'o'; "Q5",'o'};   % marker by flow rate (colour already light/dark)
 
 for ds = dataSources
     fig = figure('Position',[60 60 1250 1100]);
@@ -792,6 +792,51 @@ for ds = dataSources
     title(tl, sprintf('Front width: 2D contours vs averaged profile, same scan (%s%s)', ds, parVariant), ...
         'Interpreter','none')
     saveFigBoth(fig, exportPath, sprintf('width_contour_vs_profile_allExp_%s%s', ds, parVariant), closeAfterSave)
+end
+
+%% 8d) Contour width vs averaged-profile width, split by viscosity ratio (high M / low M)
+% Same as 8c, one set of figures per M group so the experiments do not overlap:
+%   - one 2x2 figure per M group (all level pairs)
+%   - one figure per M group AND level pair (individual images)
+% Groups are picked from tokens in the experiment key (P900 = high M, P725 = low M).
+
+parMGroups  = {"hiM", "P900", "high M (XCT-hiM)"; ...      % {file tag, key token, title text}
+               "loM", "P725", "low M (XCT-loM)"};
+parPairs8d  = {'10_90','20_80','30_70','40_60'};
+parVar8d    = "_xtrim";            % "" = full image, "_xtrim" = x-trimmed
+parQmk8d    = {"Q1",'o'; "Q5",'o'}; % marker by flow rate (colour already light/dark)
+
+for ds = dataSources
+    for g = 1:size(parMGroups,1)
+        inG = find(contains(expKeys, "_" + parMGroups{g,2} + "_"))';
+        if isempty(inG)
+            warning('8d: no experiments with %s in the key', parMGroups{g,2});  continue
+        end
+
+        % ---- 2x2 figure, all pairs
+        fig = figure('Position',[60 60 1250 1100]);
+        tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
+        for p = 1:numel(parPairs8d)
+            ax = nexttile(tl);
+            parityPanel(ax, expCTDataAll, ds, inG, parPairs8d{p}, parVar8d, parQmk8d, expKeys, expCol, expName);
+        end
+        title(tl, sprintf('Front width: 2D contours vs averaged profile, same scan, %s (%s%s)', ...
+            parMGroups{g,3}, ds, parVar8d), 'Interpreter','none')
+        saveFigBoth(fig, exportPath, sprintf('width_contour_vs_profile_%s_%s%s', ...
+            parMGroups{g,1}, ds, parVar8d), closeAfterSave)
+
+        % ---- one figure per pair
+        for p = 1:numel(parPairs8d)
+            fig = figure('Position',[100 100 700 650]);
+            ax  = axes(fig);
+            ok  = parityPanel(ax, expCTDataAll, ds, inG, parPairs8d{p}, parVar8d, parQmk8d, expKeys, expCol, expName);
+            if ~ok, close(fig); continue, end
+            title(ax, sprintf('width %s, %s (%s%s)', strrep(parPairs8d{p},'_','-'), ...
+                parMGroups{g,3}, ds, parVar8d), 'FontSize',12, 'Interpreter','none')
+            saveFigBoth(fig, exportPath, sprintf('width_contour_vs_profile_%s_%s_%s%s', ...
+                parMGroups{g,1}, parPairs8d{p}, ds, parVar8d), closeAfterSave)
+        end
+    end
 end
 
 %% 9) Front tilt and shape diagnostics
@@ -1278,4 +1323,44 @@ end
 function n = fieldOrVarNames(x)
 % field names of a struct or variable names of a table
     if istable(x), n = x.Properties.VariableNames; elseif isstruct(x), n = fieldnames(x); else, n = {}; end
+end
+
+function ok = parityPanel(ax, expCTDataAll, ds, idx, pair, variant, qmk, expKeys, expCol, expName)
+% Contour width (x) vs averaged-profile width (y), same scan, for the experiments idx,
+% with the 1:1 line (drawn first, under the dots); ok = false if there is nothing to plot.
+hold(ax,'on');  allW = [];
+cCol = "zDWidth_"     + pair + variant;
+pCol = "zDWidthProf_" + pair + variant;
+h11 = plot(ax, [0 1], [0 1], 'k', 'LineStyle','--', 'LineWidth',1.2, ...
+    'DisplayName','1:1 (stable front)');               % end points set below, once lim is known
+for i = idx
+    vars   = expCTDataAll{i}.varsAll.(ds);
+    cols_i = string(vars.Properties.VariableNames);
+    if ~all(ismember([cCol pCol], cols_i)), continue, end
+    wC = abs(vars.(cCol));  wP = abs(vars.(pCol));
+    sel = isfinite(wC) & isfinite(wP) & wC > 0 & wP > 0;
+    if ~any(sel), continue, end
+    mk = 'o';
+    for q = 1:size(qmk,1)
+        if contains(expKeys(i), "_" + qmk{q,1} + "_"), mk = qmk{q,2}; end
+    end
+    scatter(ax, wC(sel), wP(sel), 26, expCol(i,:), mk, 'filled', 'MarkerEdgeColor',expCol(i,:), ...
+        'LineWidth',0.3, 'MarkerFaceAlpha',0.8, 'DisplayName', expName(i))
+    allW = [allW; wC(sel); wP(sel)]; %#ok<AGROW>
+end
+ok = ~isempty(allW);
+if ~ok
+    delete(h11)
+    text(ax, 0.5, 0.5, "no contour / profile widths for " + strrep(pair,'_','-'), ...
+        'Units','normalized', 'HorizontalAlignment','center');
+    return
+end
+lim = [0, 1.05*max(allW)];
+set(h11, 'XData', lim, 'YData', lim)
+xlim(ax, lim);  ylim(ax, lim);  axis(ax, 'square')
+xlabel(ax, '\Deltaz_D, 2D contours [-]', 'FontSize',13)
+ylabel(ax, '\Deltaz_D, averaged profile [-]', 'FontSize',13)
+title(ax, "width " + strrep(pair,'_','-'), 'FontSize',12)
+set(ax, 'FontSize',12);  grid(ax,'on')
+legend(ax, 'Location','northwest', 'FontSize',9, 'Interpreter','none')
 end
