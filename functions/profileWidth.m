@@ -60,7 +60,7 @@ in = z >= z(1) + trimFrac*L & z <= z(end) - trimFrac*L;
 z  = z(in);  Cn = Cn(in);
 nE = ceil(numel(Cn)/5);
 if mean(Cn(1:nE)) < mean(Cn(end-nE+1:end)), Cn = flipud(Cn); end
-zz = z - z(1);
+zz = z - z(1) + trimFrac*L;                        % distance from the injection end (end trim added back)
 Cm = movmedian(Cn, nSmooth);
 P.zz = zz;  P.Cn = Cn;  P.Cs = Cm;
 

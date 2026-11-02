@@ -138,6 +138,51 @@ for ds = dataSources
     saveFigBoth(fig, exportPath, fname, closeAfterSave)
 end
 
+%% 1b) Z profile closest to (zD, CD) target, with the erfc fit of each curve
+% Same frame as section 1 (findProfileFrame: averaged profile crossing C = CD_target closest
+% to zD = ZD_target). On top of each profile (markers) the free erfc fit (line):
+%   C(zD) = Ci + (Cj - Ci) * 0.5 erfc((zD - zD50)/wD)      (first ADE term)
+% fitted here on the plotted profile, end slices (trimFrac1b of the core at each end) left out.
+% Legend: experiment name, tD of the frame and the fitted width w = wD*L [cm].
+
+ZD_target1b = 0.5;
+CD_target1b = 0.5;
+var1b       = "";          % "" = full image (CVert), "_xtrim" = x-trimmed (CVert_xtrim)
+trimFrac1b  = 0.02;        % fraction of the core ignored at each end in the fit
+fs1b        = 16;          % font size
+
+for ds = dataSources
+    fig = figure('Position',[100 100 950 650], 'NumberTitle','off', 'Name', ...
+        sprintf('Z profiles through (zD, CD) = (%.1f, %.1f) with erfc fit (%s%s)', ZD_target1b, CD_target1b, ds, var1b));
+    ax = axes(fig);  hold(ax,'on')
+    h = gobjects(0);
+    for i = 1:nExp
+        vars   = expCTDataAll{i}.varsAll.(ds);
+        best_l = findProfileFrame(vars, ZD_target1b, CD_target1b, var1b);
+        if isnan(best_l), continue, end
+        prof = cellRow(vars.C1Profile, best_l);
+        if iscell(prof), prof = prof{1}; end
+        zD = prof.zDimLess(:);  C = prof.("CVert" + var1b)(:);
+        Ci = filedataExpAll{i}.C1init/100;  Cj = filedataExpAll{i}.C1j/100;
+        Lcm = max(prof.zVertcm);
+
+        [zD50, wD, Cfit] = fitErfcProfile(zD, C, Ci, Cj, trimFrac1b);
+
+        h(end+1) = scatter(ax, zD, C, 8, expCol(i,:), 'filled', 'MarkerFaceAlpha',0.5, ...
+            'DisplayName', sprintf('%s, t_D = %.2f', expName(i), vars.tDtotal(best_l))); %#ok<SAGROW>
+        if isfinite(wD)
+            h(end+1) = plot(ax, zD, Cfit, '-', 'Color',0.6*expCol(i,:), 'LineWidth',2.5, ...
+                'DisplayName', sprintf('erfc fit: z_{D,50} = %.2f, w = %.2f cm', zD50, wD*Lcm)); %#ok<SAGROW>
+        end
+    end
+    xlabel(ax, 'z_D [-]', 'FontSize',fs1b);  ylabel(ax, 'C_1 [-]', 'FontSize',fs1b)
+    xlim(ax, [0 1]);  ylim(ax, [0 1.02]);  set(ax, 'FontSize',fs1b);  grid(ax,'on')
+    legend(ax, h, 'Location','northeast', 'FontSize',fs1b-4, 'Interpreter','tex')
+    fname = sprintf('CT_profile_zD_%s_CD_%s_%s%s_erfcFit', strrep(sprintf('%.1f',ZD_target1b),'.','p'), ...
+        strrep(sprintf('%.1f',CD_target1b),'.','p'), ds, var1b);
+    saveFigBoth(fig, exportPath, fname, closeAfterSave)
+end
+
 %% 2) Z profiles at a range of tD targets
 
 tD_target = 0.5:0.1:1.2;
@@ -799,44 +844,167 @@ end
 %   - one 2x2 figure per M group (all level pairs)
 %   - one figure per M group AND level pair (individual images)
 % Groups are picked from tokens in the experiment key (P900 = high M, P725 = low M).
+% Axis limits are the same for every figure of one level pair (both M groups), so the
+% high-M and low-M images can be compared directly. No axes title: the description is
+% the figure name (window title).
 
-parMGroups  = {"hiM", "P900", "high M (XCT-hiM)"; ...      % {file tag, key token, title text}
+parMGroups  = {"hiM", "P900", "high M (XCT-hiM)"; ...      % {file tag, key token, description}
                "loM", "P725", "low M (XCT-loM)"};
 parPairs8d  = {'10_90','20_80','30_70','40_60'};
 parVar8d    = "_xtrim";            % "" = full image, "_xtrim" = x-trimmed
 parQmk8d    = {"Q1",'o'; "Q5",'o'}; % marker by flow rate (colour already light/dark)
+fs8d        = 16;                  % font size (axes, labels, legend)
+mk8d        = 45;                  % marker size (scatter area)
 
 for ds = dataSources
+    % common axis limits per level pair, from all experiments of both groups
+    inAll = find(contains(expKeys, "_" + string(parMGroups(:,2)') + "_"))';
+    lim8d = cell(1, numel(parPairs8d));
+    for p = 1:numel(parPairs8d)
+        lim8d{p} = parityLim(expCTDataAll, ds, inAll, parPairs8d{p}, parVar8d);
+    end
+
     for g = 1:size(parMGroups,1)
         inG = find(contains(expKeys, "_" + parMGroups{g,2} + "_"))';
         if isempty(inG)
             warning('8d: no experiments with %s in the key', parMGroups{g,2});  continue
         end
 
-        % ---- 2x2 figure, all pairs
-        fig = figure('Position',[60 60 1250 1100]);
+        % ---- 2x2 figure, all pairs (panel label = level pair)
+        figName = sprintf('Front width: 2D contours vs averaged profile, same scan, %s (%s%s)', ...
+            parMGroups{g,3}, ds, parVar8d);
+        fig = figure('Position',[60 60 1250 1100], 'Name',figName, 'NumberTitle','off');
         tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
         for p = 1:numel(parPairs8d)
             ax = nexttile(tl);
-            parityPanel(ax, expCTDataAll, ds, inG, parPairs8d{p}, parVar8d, parQmk8d, expKeys, expCol, expName);
+            parityPanel(ax, expCTDataAll, ds, inG, parPairs8d{p}, parVar8d, parQmk8d, expKeys, ...
+                expCol, expName, lim8d{p}, fs8d, mk8d);
+            title(ax, "width " + strrep(parPairs8d{p},'_','-'), 'FontSize',fs8d)
         end
-        title(tl, sprintf('Front width: 2D contours vs averaged profile, same scan, %s (%s%s)', ...
-            parMGroups{g,3}, ds, parVar8d), 'Interpreter','none')
         saveFigBoth(fig, exportPath, sprintf('width_contour_vs_profile_%s_%s%s', ...
             parMGroups{g,1}, ds, parVar8d), closeAfterSave)
 
-        % ---- one figure per pair
+        % ---- one figure per pair, no title
         for p = 1:numel(parPairs8d)
-            fig = figure('Position',[100 100 700 650]);
+            figName = sprintf('Front width %s: 2D contours vs averaged profile, %s (%s%s)', ...
+                strrep(parPairs8d{p},'_','-'), parMGroups{g,3}, ds, parVar8d);
+            fig = figure('Position',[100 100 700 650], 'Name',figName, 'NumberTitle','off');
             ax  = axes(fig);
-            ok  = parityPanel(ax, expCTDataAll, ds, inG, parPairs8d{p}, parVar8d, parQmk8d, expKeys, expCol, expName);
+            ok  = parityPanel(ax, expCTDataAll, ds, inG, parPairs8d{p}, parVar8d, parQmk8d, expKeys, ...
+                expCol, expName, lim8d{p}, fs8d, mk8d);
             if ~ok, close(fig); continue, end
-            title(ax, sprintf('width %s, %s (%s%s)', strrep(parPairs8d{p},'_','-'), ...
-                parMGroups{g,3}, ds, parVar8d), 'FontSize',12, 'Interpreter','none')
             saveFigBoth(fig, exportPath, sprintf('width_contour_vs_profile_%s_%s_%s%s', ...
                 parMGroups{g,1}, parPairs8d{p}, ds, parVar8d), closeAfterSave)
         end
     end
+end
+
+%% 8e) KL by method for the four cases: bar chart and M-Pe quadrant chart
+% Four KL estimates per XCT experiment, all with error bars:
+%   XCT 1D profile    mid-profile KL (KL_profileAt, x-trimmed): front centre C = 0.5 at zD = 0.5
+%   XCT BTC zD = ...  CT breakthrough curve at each level in klBTCtags (default zD = 0.5 and 1.0)
+%   XCT MFM           MFM of the analog (He-Xe) experiment
+%   UHS MFM           MFM of the paired UHS experiment (with the run swap of 5b: H2-CH4 Q1 -> R2)
+% Figure 1: grouped bars, one group per case (loM-loPe, loM-hiPe, hiM-loPe, hiM-hiPe).
+% Figure 2: same bars in a 2x2 M-Pe map: up = high Pe, down = low Pe, left = low M, right = high M;
+%           each panel shows M and Pe (= u L / D0) of the XCT and the UHS experiment.
+% Needs section 5b to have run before (uhsData, uhsKey); otherwise the configured UHS key is used.
+
+klMidVariant = "xtrim";         % mid-profile variant: "xtrim" | "full"
+klMidMethod  = "contour";       % erfc width with contour arrival; or "C20_80_contour", "C40_60_contour", ...
+klMidStat    = "best";          % "best" (closest frame +/- fit SE) | "mean" (mean +/- std of the window frames)
+klBTCVariant = "xtrim";         % CT BTC variant: "xtrim" | "full"
+klBTCtags    = ["zD0p5","zD1p0"];   % CT BTC levels (one bar each)
+fsKL         = 16;              % font size
+btcNames     = "XCT BTC z_D = " + strrep(extractAfter(klBTCtags,"zD"), "p", ".");
+klSrcNames   = ["XCT 1D profile", btcNames, "XCT MFM", "UHS MFM"];
+btcCols      = [0.49 0.18 0.56; 0.75 0.55 0.85; 0.93 0.69 0.13; 0.40 0.10 0.40];   % one per BTC level
+klSrcCols    = [0.85 0.33 0.10; btcCols(1:numel(klBTCtags),:); 0.35 0.35 0.35; 0.30 0.75 0.93];
+nSrc         = numel(klSrcNames);
+iMFMx = nSrc - 1;  iMFMu = nSrc;          % columns of the two MFM bars
+% cases: {name, M token in key, Pe token in key, quadrant tile (1 = up-left ... 4 = down-right)}
+klCases = {"XCT-loM-loPe", "P725", "Q1", 3; ...
+           "XCT-loM-hiPe", "P725", "Q5", 1; ...
+           "XCT-hiM-loPe", "P900", "Q1", 4; ...
+           "XCT-hiM-hiPe", "P900", "Q5", 2};
+
+if ~exist('uhsData','var'), uhsData = MFM_UHS_DataAll; end
+if ~exist('uhsKey','var'),  uhsKey  = string(inputFileConfig.MFM_BTC_UHS_Key); end
+
+for ds = dataSources
+    nC = size(klCases,1);
+    KL = nan(nC, nSrc);  dKL = nan(nC, nSrc);
+    Mx = nan(nC,1);  Px = nan(nC,1);  Mu = nan(nC,1);  Pu = nan(nC,1);  uhsLbl = strings(nC,1);
+    for c = 1:nC
+        i = find(contains(expKeys, "_" + klCases{c,2} + "_") & contains(expKeys, "_" + klCases{c,3} + "_"), 1);
+        if isempty(i), warning('8e: no experiment for %s', klCases{c,1}); continue, end
+        if ~hasPost(i), warning('8e: %s has no postproc results', expKeys(i)); continue, end
+        rs = expCTDataAll{i}.resultsAll.(ds);
+
+        % XCT 1D profile (mid-profile)
+        if isfield(rs, klMidVariant) && isfield(rs.(klMidVariant), 'KL_midProfile') && ...
+                isfield(rs.(klMidVariant).KL_midProfile.methods, klMidMethod)
+            r = rs.(klMidVariant).KL_midProfile.methods.(klMidMethod);
+            if klMidStat == "mean"
+                KL(c,1) = r.KL_cm2min_mean;  dKL(c,1) = r.KL_cm2min_std;
+            else
+                KL(c,1) = r.KL_cm2min_best;  dKL(c,1) = r.dKL_cm2min_best;
+            end
+        end
+        % XCT BTC at each zD level
+        for b = 1:numel(klBTCtags)
+            if isfield(rs, klBTCVariant) && isfield(rs.(klBTCVariant), 'KL_BTC_CT_byZD') && ...
+                    isfield(rs.(klBTCVariant).KL_BTC_CT_byZD, klBTCtags(b))
+                e = rs.(klBTCVariant).KL_BTC_CT_byZD.(klBTCtags(b));
+                if isfield(e,'best') && isfield(e.best,'KL_cm2min')
+                    KL(c,1+b) = e.best.KL_cm2min;
+                    if isfield(e.best,'dKL_cm2min'), dKL(c,1+b) = e.best.dKL_cm2min; end
+                end
+            end
+        end
+        % XCT MFM and UHS MFM (best method of main_Processing, total uncertainty)
+        mCT = MFM_CT_DataAll{i}.(ds);
+        [KL(c,iMFMx), dKL(c,iMFMx), Mx(c), Px(c)] = mfmKL(mCT);
+        mU = [];
+        if ~isempty(uhsData{i}) && isfield(uhsData{i}, ds), mU = uhsData{i}.(ds); end
+        [KL(c,iMFMu), dKL(c,iMFMu), Mu(c), Pu(c)] = mfmKL(mU);
+        uhsLbl(c) = uhsKey(i);
+    end
+    dKL(~isfinite(dKL)) = 0;
+    caseNames = string(klCases(:,1));
+    srcTags = ["profile", "BTC_" + klBTCtags, "MFM_XCT", "MFM_UHS"];
+    T8e = table(caseNames, 'VariableNames', {'case'});
+    for s = 1:nSrc
+        T8e.("KL_" + srcTags(s))  = KL(:,s);
+        T8e.("dKL_" + srcTags(s)) = dKL(:,s);
+    end
+    T8e = [T8e, table(Mx, Px, uhsLbl, Mu, Pu, 'VariableNames', {'M_XCT','Pe_XCT','UHS_key','M_UHS','Pe_UHS'})];
+    fprintf('\n8e) KL [cm2/min] by method (%s):\n', ds);  disp(T8e)
+    writetable(T8e, fullfile(exportPath, "KL_byMethod_4cases_" + ds + ".xlsx"));
+    yMax = 1.1*max(KL(:) + dKL(:), [], 'omitnan');  if ~(isfinite(yMax) && yMax > 0), yMax = 1; end
+
+    % ---- Figure 1: grouped bars, one group per case
+    fig = figure('Position',[80 80 1200 650], 'Name', "KL by method, four cases (" + ds + ")", 'NumberTitle','off');
+    ax = axes(fig);  hold(ax,'on')
+    klBars(ax, KL, dKL, klSrcCols, klSrcNames, caseNames, fsKL);
+    ylim(ax, [0 yMax]);  ylabel(ax, 'K_L [cm^2/min]', 'FontSize',fsKL)
+    legend(ax, 'Location','northwest', 'FontSize',fsKL)
+    saveFigBoth(fig, exportPath, "KL_byMethod_4cases_" + ds, closeAfterSave)
+
+    % ---- Figure 2: M-Pe quadrants
+    fig = figure('Position',[60 60 1300 1000], 'Name', "KL by method in the M-Pe plane (" + ds + ")", 'NumberTitle','off');
+    tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact', 'Padding','compact');
+    for c = 1:nC
+        ax = nexttile(tl, klCases{c,4});  hold(ax,'on')
+        klBars(ax, KL(c,:), dKL(c,:), klSrcCols, klSrcNames, "", fsKL);
+        set(ax, 'XTick', []);  ylim(ax, [0 yMax]);  ylabel(ax, 'K_L [cm^2/min]', 'FontSize',fsKL)
+        title(ax, {caseNames(c), sprintf('XCT: M = %.2f, Pe = %.3g   UHS: M = %.2f, Pe = %.3g', ...
+            Mx(c), Px(c), Mu(c), Pu(c))}, 'FontSize',fsKL-2, 'FontWeight','normal')
+        if klCases{c,4} == 2, legend(ax, 'Location','northeast', 'FontSize',fsKL-2), end
+    end
+    xlabel(tl, 'viscosity ratio M  \rightarrow  (left: low M, right: high M)', 'FontSize',fsKL)
+    ylabel(tl, 'Pe  \rightarrow  (bottom: low Pe, top: high Pe)', 'FontSize',fsKL)
+    saveFigBoth(fig, exportPath, "KL_byMethod_MPe_quadrants_" + ds, closeAfterSave)
 end
 
 %% 9) Front tilt and shape diagnostics
@@ -1325,14 +1493,18 @@ function n = fieldOrVarNames(x)
     if istable(x), n = x.Properties.VariableNames; elseif isstruct(x), n = fieldnames(x); else, n = {}; end
 end
 
-function ok = parityPanel(ax, expCTDataAll, ds, idx, pair, variant, qmk, expKeys, expCol, expName)
+function ok = parityPanel(ax, expCTDataAll, ds, idx, pair, variant, qmk, expKeys, expCol, expName, lim, fs, mkSz)
 % Contour width (x) vs averaged-profile width (y), same scan, for the experiments idx,
-% with the 1:1 line (drawn first, under the dots); ok = false if there is nothing to plot.
+% 1:1 line drawn first (under the dots). lim = axis limits ([] = from these data),
+% fs = font size, mkSz = marker size. ok = false if there is nothing to plot.
+if nargin < 11, lim = [];  end
+if nargin < 12 || isempty(fs),   fs = 12;   end
+if nargin < 13 || isempty(mkSz), mkSz = 26; end
 hold(ax,'on');  allW = [];
 cCol = "zDWidth_"     + pair + variant;
 pCol = "zDWidthProf_" + pair + variant;
 h11 = plot(ax, [0 1], [0 1], 'k', 'LineStyle','--', 'LineWidth',1.2, ...
-    'DisplayName','1:1 (stable front)');               % end points set below, once lim is known
+    'DisplayName','1:1 (stable front)');               % end points set below
 for i = idx
     vars   = expCTDataAll{i}.varsAll.(ds);
     cols_i = string(vars.Properties.VariableNames);
@@ -1344,7 +1516,7 @@ for i = idx
     for q = 1:size(qmk,1)
         if contains(expKeys(i), "_" + qmk{q,1} + "_"), mk = qmk{q,2}; end
     end
-    scatter(ax, wC(sel), wP(sel), 26, expCol(i,:), mk, 'filled', 'MarkerEdgeColor',expCol(i,:), ...
+    scatter(ax, wC(sel), wP(sel), mkSz, expCol(i,:), mk, 'filled', 'MarkerEdgeColor',expCol(i,:), ...
         'LineWidth',0.3, 'MarkerFaceAlpha',0.8, 'DisplayName', expName(i))
     allW = [allW; wC(sel); wP(sel)]; %#ok<AGROW>
 end
@@ -1352,15 +1524,95 @@ ok = ~isempty(allW);
 if ~ok
     delete(h11)
     text(ax, 0.5, 0.5, "no contour / profile widths for " + strrep(pair,'_','-'), ...
-        'Units','normalized', 'HorizontalAlignment','center');
+        'Units','normalized', 'HorizontalAlignment','center', 'FontSize',fs);
     return
 end
-lim = [0, 1.05*max(allW)];
+if isempty(lim), lim = [0, 1.05*max(allW)]; end
 set(h11, 'XData', lim, 'YData', lim)
 xlim(ax, lim);  ylim(ax, lim);  axis(ax, 'square')
-xlabel(ax, '\Deltaz_D, 2D contours [-]', 'FontSize',13)
-ylabel(ax, '\Deltaz_D, averaged profile [-]', 'FontSize',13)
-title(ax, "width " + strrep(pair,'_','-'), 'FontSize',12)
-set(ax, 'FontSize',12);  grid(ax,'on')
-legend(ax, 'Location','northwest', 'FontSize',9, 'Interpreter','none')
+xlabel(ax, '\Deltaz_D, 2D contours [-]', 'FontSize',fs)
+ylabel(ax, '\Deltaz_D, averaged profile [-]', 'FontSize',fs)
+set(ax, 'FontSize',fs);  grid(ax,'on')
+legend(ax, 'Location','northwest', 'FontSize',fs, 'Interpreter','none')
+end
+
+function lim = parityLim(expCTDataAll, ds, idx, pair, variant)
+% common axis limits [0, 1.05*max width] of one level pair over the experiments idx
+cCol = "zDWidth_"     + pair + variant;
+pCol = "zDWidthProf_" + pair + variant;
+mx = 0;
+for i = idx
+    vars   = expCTDataAll{i}.varsAll.(ds);
+    cols_i = string(vars.Properties.VariableNames);
+    if ~all(ismember([cCol pCol], cols_i)), continue, end
+    wC = abs(vars.(cCol));  wP = abs(vars.(pCol));
+    sel = isfinite(wC) & isfinite(wP) & wC > 0 & wP > 0;
+    if any(sel), mx = max([mx; wC(sel); wP(sel)]); end
+end
+if mx > 0, lim = [0, 1.05*mx]; else, lim = []; end
+end
+
+function [zD50, wD, Cfit] = fitErfcProfile(zD, C, Ci, Cj, trimFrac)
+% free erfc fit C = Ci + (Cj - Ci) 0.5 erfc((zD - zD50)/wD) of one profile (injection end at
+% zD = 0, as the CT profiles); end slices left out of the fit, curve returned on all zD
+zD50 = NaN;  wD = NaN;  Cfit = nan(size(zD));
+ok = isfinite(zD) & isfinite(C) & zD >= trimFrac & zD <= 1 - trimFrac;
+if nnz(ok) < 10, return, end
+f = @(b, x) Ci + (Cj - Ci)*0.5*erfc((x - b(1))/b(2));
+Cn = (C(ok) - Ci)/(Cj - Ci);
+[~, k] = min(abs(Cn - 0.5));  z0 = zD(ok);  z0 = z0(k);           % start: C = 0.5 position
+try
+    b = nlinfit(zD(ok), C(ok), f, [z0, 0.1]);
+catch
+    b = fminsearch(@(b) sum((f(b, zD(ok)) - C(ok)).^2), [z0, 0.1], optimset('Display','off'));
+end
+if b(2) > 0
+    zD50 = b(1);  wD = b(2);  Cfit = f(b, zD);
+end
+end
+
+function [KL, dKL, M, Pe] = mfmKL(m)
+% KL +/- total uncertainty (best method of main_Processing), M = mu2/mu1 and Pe = u L / D0
+% of one MFM experiment (struct with .results and .exp_params); NaN where missing
+KL = NaN;  dKL = NaN;  M = NaN;  Pe = NaN;
+if isempty(m), return, end
+pick = @(s, names) firstNum(s, names);
+if isfield(m, 'results')
+    KL  = pick(m.results, {'KL_cm2min'});
+    dKL = pick(m.results, {'totUncertKL_cm2min','dKL_cm2min'});
+end
+if isfield(m, 'exp_params')
+    ep = m.exp_params;
+    M  = pick(ep, {'mu2'}) / pick(ep, {'mu1'});
+    Pe = pick(ep, {'Pe_upump_L_D0'});
+end
+end
+
+function v = firstNum(s, names)
+% first finite numeric value among the given fields / table columns
+v = NaN;
+if istable(s), n = s.Properties.VariableNames; elseif isstruct(s), n = fieldnames(s); else, return, end
+for k = 1:numel(names)
+    if ismember(names{k}, n)
+        x = s.(names{k});  if iscell(x), x = x{1}; end
+        if isnumeric(x) && ~isempty(x) && isfinite(x(1)), v = double(x(1)); return, end
+    end
+end
+end
+
+function klBars(ax, KL, dKL, cols, srcNames, groupNames, fs)
+% grouped bars (rows = groups, columns = sources) with error bars
+nG = size(KL,1);  nS = size(KL,2);
+if nG == 1, b = bar(ax, [KL; nan(1,nS)], 'grouped');  else, b = bar(ax, KL, 'grouped'); end
+for s = 1:nS
+    b(s).FaceColor = cols(s,:);  b(s).EdgeColor = 'none';  b(s).DisplayName = srcNames(s);
+    xe = b(s).XEndPoints(1:nG);
+    errorbar(ax, xe, KL(:,s)', dKL(:,s)', 'k', 'LineStyle','none', 'LineWidth',1.2, ...
+        'CapSize',8, 'HandleVisibility','off')
+end
+if nG == 1, xlim(ax, [0.5 1.5]); end
+if ~isempty(groupNames) && all(groupNames ~= "")
+    set(ax, 'XTick', 1:nG, 'XTickLabel', groupNames, 'TickLabelInterpreter','none')
+end
+set(ax, 'FontSize',fs);  grid(ax,'on');  box(ax,'on')
 end
