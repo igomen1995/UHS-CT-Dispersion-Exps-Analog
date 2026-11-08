@@ -1,6 +1,5 @@
 %% main_CTpostproc.m
-% KL estimation, mirroring the structure of the old main_CTpreproc.m KL
-% block, extended to:
+% KL estimation:
 %   - fit the BTC/CDE method for both full and x-trimmed CD1_zD* columns
 %   - weight the BTC fit by dConc_avg (not ones(...), as the old script did)
 %   - add front-width (all symmetric pairs) and moment (sigma) KL, full+xtrim
@@ -95,6 +94,12 @@ for i = 1:height(inputFileConfig)
     widthSources   = {"zDWidth",         "width_"; ...      % 2D contours
                       "zDWidthProf",     "profW_"; ...      % averaged profile, level pairs
                       "zDWidthProfErfc", "profWerfc_"};     % averaged profile, erfc width
+
+    % KL from the width of EVERY frame (KL_allProfileWidths): KL = W^2/(4 k^2 tau), contour arrival
+    klAllPair     = [0.40 0.60];   % level pair of the width (must be one of profWidthPairs)
+    klAllVariants = "xtrim";       % "xtrim", "full" or ["full","xtrim"]
+    klAllDtArr    = [];            % arrival uncertainty [min]; [] = half the frame interval
+    klAllZDrange  = [0.1 0.9];     % front centre zD range of the frames in the summary value
 
     % load the data produced by main_CTpreproc.m
     expCT_name = pathExportAll + filedataExp.Key;
@@ -295,6 +300,27 @@ for i = 1:height(inputFileConfig)
                 fprintf('    %-16s KL = %.4g +/- %.2g (closest), mean = %.4g +/- %.2g cm2/min\n', ...
                     mm, r.KL_cm2min_best, r.dKL_cm2min_best, r.KL_cm2min_mean, r.KL_cm2min_std);
             end
+
+            % KL from the width of every frame (profile and 2D contours, level pair klAllPair)
+            resultsOut.(variant).KL_allProf = table();  resultsOut.(variant).KL_allProfSum = struct();
+            if ismember(variant, klAllVariants)
+                tArrD_C = tArrC*filedataExp.Q/filedataExp.Vtotal;          % tD = Q t / Vtotal
+                [Tall_, Sall_] = KL_allProfileWidths(vars, variantSuffix, klAllPair, tArrC, tArrD_C, ...
+                    klAllDtArr, klAllZDrange);
+                resultsOut.(variant).KL_allProf    = Tall_;
+                resultsOut.(variant).KL_allProfSum = Sall_;
+                fprintf(['  %s (%s) KL from every frame, W %02d-%02d, t_arr contour (tD = %.3f), ' ...
+                         'centre zD in [%.2f %.2f]:\n'], dataSource, variant, round(100*klAllPair), ...
+                    tArrD_C, klAllZDrange);
+                for wsrc = ["prof","cont"]
+                    q = Sall_.(wsrc);
+                    fprintf('    %-8s n = %2d  KL = %.4g +/- %.2g (weighted), mean = %.4g +/- %.2g, median = %.4g cm2/min\n', ...
+                        wsrc, q.n, q.KL_wmean, q.dKL_wmean, q.KL_mean, q.KL_std, q.KL_median);
+                end
+                disp(Tall_(:, ["run","rotPos_deg","tDtotal","tD_arrival","tauD","zD_center_C50", ...
+                    string(Tall_.Properties.VariableNames(contains(Tall_.Properties.VariableNames, ...
+                    ["W_prof_","KL_prof_","dKL_prof_","KL_cont_","dKL_cont_"])))]))
+            end
         end
 
         resultsOut.MFM_fitData       = fitDataMFM;
@@ -349,6 +375,10 @@ for i = 1:height(inputFileConfig)
             if ~isempty(d.KL_midProfile.T)
                 writetable(d.KL_midProfile.T, xlsxName, 'Sheet', "KL_midProfile_" + variant);
             end
+            if isfield(d, 'KL_allProf') && ~isempty(d.KL_allProf)
+                writetable(d.KL_allProf, xlsxName, 'Sheet', ...
+                    sprintf('KL_allFrames_W%02d_%02d_%s', round(100*klAllPair), variant));
+            end
             % per-frame widths vs time: 2D contours and averaged profile, side by side
             wCols = string(vars.Properties.VariableNames);
             if variant == "full"
@@ -378,6 +408,17 @@ for i = 1:height(inputFileConfig)
                 summaryT.("KL_mid_" + mm + "_std_cm2min" + sfx)  = r.KL_cm2min_std;
             end
             summaryT.("midProfile_tD" + sfx) = mp.tD_best;
+            sa = resultsOut.(variantArr).KL_allProfSum;
+            if isfield(sa, 'prof')
+                for wsrc = ["prof","cont"]
+                    nm = sprintf('KL_allFrames_%s_%02d_%02d', wsrc, round(100*klAllPair));
+                    summaryT.(nm + "_cm2min" + sfx)        = sa.(wsrc).KL_wmean;
+                    summaryT.("d" + nm + "_cm2min" + sfx)  = sa.(wsrc).dKL_wmean;
+                    summaryT.(nm + "_median_cm2min" + sfx) = sa.(wsrc).KL_median;
+                    summaryT.(nm + "_std_cm2min" + sfx)    = sa.(wsrc).KL_std;
+                    summaryT.(nm + "_n" + sfx)             = sa.(wsrc).n;
+                end
+            end
         end
         summaryT.vFront_cmmin      = vFront_cmmin;
         summaryT.uint_cmmin        = uint_cmmin;
