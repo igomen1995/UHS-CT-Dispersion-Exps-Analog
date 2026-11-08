@@ -1781,6 +1781,78 @@ for ds = "conc"
     end
     saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_profile_rot%d_bar_%s%s', klfXVar, tagW15, rsRot, ds, klfVar), closeAfterSave)
 end
+
+%% 15c) KL vs rotation position from the 40-60 profile width of every frame, with the KL-by-method value
+% Same as section 15b, but x = rotation position theta [deg] instead of t_D: every frame's KL from
+% the averaged-profile width (filled dots, one colour per experiment) and, per experiment, the bar
+% value of the XCT 1D-profile KL of section 17 / 17c (rsStat of the frames at theta = rsRot +/- rsTol
+% with the front centre at zD in rsZD) as a red open circle at theta = rsRot.
+% Legend: one entry per experiment + one red circle "theta = rsRot".
+% Uses the settings of section 17 / 17c (rsRot, rsTol, rsZD, rsPair, rsVar, rsStat): run it first,
+% or the defaults below are used.
+
+if ~exist('rsRot','var'), rsRot = 226; rsTol = 1; rsZD = [0.2 0.8]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; rsStat = "wmean"; end
+klfPair  = rsPair;             % level pair of the width (same as the bar)
+klfVar   = rsVar;              % "_xtrim" or "" (same as the bar)
+klfXVar  = "rotPos_deg";       % x-axis: rotation position [deg]
+klfLogY  = false;              % log K_L axis
+klfYLim  = [];                 % [] = auto, e.g. [0 10]
+klfErr   = false;              % error bars on the per-frame points
+fs15     = 16;  mk15 = 45;
+mkBar    = mk15;                % size of the red circle (bar value)
+colBar   = [0.85 0 0];         % its colour
+tagW15   = sprintf('%02d_%02d', round(100*klfPair));
+
+for ds = "conc"
+    figName = sprintf('KL vs theta from W%s per frame, with the KL-by-method value at theta = %d deg (%s%s)', ...
+        tagW15, rsRot, ds, klfVar);
+    fig = figure('Position',[100 100 1100 700], 'Name',figName, 'NumberTitle','off');
+    ax  = axes(fig);  hold(ax,'on');  h = gobjects(0);  hBar = gobjects(0);  rows15b = {};
+    for i = 1:nExp
+        Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, klfVar, klfPair);
+        if isempty(Tk), continue, end
+        x  = Tk.(klfXVar);
+        yP = Tk.("KL_prof_" + tagW15 + "_cm2min");  dP = Tk.("dKL_prof_" + tagW15 + "_cm2min");
+        okP = isfinite(x) & isfinite(yP) & yP > 0;
+        cLt = 0.5*expCol(i,:) + 0.5;                        % lighter colour for the error bars
+        if klfErr
+            errorbar(ax, x(okP), yP(okP), min(dP(okP), 0.99*yP(okP)), dP(okP), 'LineStyle','none', ...
+                'Color',cLt, 'HandleVisibility','off')
+        end
+        if any(okP)
+            h(end+1) = scatter(ax, x(okP), yP(okP), mk15, expCol(i,:), 'o', 'filled', ...
+                'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName', expName(i)); %#ok<SAGROW>
+        end
+
+        % frames of the KL-by-method bar and the bar value (same selection and statistic as 17 / 17c)
+        sel = rotZDsel(Tk, rsRot, rsTol, rsZD) & okP;
+        if ~any(sel), continue, end
+        [KLb, dKLb] = aggKL(yP(sel), dP(sel), rsStat);
+        xb = rsRot;                                          % bar value at its rotation position
+        % errorbar(ax, xb, KLb, dKLb, 'LineStyle','none', 'Color',colBar, 'LineWidth',2, ...
+        %     'CapSize',12, 'HandleVisibility','off')
+        hb = scatter(ax, xb, KLb, mkBar, 'o', 'MarkerEdgeColor',colBar, 'MarkerFaceColor','none', ...
+            'LineWidth',2.5, 'DisplayName', sprintf('\\theta = %d°', rsRot));
+        if isempty(hBar), hBar = hb; else, hb.HandleVisibility = 'off'; end
+        rows15b{end+1,1} = table(expName(i), nnz(sel), rsRot, mean(Tk.tDtotal(sel)), min(Tk.tDtotal(sel)), ...
+            max(Tk.tDtotal(sel)), KLb, dKLb, 'VariableNames', {'experiment','nFrames','theta_deg', ...
+            'tD_mean','tD_min','tD_max','KL_bar_cm2min','dKL_bar_cm2min'}); %#ok<SAGROW>
+    end
+    if isempty(h), close(fig); continue, end
+    set(ax, 'FontSize',fs15, 'LabelFontSizeMultiplier',1);  grid(ax,'on');  box(ax,'on')
+    if klfLogY, set(ax, 'YScale','log'); end
+    if ~isempty(klfYLim), ylim(ax, klfYLim); end
+    xlabel(ax, '\theta (rotation position) [°]', 'FontSize',fs15)
+    xlim(ax, [0 360]);  xticks(ax, 0:45:360)
+    ylabel(ax, sprintf('K_L from W_{%d-%d} [cm^2/min]', round(100*klfPair)), 'FontSize',fs15)
+    legend(ax, [h hBar], 'Location','northeast', 'FontSize',fs15-4, 'NumColumns',1, 'Interpreter','tex')
+    if ~isempty(rows15b)
+        fprintf('\n15c) KL-by-method value (profile, theta = %g deg, centre zD %.2f-%.2f, %s) per experiment:\n', ...
+            rsRot, rsZD, rsStat);
+        disp(vertcat(rows15b{:}))
+    end
+    saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_profile_rot%d_bar_%s%s', "theta", tagW15, rsRot, ds, klfVar), closeAfterSave)
+end
  
 %% 16) Mixing length vs square root of time (dimensional): averaged profile and 2D contours
 % Mixing length = width W between the two levels of mlPair [cm], x = sqrt(t - t_arr) [min^0.5]
@@ -2441,12 +2513,21 @@ end
 Tk = KL_allProfileWidths(vars, variant, pair, tArr, tArr*fd.Q/fd.Vtotal);
 end
  
-function sel = rotZDsel(Tk, rot, tol, zDr)
-% frames at rotation rot +/- tol [deg] (wrapped) with the front centre (C = 0.5) inside zDr
+function sel = rotZDsel(Tk, rot, tol, zDr, z0)
+% frames at rotation rot +/- tol [deg] (wrapped) with the front centre (C = 0.5) inside zDr;
+% of those, ONLY the one frame whose centre is closest to z0 (default: middle of zDr, i.e. 0.5
+% for zDr = [0.2 0.8]) is kept -> one frame per experiment, no averaging.
+% z0 = NaN keeps all frames in the window (previous behaviour, averaged by aggKL).
+if nargin < 5 || isempty(z0), z0 = mean(zDr); end
 dRot = mod(Tk.rotPos_deg - rot + 180, 360) - 180;
 sel  = abs(dRot) <= tol & Tk.zD_center_C50 >= zDr(1) & Tk.zD_center_C50 <= zDr(2);
+if isfinite(z0) && nnz(sel) > 1
+    idx = find(sel);
+    [~, b] = min(abs(Tk.zD_center_C50(idx) - z0));
+    sel = false(size(sel));  sel(idx(b)) = true;
 end
- 
+end
+
 function [v, dv] = aggKL(x, dx, stat)
 % one KL from several frames: "wmean" inverse-variance weighted mean +/- max(its error, std/sqrt(n));
 % "mean" mean +/- std. A single frame keeps its own dKL.
