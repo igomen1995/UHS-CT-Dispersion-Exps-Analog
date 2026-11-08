@@ -1666,13 +1666,13 @@ writetable(fpSummary, fullfile(exportPath, 'FPhi_summary.xlsx'));
 klfPair  = [0.40 0.60];        % level pair of the width
 klfVar   = "_xtrim";           % "_xtrim" or "" (full image)
 klfXVar  = "tDtotal";          % "tDtotal" (t_D,total) or "tauD" (t_D since arrival)
-klfLogY  = true;               % log K_L axis
+klfLogY  = false;               % log K_L axis
 klfYLim  = [];                 % [] = auto, e.g. [0.1 100]
 klfErr   = true;               % error bars
 fs15     = 16;  mk15 = 45;
 tagW15   = sprintf('%02d_%02d', round(100*klfPair));
  
-for ds = dataSources
+for ds = "conc"
     figName = sprintf('KL vs t_D from W%s per frame, profile and contours (%s%s)', tagW15, ds, klfVar);
     fig = figure('Position',[100 100 1100 700], 'Name',figName, 'NumberTitle','off');
     ax  = axes(fig);  hold(ax,'on');  h = gobjects(0);
@@ -1685,20 +1685,20 @@ for ds = dataSources
         okP = isfinite(x) & isfinite(yP) & yP > 0;
         okC = isfinite(x) & isfinite(yC) & yC > 0;
         cLt = 0.5*expCol(i,:) + 0.5;                        % lighter colour for the error bars
-        if klfErr
-            errorbar(ax, x(okP), yP(okP), min(dP(okP), 0.99*yP(okP)), dP(okP), 'LineStyle','none', ...
-                'Color',cLt, 'HandleVisibility','off')
-            errorbar(ax, x(okC), yC(okC), min(dC(okC), 0.99*yC(okC)), dC(okC), 'LineStyle','none', ...
-                'Color',cLt, 'HandleVisibility','off')
-        end
+        % if klfErr
+        %     errorbar(ax, x(okP), yP(okP), min(dP(okP), 0.99*yP(okP)), dP(okP), 'LineStyle','none', ...
+        %         'Color',cLt, 'HandleVisibility','off')
+        %     errorbar(ax, x(okC), yC(okC), min(dC(okC), 0.99*yC(okC)), dC(okC), 'LineStyle','none', ...
+        %         'Color',cLt, 'HandleVisibility','off')
+        % end
         if any(okP)
             h(end+1) = scatter(ax, x(okP), yP(okP), mk15, expCol(i,:), 'o', 'filled', ...
-                'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName', expName(i) + ", profile"); %#ok<SAGROW>
+                'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName', expName(i)); %#ok<SAGROW>
         end
-        if any(okC)
-            h(end+1) = scatter(ax, x(okC), yC(okC), mk15, expCol(i,:), 's', 'LineWidth',1.5, ...
-                'DisplayName', expName(i) + ", contours"); %#ok<SAGROW>
-        end
+        % if any(okC)
+        %     h(end+1) = scatter(ax, x(okC), yC(okC), mk15, expCol(i,:), 's', 'LineWidth',1.5, ...
+        %         'DisplayName', expName(i) + ", contours"); %#ok<SAGROW>
+        % end
     end
     if isempty(h), close(fig); continue, end
     set(ax, 'FontSize',fs15, 'LabelFontSizeMultiplier',1);  grid(ax,'on');  box(ax,'on')
@@ -1707,7 +1707,7 @@ for ds = dataSources
     if klfXVar == "tauD", xlabel(ax, 't_D - t_{D,arrival} [-]', 'FontSize',fs15)
     else,                 xlabel(ax, 't_D [-]', 'FontSize',fs15); end
     ylabel(ax, sprintf('K_L from W_{%d-%d} [cm^2/min]', round(100*klfPair)), 'FontSize',fs15)
-    legend(ax, h, 'Location','northeast', 'FontSize',fs15-4, 'NumColumns',2, 'Interpreter','none')
+    legend(ax, h, 'Location','northeast', 'FontSize',fs15-4, 'NumColumns',1, 'Interpreter','none')
     saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_profile_contour_%s%s', klfXVar, tagW15, ds, klfVar), closeAfterSave)
 end
  
@@ -1791,9 +1791,9 @@ end
 % The frames used are printed and saved (KL_byMethod_rot270_frames_<ds>.xlsx); section 18 plots
 % their profiles. Needs 5b for the UHS run swap (otherwise the configured UHS key is used).
  
-rsRot   = 270;                 % rotation position [deg]
+rsRot   = 226;                 % rotation position [deg]
 rsTol   = 1;                   % tolerance [deg]
-rsZD    = [0.4 0.7];           % front-centre zD range
+rsZD    = [0.2 0.8];           % front-centre zD range
 rsPair  = [0.40 0.60];
 rsVar   = "_xtrim";
 rsStat  = "wmean";             % "wmean" (inverse-variance weighted mean +/- its error, not below
