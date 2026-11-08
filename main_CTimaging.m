@@ -3149,13 +3149,13 @@ fsPaper   = 16;     % font size of everything in the figure [pt]
 fsCLabel  = 12;     % contour-line labels in the concentration map (ShowText)
 axLW      = 1.0;    % axes line width
 % layout in pixels (converted to normalized units below), from the top of the figure down:
-figW      = 800;    % figure width [px]; the HEIGHT follows from panelAspect (below)
+figW      = 950;    % figure width [px]; the HEIGHT follows from panelAspect (below)
 panelAspect = [];   % height/width of the top-row panels (x_D-z_D maps); [] = the core's
                     % L/D, so x_D and z_D keep the real proportions of the core
 showFigure  = false;% false: figure built off screen, so it is never shrunk to the
                     % screen size and the png has exactly figW x (computed) height
 padT      = 10;     % top edge -> panel titles
-ax1TitlePx  = 62;   % two-line panel titles (top edge -> top of the panels)
+ax1TitlePx  = 36;   % one-line panel titles (top edge -> top of the panels)
 padB      = 110;    % x tick labels + x_D label below the panels, bottom edge
 padL      = 95;     % left edge: z_D / C_ave,1 tick labels and labels
 padR      = 40;     % right edge, beyond the colour-bar space (tick labels + C_1 label)
@@ -3331,7 +3331,7 @@ for i = 1:nExp
     clim(ax1,[tDminContours tDmaxContours])
     xlim(ax1,[0 1])
     ylim(ax1,[0 1])
-    title(ax1,{'Front advance','@ C_D = 0.5'},'FontSize',fsPaper)
+    title(ax1,'Front advance @ C_D = 0.5','FontSize',fsPaper)
 
     axis(ax2,'xy')
     set(ax2,'YDir','reverse')
@@ -3427,7 +3427,6 @@ for i = 1:nExp
 
     close(fig)
 end
-
 %% local functions
 
 function alignAxesColorbar(ax, cb, axPos, cbGap, cbWidth, side)
