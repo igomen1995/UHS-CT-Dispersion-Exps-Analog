@@ -1710,6 +1710,77 @@ for ds = "conc"
     legend(ax, h, 'Location','northeast', 'FontSize',fs15-4, 'NumColumns',1, 'Interpreter','none')
     saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_profile_contour_%s%s', klfXVar, tagW15, ds, klfVar), closeAfterSave)
 end
+
+%% 15b) KL vs tD from the 40-60 profile width of every frame, with the KL-by-method value (section 17 / 17c)
+% Same as section 15 (averaged profile only), plus, per experiment, the bar value of the XCT
+% 1D-profile KL of section 17 / 17c (one KL per experiment, rsStat of the frames at rotPos = rsRot
+% +/- rsTol with the front centre at zD in rsZD) as a red open circle with its error bar, at the
+% mean t_D of those frames. Legend: one entry per experiment + one red circle "theta = rsRot".
+% Uses the settings of section 17 / 17c (rsRot, rsTol, rsZD, rsPair, rsVar, rsStat): run it first,
+% or the defaults below are used.
+
+if ~exist('rsRot','var'), rsRot = 226; rsTol = 1; rsZD = [0.2 0.8]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; rsStat = "wmean"; end
+klfPair  = rsPair;             % level pair of the width (same as the bar)
+klfVar   = rsVar;              % "_xtrim" or "" (same as the bar)
+klfXVar  = "tDtotal";          % "tDtotal" (t_D,total) or "tauD" (t_D since arrival)
+klfLogY  = false;              % log K_L axis
+klfYLim  = [];                 % [] = auto, e.g. [0 10]
+klfErr   = false;              % error bars on the per-frame points
+fs15     = 16;  mk15 = 45;
+mkBar    = mk15;                % size of the red circle (bar value)
+colBar   = [0.85 0 0];         % its colour
+tagW15   = sprintf('%02d_%02d', round(100*klfPair));
+
+for ds = "conc"
+    figName = sprintf('KL vs t_D from W%s per frame, with the KL-by-method value at theta = %d deg (%s%s)', ...
+        tagW15, rsRot, ds, klfVar);
+    fig = figure('Position',[100 100 1100 700], 'Name',figName, 'NumberTitle','off');
+    ax  = axes(fig);  hold(ax,'on');  h = gobjects(0);  hBar = gobjects(0);  rows15b = {};
+    for i = 1:nExp
+        Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, klfVar, klfPair);
+        if isempty(Tk), continue, end
+        x  = Tk.(klfXVar);
+        yP = Tk.("KL_prof_" + tagW15 + "_cm2min");  dP = Tk.("dKL_prof_" + tagW15 + "_cm2min");
+        okP = isfinite(x) & isfinite(yP) & yP > 0;
+        cLt = 0.5*expCol(i,:) + 0.5;                        % lighter colour for the error bars
+        if klfErr
+            errorbar(ax, x(okP), yP(okP), min(dP(okP), 0.99*yP(okP)), dP(okP), 'LineStyle','none', ...
+                'Color',cLt, 'HandleVisibility','off')
+        end
+        if any(okP)
+            h(end+1) = scatter(ax, x(okP), yP(okP), mk15, expCol(i,:), 'o', 'filled', ...
+                'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName', expName(i)); %#ok<SAGROW>
+        end
+
+        % frames of the KL-by-method bar and the bar value (same selection and statistic as 17 / 17c)
+        sel = rotZDsel(Tk, rsRot, rsTol, rsZD) & okP;
+        if ~any(sel), continue, end
+        [KLb, dKLb] = aggKL(yP(sel), dP(sel), rsStat);
+        xb = mean(x(sel));
+        % errorbar(ax, xb, KLb, dKLb, 'LineStyle','none', 'Color',colBar, 'LineWidth',2, ...
+        %     'CapSize',12, 'HandleVisibility','off')
+        hb = scatter(ax, xb, KLb, mkBar, 'o', 'MarkerEdgeColor',colBar, 'MarkerFaceColor','none', ...
+            'LineWidth',2.5, 'DisplayName', sprintf('\\theta = %d°', rsRot));
+        if isempty(hBar), hBar = hb; else, hb.HandleVisibility = 'off'; end
+        rows15b{end+1,1} = table(expName(i), nnz(sel), xb, min(x(sel)), max(x(sel)), KLb, dKLb, ...
+            'VariableNames', {'experiment','nFrames', char(klfXVar + "_mean"), char(klfXVar + "_min"), ...
+            char(klfXVar + "_max"), 'KL_bar_cm2min', 'dKL_bar_cm2min'}); %#ok<SAGROW>
+    end
+    if isempty(h), close(fig); continue, end
+    set(ax, 'FontSize',fs15, 'LabelFontSizeMultiplier',1);  grid(ax,'on');  box(ax,'on')
+    if klfLogY, set(ax, 'YScale','log'); end
+    if ~isempty(klfYLim), ylim(ax, klfYLim); end
+    if klfXVar == "tauD", xlabel(ax, 't_D - t_{D,arrival} [-]', 'FontSize',fs15)
+    else,                 xlabel(ax, 't_D [-]', 'FontSize',fs15); end
+    ylabel(ax, sprintf('K_L from W_{%d-%d} [cm^2/min]', round(100*klfPair)), 'FontSize',fs15)
+    legend(ax, [h hBar], 'Location','northeast', 'FontSize',fs15-4, 'NumColumns',1, 'Interpreter','tex')
+    if ~isempty(rows15b)
+        fprintf('\n15b) KL-by-method value (profile, theta = %g deg, centre zD %.2f-%.2f, %s) per experiment:\n', ...
+            rsRot, rsZD, rsStat);
+        disp(vertcat(rows15b{:}))
+    end
+    saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_profile_rot%d_bar_%s%s', klfXVar, tagW15, rsRot, ds, klfVar), closeAfterSave)
+end
  
 %% 16) Mixing length vs square root of time (dimensional): averaged profile and 2D contours
 % Mixing length = width W between the two levels of mlPair [cm], x = sqrt(t - t_arr) [min^0.5]
@@ -1966,6 +2037,106 @@ for ds = ds17b
     fn17b = sprintf('CT_profile_rot%d_zD%02d_%02d_W%s_%s%s', rsRot, round(100*rsZD), tagW17b, ds, rsVar);
     writetable(T17b, fullfile(exportPath, fn17b + ".xlsx"));
     saveFigBoth(fig, exportPath, fn17b, closeAfterSave)
+end
+
+%% 17c) KL by method WITHOUT the XCT BTC and WITHOUT the 2D contours: XCT profile, XCT MFM, UHS MFM
+% Same as section 17, three bars per case:
+% XCT 1D profile  : KL from the averaged-profile width W_40-60 (x-trimmed) of the frames at
+%                   rotPos = rsRot (+/- rsTol) with the front centre (C = 0.5) at zD in rsZD,
+%                   combined into ONE value per experiment (rsStat)
+% XCT MFM, UHS MFM: as section 8e
+% Figure 1: grouped bars per case; figure 2: M-Pe quadrants. Files ..._noBTC_noCont_...
+% Needs 5b for the UHS run swap (otherwise the configured UHS key is used).
+ 
+rsRot   = 226;                 % rotation position [deg]
+rsTol   = 1;                   % tolerance [deg]
+rsZD    = [0.2 0.8];           % front-centre zD range
+rsPair  = [0.40 0.60];
+rsVar   = "_xtrim";
+rsStat  = "wmean";             % "wmean" (inverse-variance weighted mean +/- its error, not below
+                               % the scatter) | "mean" (mean +/- std; one frame: its own dKL)
+fs17    = 16;
+tagW17  = sprintf('%02d_%02d', round(100*rsPair));
+rsSrcNames = [sprintf("XCT 1D profile (\\theta = %d°)", rsRot), "XCT MFM", "UHS MFM"];
+rsSrcCols  = [0.85 0.33 0.10; 0.35 0.35 0.35; 0.30 0.75 0.93];
+% cases: {name, M token in key, Pe token in key, quadrant tile (1 = up-left ... 4 = down-right)}
+rsCases = {"XCT-loM-loPe", "P725", "Q1", 3; ...
+           "XCT-loM-hiPe", "P725", "Q5", 1; ...
+           "XCT-hiM-loPe", "P900", "Q1", 4; ...
+           "XCT-hiM-hiPe", "P900", "Q5", 2};
+if ~exist('uhsData','var'), uhsData = MFM_UHS_DataAll; end
+if ~exist('uhsKey','var'),  uhsKey  = string(inputFileConfig.MFM_BTC_UHS_Key); end
+ 
+for ds = "conc"
+    nC = size(rsCases,1);  nS = numel(rsSrcNames);
+    KL = nan(nC,nS);  dKL = nan(nC,nS);  nFr = zeros(nC,1);  tDr = strings(nC,1);
+    Mx = nan(nC,1);  Px = nan(nC,1);  Mu = nan(nC,1);  Pu = nan(nC,1);  frRows = {};
+    for c = 1:nC
+        i = find(contains(expKeys, "_" + rsCases{c,2} + "_") & contains(expKeys, "_" + rsCases{c,3} + "_"), 1);
+        if isempty(i), warning('17: no experiment for %s', rsCases{c,1}); continue, end
+        Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, rsVar, rsPair);
+        if ~isempty(Tk)
+            sel = rotZDsel(Tk, rsRot, rsTol, rsZD);
+            Ts  = Tk(sel, :);
+            nFr(c) = height(Ts);
+            if nFr(c) == 0
+                warning('17: %s (%s) has no frame at theta = %g +/- %g with the centre in zD [%.2f %.2f]', ...
+                    expKeys(i), ds, rsRot, rsTol, rsZD);
+            else
+                tDr(c) = sprintf('%.2f-%.2f', min(Ts.tDtotal), max(Ts.tDtotal));
+                [KL(c,1), dKL(c,1)] = aggKL(Ts.("KL_prof_" + tagW17 + "_cm2min"), Ts.("dKL_prof_" + tagW17 + "_cm2min"), rsStat);
+                Ts = addvars(Ts, repmat(rsCases{c,1}, height(Ts), 1), 'Before',1, 'NewVariableNames','case');
+                frRows{end+1,1} = Ts; %#ok<SAGROW>
+            end
+        end
+        [KL(c,2), dKL(c,2), Mx(c), Px(c)] = mfmKL(MFM_CT_DataAll{i}.(ds));
+        mU = [];
+        if ~isempty(uhsData{i}) && isfield(uhsData{i}, ds), mU = uhsData{i}.(ds); end
+        [KL(c,3), dKL(c,3), Mu(c), Pu(c)] = mfmKL(mU);
+    end
+    dKL(~isfinite(dKL)) = 0;
+    caseNames = string(rsCases(:,1));
+    T17 = table(caseNames, nFr, tDr, KL(:,1), dKL(:,1), KL(:,2), dKL(:,2), KL(:,3), dKL(:,3), ...
+        Mx, Px, Mu, Pu, 'VariableNames', {'case','nFrames','tD_range', ...
+        'KL_profile','dKL_profile','KL_MFM_XCT','dKL_MFM_XCT', ...
+        'KL_MFM_UHS','dKL_MFM_UHS','M_XCT','Pe_XCT','M_UHS','Pe_UHS'});
+    fprintf('\n17c) KL [cm2/min] by method (no contours), XCT at theta = %g deg, centre zD %.2f-%.2f, W%s%s (%s):\n', ...
+        rsRot, rsZD, tagW17, rsVar, ds);
+    disp(T17)
+    writetable(T17, fullfile(exportPath, sprintf('KL_byMethod_rot%d_noBTC_noCont_%s.xlsx', rsRot, ds)));
+    if ~isempty(frRows)
+        Tfr = vertcat(frRows{:});
+        fprintf('  frames used:\n');  disp(Tfr(:, {'case','frame','run','rotPos_deg','tDtotal','tauD','zD_center_C50', ...
+            char("W_prof_" + tagW17 + "_cm"), char("KL_prof_" + tagW17 + "_cm2min"), char("dKL_prof_" + tagW17 + "_cm2min")}))
+        writetable(Tfr, fullfile(exportPath, sprintf('KL_byMethod_rot%d_noCont_frames_%s.xlsx', rsRot, ds)));
+    end
+    yMax = 1.1*max(KL(:) + dKL(:), [], 'omitnan');  if ~(isfinite(yMax) && yMax > 0), yMax = 1; end
+ 
+    % ---- Figure 1: grouped bars, one group per case
+    fig = figure('Position',[80 80 1200 650], 'NumberTitle','off', ...
+        'Name', sprintf('KL by method, theta = %d deg, no BTC, no contours (%s)', rsRot, ds));
+    ax = axes(fig);  hold(ax,'on')
+    klBars(ax, KL, dKL, rsSrcCols, rsSrcNames, caseNames, fs17);
+    ylim(ax, [0 yMax]);  ylabel(ax, 'K_L [cm^2/min]', 'FontSize',fs17)
+    legend(ax, 'Location','northwest', 'FontSize',fs17, 'Interpreter','tex')
+    saveFigBoth(fig, exportPath, sprintf('KL_byMethod_rot%d_noBTC_noCont_4cases_%s', rsRot, ds), closeAfterSave)
+ 
+    % ---- Figure 2: M-Pe quadrants
+    fig = figure('Position',[60 60 1300 1000], 'NumberTitle','off', ...
+        'Name', sprintf('KL by method in the M-Pe plane, theta = %d deg, no BTC, no contours (%s)', rsRot, ds));
+    tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact', 'Padding','compact');
+    for c = 1:nC
+        ax = nexttile(tl, rsCases{c,4});  hold(ax,'on')
+        klBars(ax, KL(c,:), dKL(c,:), rsSrcCols, rsSrcNames, "", fs17);
+        set(ax, 'XTick', []);  ylim(ax, [0 yMax]);  ylabel(ax, 'K_L [cm^2/min]', 'FontSize',fs17)
+        title(ax, {caseNames(c), sprintf('XCT: M = %.2f, Pe = %.3g   UHS: M = %.2f, Pe = %.3g', ...
+            Mx(c), Px(c), Mu(c), Pu(c))}, 'FontSize',fs17-2, 'FontWeight','normal')
+    end
+    lgd = legend(ax, 'Orientation','horizontal', 'NumColumns',nS, 'FontSize',fs17-2, 'Box','off', 'Interpreter','tex');
+    lgd.Layout.Tile = 'south';  lgd.ItemTokenSize = [18 12];
+    xlabel(tl, 'viscosity ratio M  \rightarrow  (left: low M, right: high M)', 'FontSize',fs17)
+    ylabel(tl, 'Pe  \rightarrow  (bottom: low Pe, top: high Pe)', 'FontSize',fs17)
+    saveFigBoth(fig, exportPath, sprintf('KL_byMethod_rot%d_noBTC_noCont_MPe_quadrants_%s', rsRot, ds), closeAfterSave)
 end
  
 %% 18) Profiles used for the theta = 270 deg KL (section 17), as section 1
