@@ -3138,6 +3138,332 @@ for i = 1:nExp
 
     close(fig)
 end
+
+%% Paper figure contour, no BTC panel / no figure title, C_1 profiles only for frames with a front in ax1
+% Same as "Paper figure contour", but the vertical profiles (ax3) are drawn only for the
+% frames whose C = 0.5 contour is drawn in ax1 (front inside the image). Saved frames
+% without a front have no red profile unless cfSaveOnlyFront = true (then they are skipped).
+% Files: <name>_<key>_tD<..>_<run>_<source>_paper_frontProf_noBTC (the paper sections are not overwritten).
+% No breakthrough-curve panel (ax4) and no figure title: the experiment name and tD are only in
+% the file name.
+% fonts: every axis, tick label, colour bar, legend and contour label uses fsPaper
+
+fsPaper   = 16;     % font size of everything in the figure [pt]
+fsCLabel  = 12;     % contour-line labels in the concentration map (ShowText)
+axLW      = 1.0;    % axes line width
+% layout in pixels (converted to normalized units below), from the top of the figure down:
+figW      = 1150;   % figure width [px]; the HEIGHT follows from panelAspect (below)
+panelAspect = [];   % height/width of the top-row panels (x_D-z_D maps); [] = the core's
+                    % L/D, so x_D and z_D keep the real proportions of the core
+showFigure  = false;% false: figure built off screen, so it is never shrunk to the
+                    % screen size and the png has exactly figW x (computed) height
+padT      = 10;     % top edge -> panel titles
+ax1TitlePx  = 62;   % two-line panel titles (top edge -> top of the panels)
+padB      = 110;    % x tick labels + x_D label below the panels, bottom edge
+padL      = 95;     % left edge: z_D / C_ave,1 tick labels and labels
+padR      = 100;    % right edge: C_ave,1 profile axis (right side) + its label
+saveDPI   = 600;    % png resolution [dpi]; the png is figW x figH px * saveDPI/screen dpi
+                    % (600 dpi ~ 6-7x the screen pixels: sharp when zoomed or printed)
+savePDF   = false;  % true: also a vector .pdf (text and lines stay sharp at any zoom)
+
+% frames: every contour / profile is drawn (black); only the frames closest to the
+% tD values in tDsave are highlighted in red and saved (one figure each)
+tDsave     = [0.3 0.4 0.5 0.6 0.7 0.8];  % tD of the saved figures; [] = save every drawn frame
+tDstepDraw = 0.1;        % spacing in tD of the drawn contours / profiles (smaller = more lines)
+runsToPlot = [];         % run numbers to draw, e.g. [1 2]; [] = all runs
+cfMinPts        = 6;     % min. number of C = 0.5 contour points for a frame to count as "front shown"
+cfSaveOnlyFront = false; % true: save only frames with a front in ax1 (tDsave frames without one skipped)
+
+% experiment name for the file name (no figure title), built from the experiment key,
+% same names as main_dimlessTranspNo: {key token, text}
+nameRulesM  = {"P725", "XCT-loM";  "P900", "XCT-hiM"};   % pressure -> viscosity ratio M
+nameRulesPe = {"Q1",   "-loPe";     "Q5",   "-hiPe"};      % flow rate -> Peclet number
+
+for i = 1:nExp
+
+    filedataExp   = filedataExpAll{i};
+    pathExportAll = pathExportAllVec{i};
+    dataSource    = dataSourceAll{i};
+    HDF5filename  = HDF5filenameAll{i};
+    interpFcn     = interpFcnAll{i};
+    expFolderName = expFolderNameAll{i};
+    expProcFullData_MFM_CT  = MFM_CT_DataAll{i};
+    expProcFullData_MFM_UHS = MFM_UHS_DataAll{i};
+
+    expCTData = struct();
+    expCTData.(filedataExp.Key) = expCTDataAll{i};
+
+    fprintf('Contour map batch save (paper, front profiles) %s\n',filedataExp.Key)
+
+    % figure height from the panel aspect: the top-row panels keep height/width = aspect
+    aspect = panelAspect;
+    if isempty(aspect), aspect = filedataExp.L/filedataExp.D; end     % core length / diameter
+    hGapPx    = 0.07*figW;                                            % same gaps as before
+    cbResPx   = (0.012 + 0.018 + 0.03)*figW;
+    colsWPx   = (figW - padL - padR - 2*hGapPx - cbResPx)/3;          % width of one panel [px]
+    row1Px    = aspect*colsWPx;                                       % its height [px]
+    figH      = round(padT + ax1TitlePx + row1Px + padB);
+    fprintf('  figure %d x %d px (top-row panels %.0f x %.0f px, aspect %.2f)\n', ...
+        figW, figH, colsWPx, row1Px, aspect);
+
+    visStr = 'off';  if showFigure, visStr = 'on'; end
+    fig = figure('Units','pixels', 'Position', [20, 20, figW, figH], 'Visible', visStr);
+    % the saved .fig opens visible even though it was built off screen
+    set(fig, 'CreateFcn', 'set(gcbo,''Visible'',''on'')');
+    figWa = figW;  figHa = figH;
+
+    % short name of this experiment (no figure title; used in the file name), e.g. "XCT-hiM-loPe"
+    keyStr = string(filedataExp.Key);  expName = "";
+    for q = 1:size(nameRulesM,1)
+        if contains(keyStr, "_" + nameRulesM{q,1} + "_"), expName = nameRulesM{q,2}; end
+    end
+    for q = 1:size(nameRulesPe,1)
+        if contains(keyStr, "_" + nameRulesPe{q,1} + "_"), expName = expName + nameRulesPe{q,2}; end   % "XCT-hiM" + "-hiPe" 
+    end
+    if expName == "", expName = strrep(keyStr, "_", " "); end   % no rule matched: use the key
+
+    % figure config: pixel margins -> normalized positions
+    hGap = 0.07;
+    cbGap      = 0.012;
+    cbWidth    = 0.018;
+    cbLabelPad = 0.03;
+    cbReserve  = cbGap + cbWidth + cbLabelPad;
+    panL   = padL/figWa;   panW = 1 - (padL + padR)/figWa;
+    row1B  = padB/figHa;
+    row1H  = 1 - (padT + ax1TitlePx)/figHa - row1B;
+    colsW  = (panW - 2*hGap - cbReserve)/3;
+    ax1Pos = [panL row1B colsW row1H];
+    ax2Pos = [panL+colsW+hGap row1B colsW row1H];
+    ax3Pos = [panL+2*colsW+hGap+cbReserve+hGap row1B colsW row1H];
+    ax1 = axes('Position',ax1Pos);
+    ax2 = axes('Position',ax2Pos);
+    ax3 = axes('Position',ax3Pos);
+
+    cmap = flipud(winter(256));
+    tDminContours = 0;
+    tDmaxContours = tDmax;
+    levels = [0.5 0.5];
+    levelsFull = 0:0.1:1;
+
+    frames = struct('tD',{},'run_name',{},'k',{},'rotPos',{}, ...
+        'color',{},'xD',{},'zD',{},'C',{}, ...
+        'xD2',{},'CVert',{},'hContour',{},'hScatter',{},'hasFront',{});
+    cache  = struct('plotImage',{},'imgSmooth',{});   % same order as frames
+
+    % build static overlays (one read + smooth per frame)
+    if isempty(runsToPlot), runList = 1:length(expFolderName); else, runList = runsToPlot; end
+    for j = runList
+        run_name = "run_" + sprintf('%02d', j);
+        HDF5dataPath = ['/exp/' char(run_name) '/conc'];
+        info = h5info(HDF5filename, HDF5dataPath);
+        dims = info.Dataspace.Size;
+        nx = dims(1);
+        ny = dims(2);
+
+        varsRun = expCTData.(filedataExp.Key).varsAll.(dataSource);
+        varsRun = varsRun(varsRun.runName == run_name & varsRun.tDtotal < tDmax, :);
+        if isempty(varsRun), continue, end
+
+        tDstep = tDstepDraw;
+        tDtargets = min(varsRun.tDtotal):tDstep:max(varsRun.tDtotal);
+        kPlot = zeros(length(tDtargets),1);
+        for m = 1:length(tDtargets)
+            [~,kPlot(m)] = min(abs(varsRun.tDtotal - tDtargets(m)));
+        end
+        kPlot = unique(kPlot,'stable');
+
+        for ii = 1:length(kPlot)
+            k = kPlot(ii);
+            vars = varsRun(k,:);
+            prof = vars.C1Profile;  if iscell(prof), prof = prof{1}; end
+            tD = vars.tDtotal;
+
+            rhoNormImageVac = h5read(HDF5filename, HDF5dataPath, [1 1 k], [nx ny 1]);
+            rhoNormImage = rhoNorm_wVacRef(rhoNormImageVac,filedataExp.Fluid1, ...
+                filedataExp.Fluid2, filedataExp.T, filedataExp.P);
+            if strcmp(dataSource,'conc')
+                plotImage = interpFcn(rhoNormImage);
+            else
+                plotImage = rhoNormImage;
+            end
+            imgSmooth = imgaussfilt(plotImage, 20);
+            resXmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeX;
+            resYmm = expCTData.(filedataExp.Key).exp.(run_name).pca.Geometry.VoxelSizeY;
+            xcm = (1:ny)*resXmm/10;
+            zcm = (1:nx)*resYmm/10;
+            xD = xcm/max(xcm);
+            zD = zcm/max(zcm);
+
+            % ax1: C = 0.5 contour of this frame
+            hold(ax1,'on')
+            [C, h] = contour(ax1,xD,zD,imgSmooth,levels, ...
+                'LineColor','k','LineWidth',2.2);
+            set(h,'HitTest','off','PickableParts','none');
+
+            % front shown in ax1? (C = 0.5 contour with enough points)
+            hasFront = ~isempty(C) && C(2,1) >= cfMinPts;
+
+            % ax3: vertical profile, only for the frames with a front in ax1
+            x2 = prof.zVertcm;
+            xD2 = x2/max(x2);
+            y2 = prof.CVert;
+            s = gobjects(0);
+            if hasFront
+                s = scatter(ax3,xD2,y2,3,'filled','MarkerFaceColor','k');
+                set(s,'HitTest','off','PickableParts','none');
+                hold(ax3,'on')
+            end
+
+            frames(end+1) = struct( ...
+                'tD',tD,'run_name',run_name,'k',k,'rotPos',vars.rotPos, ...
+                'color','k','xD',xD,'zD',zD,'C',C, ...
+                'xD2',xD2,'CVert',y2, ...
+                'hContour',h,'hScatter',s,'hasFront',hasFront); %#ok<SAGROW>
+            cache(end+1) = struct('plotImage',plotImage,'imgSmooth',imgSmooth); %#ok<SAGROW>
+
+            % labels
+            if ~hasFront, continue, end
+            npts = C(2,1);
+            if npts > 5
+                mid = round(npts/2);
+                xLab = C(1,mid+1);
+                zLab = C(2,mid+1)+0.06;
+                text(ax1,xLab,zLab,sprintf('t_D \\approx %.1f\n\\theta = %.0f °', ...
+                    tD,vars.rotPos),'Color','k', ...
+                    'FontSize',fsPaper,'FontWeight','bold', ...
+                    'HorizontalAlignment','center', ...
+                    'BackgroundColor','none','Margin',1, ...
+                    'HitTest','off','PickableParts','none');
+                text(ax3,zLab,0.3, ...
+                    sprintf('t_D \\approx %.1f\n\\theta = %.0f °', ...
+                    tD,vars.rotPos),'Color','k', ...
+                    'FontSize',fsPaper,'FontWeight','bold', ...
+                    'BackgroundColor','w','Margin',1, ...
+                    'HitTest','off','PickableParts','none');
+            end
+        end
+    end
+
+    % format axes (same font size and line width on all four axes)
+    set([ax1 ax2 ax3], 'FontSize',fsPaper, 'LineWidth',axLW, 'TickDir','out', 'Box','on')
+    set(ax1,'YDir','reverse')
+    grid(ax1,'on')
+    xlabel(ax1,'x_D [-]','FontSize',fsPaper)
+    ylabel(ax1,'z_D [-]','FontSize',fsPaper)
+    colormap(ax1,cmap)
+    clim(ax1,[tDminContours tDmaxContours])
+    xlim(ax1,[0 1])
+    ylim(ax1,[0 1])
+    title(ax1,{'Front advance','@ C_D = 0.5'},'FontSize',fsPaper)
+
+    axis(ax2,'xy')
+    set(ax2,'YDir','reverse')
+    xlabel(ax2,'x_D [-]','FontSize',fsPaper)
+    set(ax2,'YTickLabel',[])
+    colormap(ax2,turbo)
+    clim(ax2,[0 1])
+    xlim(ax2,[0 1])
+    ylim(ax2,[0 1])
+    cb2 = colorbar(ax2);
+    cb2.Label.String = 'C_1 [-]';
+    cb2.FontSize = fsPaper;  cb2.Label.FontSize = fsPaper;  cb2.LineWidth = axLW;
+    drawnow
+    alignAxesColorbar(ax2, cb2, ax2Pos, cbGap, cbWidth, 'right');
+
+    camroll(ax3,270)
+    set(ax3,'XTickLabel',[])
+    ylabel(ax3,'C_{ave,1} [-]','FontSize',fsPaper)
+    colormap(ax3,cmap)
+    clim(ax3,[tDminContours tDmaxContours])
+    grid(ax3,'on')
+    ylim(ax3,[-0.02 1])
+    ax3.YAxisLocation = 'right';
+    title(ax3,'C_1 profile @ t_D','FontSize',fsPaper)
+
+    % per-frame save: current tD contour in red, its map in ax2
+    hImgAx2       = gobjects(0);
+    hContourAx2   = gobjects(0);
+    hContourAx2Hi = gobjects(0);
+    prevIdx = [];
+
+    % frames to highlight and save: the drawn frame closest to each tD in tDsave
+    if isempty(frames)
+        warning('%s: no frames drawn, nothing saved', filedataExp.Key);  close(fig);  continue
+    end
+    if isempty(tDsave)
+        idxSave = 1:numel(frames);
+    else
+        tDall   = [frames.tD];
+        idxSave = zeros(1, numel(tDsave));
+        for m = 1:numel(tDsave)
+            [~, idxSave(m)] = min(abs(tDall - tDsave(m)));
+        end
+        idxSave = unique(idxSave, 'stable');
+        fprintf('  saving tD = %s (requested %s)\n', mat2str(round(tDall(idxSave),2)), mat2str(tDsave));
+    end
+    if cfSaveOnlyFront
+        idxSave = idxSave([frames(idxSave).hasFront]);
+        if isempty(idxSave)
+            warning('%s: no saved frame has a front in ax1, nothing saved', filedataExp.Key);  close(fig);  continue
+        end
+    end
+
+    for idx = idxSave
+        fr  = frames(idx);
+        cfr = cache(idx);
+
+        % previous frame back to black, current one red
+        if ~isempty(prevIdx)
+            set(frames(prevIdx).hContour,'LineColor','k','LineWidth',2.2);
+            if ~isempty(frames(prevIdx).hScatter)
+                set(frames(prevIdx).hScatter,'MarkerFaceColor','k','SizeData',3);
+            end
+        end
+        set(fr.hContour,'LineColor','r','LineWidth',3);
+        if ~isempty(fr.hScatter), set(fr.hScatter,'MarkerFaceColor','r','SizeData',8); end
+
+        % ax2: concentration map of this frame (cached)
+        if isempty(hImgAx2) || ~isvalid(hImgAx2)
+            hold(ax2,'on')
+            hImgAx2 = imagesc(ax2, fr.xD, fr.zD, cfr.plotImage);
+            uistack(hImgAx2,'bottom');
+        else
+            set(hImgAx2,'CData',cfr.plotImage,'XData',fr.xD,'YData',fr.zD);
+        end
+
+        if ~isempty(hContourAx2Hi) && isvalid(hContourAx2Hi), delete(hContourAx2Hi); end
+        [~, hContourAx2Hi] = contour(ax2, fr.xD, fr.zD, cfr.imgSmooth, levels, ...
+            'LineColor','k','LineWidth',3,'ShowText',true);
+        if isprop(hContourAx2Hi,'LabelFontSize'), hContourAx2Hi.LabelFontSize = fsCLabel + 2; end
+        set(hContourAx2Hi,'HitTest','off','PickableParts','none');
+        uistack(hContourAx2Hi,'top');
+
+        if ~isempty(hContourAx2) && isvalid(hContourAx2), delete(hContourAx2); end
+        [~, hContourAx2] = contour(ax2, fr.xD, fr.zD, cfr.imgSmooth, levelsFull, ...
+            'LineColor','k','LineWidth',1,'ShowText',true,'LabelFormat',"%0.1f");
+        if isprop(hContourAx2,'LabelFontSize'), hContourAx2.LabelFontSize = fsCLabel; end
+        set(hContourAx2,'HitTest','off','PickableParts','none');
+
+        xlim(ax2,[0 1]);  ylim(ax2,[0 1]);
+        title(ax2, sprintf('C_1 map @ t_D \\approx %.1f', fr.tD), 'FontSize', fsPaper)
+
+        tDStr = strrep(sprintf('%.1f', fr.tD), '.', 'p');
+        nameTag = regexprep(char(expName), '[^\w-]', '');          % e.g. XCT-hiM-hiPe (the former figure title)
+        fname = string(sprintf('%s_%s_tD%s_%s_%s_paper_frontProf_noBTC', nameTag, char(filedataExp.Key), ...
+            tDStr, fr.run_name, dataSource));
+        fig.PaperPositionMode = 'auto';                    % same layout as on screen
+        print(fig, fullfile(pathExportAll, fname), '-dpng', sprintf('-r%d', saveDPI));
+        if savePDF
+            exportgraphics(fig, fullfile(pathExportAll, fname + ".pdf"), 'ContentType','vector');
+        end
+        saveas(fig, fullfile(pathExportAll, fname), 'fig');
+        fprintf('Saved %s\n', fname);
+
+        prevIdx = idx;
+    end
+
+    close(fig)
+end
 %% local functions
 
 function alignAxesColorbar(ax, cb, axPos, cbGap, cbWidth, side)
