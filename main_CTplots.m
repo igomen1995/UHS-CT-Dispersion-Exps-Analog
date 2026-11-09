@@ -868,11 +868,12 @@ for ds = dataSources
             widthPairsProf{p}, ds, widthVarProf, widthUnitProf), closeAfterSave)
     end
 end
-%% 7d) Averaged-profile front width vs tD, with the frame of the KL-by-method value (red circle)
-% Same as 7c (zDWidthProf_<lo>_<hi>, one colour per experiment), legend top right, plus, per
+%% 7d) Profile front width vs tD, with the frame of the KL-by-method value (red circle)
+% Same as 7c (zDWidthProf_<lo>_<hi>, one colour per experiment, same fonts / legend), plus, per
 % experiment, the frame used for the XCT 1D-profile bar of section 17 / 17c (rotPos = rsRot +/- rsTol,
-% front centre closest to zD = 0.5 within rsZD, rotZDsel) as a red open circle, as in section 15b.
-% Legend: one entry per experiment + one red circle "theta = rsRot".
+% front centre closest to zD = 0.5 within rsZD, rotZDsel) as a red open circle, as in section 15b,
+% drawn on top of all dots. Dots semi-transparent (alpha7d).
+% Legend (top right): one entry per experiment + one red circle "theta = rsRot".
 % Uses the settings of section 17 / 17c (rsRot, rsTol, rsZD, rsPair, rsVar): run it first, or the
 % defaults below are used.
 
@@ -880,18 +881,23 @@ if ~exist('rsRot','var'), rsRot = 226; rsTol = 1; rsZD = [0.2 0.8]; rsPair = [0.
 widthPairs7d = {sprintf('%02d_%02d', round(100*rsPair))};   % e.g. {'40_60'}; more pairs: {'10_90','40_60'}
 widthVar7d   = rsVar;              % "" = full image, "_xtrim" = x-trimmed (same as the bar)
 widthUnit7d  = "";                 % "" = zD [-], "_cm" = cm
-fs7d         = 16;                 % font size
-mk7d         = 30;                 % marker size (dots and red circle)
+fs7dAx       = 20;                 % font size: tick labels
+fs7dLbl      = 24;                 % font size: axis labels
+fs7dLeg      = 20;                 % font size: legend
+mk7d         = 120;                 % marker size (dots and red circle)
+alpha7d      = 0.5;                % face transparency of the dots (1 = opaque, 0 = invisible)
+legMk7d      = 12;                 % marker size in the legend [points]
+yLim7d       = [0 0.5];            % y-axis limits (zD units; [] = auto)
 colBar7d     = [0.85 0 0];         % colour of the red circle
 
 for ds = "conc"
     for p = 1:numel(widthPairs7d)
         pField  = "zDWidthProf_" + widthPairs7d{p} + widthVar7d + widthUnit7d;
-        figName = sprintf('Averaged-profile front width %s vs t_D, with the theta = %d deg frame (%s%s)', ...
+        figName = sprintf('Profile front width %s vs t_D, with the theta = %d deg frame (%s%s)', ...
             strrep(widthPairs7d{p},'_','-'), rsRot, ds, widthVar7d);
         fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
         ax  = axes(fig);  hold(ax,'on')
-        h = gobjects(0);  hBar = gobjects(0);  rows7d = {};
+        hLeg = gobjects(0);  hBar = gobjects(0);  hRed = gobjects(0);  rows7d = {};
 
         for i = 1:nExp
             vars = expCTDataAll{i}.varsAll.(ds);
@@ -899,8 +905,13 @@ for ds = "conc"
             w  = abs(vars.(pField));
             ok = isfinite(vars.tDtotal) & isfinite(w);
             if ~any(ok), continue, end
-            h(end+1) = scatter(ax, vars.tDtotal(ok), w(ok), mk7d, expCol(i,:), 'o', 'filled', ...
-                'MarkerEdgeColor',0.6*expCol(i,:), 'LineWidth',0.5, 'DisplayName', expName(i)); %#ok<SAGROW>
+            scatter(ax, vars.tDtotal(ok), w(ok), mk7d, expCol(i,:), 'o', 'filled', ...
+                'MarkerEdgeColor',0.6*expCol(i,:), 'LineWidth',0.5, ...
+                'MarkerFaceAlpha',alpha7d, 'MarkerEdgeAlpha',min(1, alpha7d + 0.3), ...
+                'HandleVisibility','off')
+            % legend entry: invisible larger marker (scatter legend icons stay small)
+            hLeg(end+1) = plot(ax, NaN, NaN, 'o', 'LineStyle','none', 'MarkerSize',legMk7d, ...
+                'MarkerFaceColor',expCol(i,:), 'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName', expName(i)); %#ok<SAGROW>
 
             % frame of the KL-by-method bar (same selection as 17 / 17c / 15b)
             Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, rsVar, rsPair);
@@ -908,24 +919,30 @@ for ds = "conc"
             fr = Tk.frame(rotZDsel(Tk, rsRot, rsTol, rsZD));
             fr = fr(ok(fr));
             if isempty(fr), continue, end
-            hb = scatter(ax, vars.tDtotal(fr), w(fr), mk7d, 'o', 'MarkerEdgeColor',colBar7d, ...
-                'MarkerFaceColor','none', 'LineWidth',2.5, 'DisplayName', sprintf('\\theta = %d°', rsRot));
-            if isempty(hBar), hBar = hb; else, hb.HandleVisibility = 'off'; end
+            hRed(end+1) = scatter(ax, vars.tDtotal(fr), w(fr), mk7d, 'o', 'MarkerEdgeColor',colBar7d, ...
+                'MarkerFaceColor','none', 'LineWidth',2.5, 'HandleVisibility','off'); %#ok<SAGROW>
+            if isempty(hBar)                                     % one legend entry for all red circles
+                hBar = plot(ax, NaN, NaN, 'o', 'LineStyle','none', 'MarkerSize',legMk7d, ...
+                    'MarkerEdgeColor',colBar7d, 'MarkerFaceColor','none', 'LineWidth',2.5, ...
+                    'DisplayName', sprintf('\\theta = %d°', rsRot));
+            end
             rows7d{end+1,1} = table(repmat(expName(i),numel(fr),1), fr, vars.tDtotal(fr), vars.rotPos(fr), w(fr), ...
                 'VariableNames', {'experiment','frame','tD','rotPos_deg', char(pField)}); %#ok<SAGROW>
         end
-        if isempty(h), close(fig); continue, end
+        if ~isempty(hRed), uistack(hRed, 'top'); end        % red circles above all dots
+        if isempty(hLeg), close(fig); continue, end
 
-        set(ax, 'FontSize',fs7d, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
-        xlabel(ax, 't_D [-]', 'FontSize',fs7d)
+        set(ax, 'FontSize',fs7dAx, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
+        xlabel(ax, 't_D [-]', 'FontSize',fs7dLbl)
         if widthUnit7d == "_cm"
-            ylabel(ax, "W_{" + strrep(widthPairs7d{p},'_','-') + "}, averaged profile [cm]", 'FontSize',fs7d)
-        else
-            ylabel(ax, "\Deltaz_{D," + strrep(widthPairs7d{p},'_','-') + "}, averaged profile [-]", 'FontSize',fs7d)
+            ylabel(ax, "W_{" + strrep(widthPairs7d{p},'_','-') + "}, profile [cm]", 'FontSize',fs7dLbl)
             ylim(ax, [0 inf])
+        else
+            ylabel(ax, "\Deltaz_{D," + strrep(widthPairs7d{p},'_','-') + "}, profile [-]", 'FontSize',fs7dLbl)
+            if isempty(yLim7d), ylim(ax, [0 inf]), else, ylim(ax, yLim7d), end
         end
         xlim(ax, [0 1.2]);  grid(ax,'on');  box(ax,'on')
-        legend(ax, [h hBar], 'Location','northeast', 'FontSize',fs7d, 'Interpreter','tex')
+        legend(ax, [hLeg hBar], 'Location','northeast', 'FontSize',fs7dLeg, 'Interpreter','tex')
         if ~isempty(rows7d)
             fprintf('\n7d) Frame of the KL-by-method value (theta = %g deg), width %s:\n', rsRot, pField);
             disp(vertcat(rows7d{:}))
@@ -1889,8 +1906,8 @@ end
 %% 15b) KL vs tD from the 40-60 profile width of every frame, with the KL-by-method value (section 17 / 17c)
 % Same as section 15 (profile only), plus, per experiment, the bar value of the XCT 1D-profile KL
 % of section 17 / 17c (the frame at rotPos = rsRot +/- rsTol with the front centre closest to
-% zD = 0.5 within rsZD) as a red open circle. Legend (top right): one entry per experiment + one
-% red circle "theta = rsRot". Fonts / legend as section 7c.
+% zD = 0.5 within rsZD) as a red open circle, drawn on top of all dots. Dots semi-transparent.
+% Legend (top right): one entry per experiment + one red circle "theta = rsRot". Format as 7c / 7d.
 % Uses the settings of section 17 / 17c (rsRot, rsTol, rsZD, rsPair, rsVar, rsStat): run it first,
 % or the defaults below are used.
 
@@ -1900,11 +1917,13 @@ klfVar   = rsVar;              % "_xtrim" or "" (same as the bar)
 klfXVar  = "tDtotal";          % "tDtotal" (t_D,total) or "tauD" (t_D since arrival)
 klfLogY  = false;              % log K_L axis
 klfYLim  = [];                 % [] = auto, e.g. [0 2]
+klfXLim  = [0 1.2];            % x-axis limits ([] = auto)
 klfErr   = false;              % error bars on the per-frame points
 fs15Ax   = 20;                 % font size: tick labels
 fs15Lbl  = 24;                 % font size: axis labels
 fs15Leg  = 20;                 % font size: legend
-mk15     = 30;                 % marker size (dots and red circle)
+mk15     = 120;                 % marker size (dots and red circle)
+alpha15  = 0.5;                % face transparency of the dots (1 = opaque, 0 = invisible)
 legMk15  = 12;                 % marker size in the legend [points]
 colBar   = [0.85 0 0];         % colour of the red circle
 tagW15   = sprintf('%02d_%02d', round(100*klfPair));
@@ -1913,7 +1932,9 @@ for ds = "conc"
     figName = sprintf('KL vs t_D from W%s per frame, with the KL-by-method value at theta = %d deg (%s%s)', ...
         tagW15, rsRot, ds, klfVar);
     fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
-    ax  = axes(fig);  hold(ax,'on');  hLeg = gobjects(0);  hBar = gobjects(0);  rows15b = {};
+    ax  = axes(fig);  hold(ax,'on')
+    hLeg = gobjects(0);  hBar = gobjects(0);  hRed = gobjects(0);  rows15b = {};
+
     for i = 1:nExp
         Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, klfVar, klfPair);
         if isempty(Tk), continue, end
@@ -1926,7 +1947,9 @@ for ds = "conc"
                 'Color',0.5*expCol(i,:) + 0.5, 'HandleVisibility','off')
         end
         scatter(ax, x(okP), yP(okP), mk15, expCol(i,:), 'o', 'filled', ...
-            'MarkerEdgeColor',0.6*expCol(i,:), 'LineWidth',0.5, 'HandleVisibility','off')
+            'MarkerEdgeColor',0.6*expCol(i,:), 'LineWidth',0.5, ...
+            'MarkerFaceAlpha',alpha15, 'MarkerEdgeAlpha',min(1, alpha15 + 0.3), ...
+            'HandleVisibility','off')
         % legend entry: invisible larger marker (scatter legend icons stay small)
         hLeg(end+1) = plot(ax, NaN, NaN, 'o', 'LineStyle','none', 'MarkerSize',legMk15, ...
             'MarkerFaceColor',expCol(i,:), 'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName', expName(i)); %#ok<SAGROW>
@@ -1936,8 +1959,8 @@ for ds = "conc"
         if ~any(sel), continue, end
         [KLb, dKLb] = aggKL(yP(sel), dP(sel), rsStat);
         xb = mean(x(sel));
-        scatter(ax, xb, KLb, mk15, 'o', 'MarkerEdgeColor',colBar, 'MarkerFaceColor','none', ...
-            'LineWidth',2.5, 'HandleVisibility','off')
+        hRed(end+1) = scatter(ax, xb, KLb, mk15, 'o', 'MarkerEdgeColor',colBar, 'MarkerFaceColor','none', ...
+            'LineWidth',2.5, 'HandleVisibility','off'); %#ok<SAGROW>
         if isempty(hBar)                                     % one legend entry for all red circles
             hBar = plot(ax, NaN, NaN, 'o', 'LineStyle','none', 'MarkerSize',legMk15, ...
                 'MarkerEdgeColor',colBar, 'MarkerFaceColor','none', 'LineWidth',2.5, ...
@@ -1946,11 +1969,13 @@ for ds = "conc"
         rows15b{end+1,1} = table(expName(i), nnz(sel), xb, KLb, dKLb, ...
             'VariableNames', {'experiment','nFrames', char(klfXVar), 'KL_bar_cm2min', 'dKL_bar_cm2min'}); %#ok<SAGROW>
     end
+    if ~isempty(hRed), uistack(hRed, 'top'); end        % red circles above all dots
     if isempty(hLeg), close(fig); continue, end
 
     set(ax, 'FontSize',fs15Ax, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
     if klfLogY, set(ax, 'YScale','log'); end
     if ~isempty(klfYLim), ylim(ax, klfYLim); end
+    if ~isempty(klfXLim), xlim(ax, klfXLim); end
     if klfXVar == "tauD", xlabel(ax, 't_D - t_{D,arrival} [-]', 'FontSize',fs15Lbl)
     else,                 xlabel(ax, 't_D [-]', 'FontSize',fs15Lbl); end
     ylabel(ax, sprintf('K_L from W_{%d-%d}, profile [cm^2/min]', round(100*klfPair)), 'FontSize',fs15Lbl)
