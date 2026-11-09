@@ -1032,23 +1032,23 @@ end
 %   vfSrc = "column": through the leading edge, column tD_corr_contour_scaled (v_front with the
 %                     C = 0.01 contour arrival) -> same slope, earlier (shifted left)
 %   vfSrc = "fit"   : straight line fitted to the plotted centres with z_D in vfZDfit
-% Legend / print: v_front [cm/min] as printed by main_CTpostproc (resultsAll.(ds).vFront_cmmin);
+% Legend: one entry per experiment (dots) + one dashed entry "u_front" (no value).
+% Print: u_front [cm/min] as printed by main_CTpostproc (resultsAll.(ds).vFront_cmmin);
 % fallback: slope [z_D per t_D] * L[in]*2.54 * Q / V_total (filedataExp.L is in inches).
 
 envVarP2  = "_xtrim";           % "" = full image | "_xtrim" = x-trimmed (as the mid-profile KL)
 vfSrc     = "C50";              % "C50" | "column" | "fit"
 vfZDfit   = [0.1 0.9];          % zD range of the centres used when vfSrc = "fit"
-vfLegend  = true;               % v_front in the legend (one entry per line)
 fsEnvP2   = 16;
 mkEnvP2   = 18;
 
 for ds = dataSources
     cField = "zDFrontProf50" + envVarP2;          % profile centre
     cFall  = "zDFront50" + envVarP2;              % fallback: C = 0.5 contour centre
-    figName = sprintf('Averaged-profile front centre with the v_front line (%s%s, %s)', ds, envVarP2, vfSrc);
+    figName = sprintf('Averaged-profile front centre with the u_front line (%s%s, %s)', ds, envVarP2, vfSrc);
     fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
     ax  = axes(fig);  hold(ax,'on')
-    h = gobjects(0);  rows8a2 = {};
+    h = gobjects(0);  hLine = gobjects(0);  rows8a2 = {};
 
     for i = 1:nExp
         vars = expCTDataAll{i}.varsAll.(ds);
@@ -1087,7 +1087,7 @@ for ds = dataSources
         if ~all(isfinite(p)) || p(1) <= 0, continue, end
         tD0 = -p(2)/p(1);  tD1 = (1 - p(2))/p(1);          % line from z_D = 0 to z_D = 1
 
-        % v_front as printed by main_CTpostproc; fallback: slope with L converted from inches to cm
+        % u_front (v_front) as printed by main_CTpostproc; fallback: slope with L converted from inches to cm
         vfPost = NaN;
         if hasPost(i) && isfield(expCTDataAll{i}, 'resultsAll') && isfield(expCTDataAll{i}.resultsAll, ds) ...
                 && isfield(expCTDataAll{i}.resultsAll.(ds), 'vFront_cmmin')
@@ -1096,24 +1096,25 @@ for ds = dataSources
         vfSlope = p(1) * fd.L*2.54 * fd.Q / fd.Vtotal;      % [cm/min] (L in inches, Q in ml/min, V in ml)
         vf = vfPost;  if ~isfinite(vf), vf = vfSlope; end
 
-        hl = plot(ax, [tD0 tD1], [0 1], '--', 'Color',0.6*expCol(i,:), 'LineWidth',2, ...
-            'DisplayName', sprintf('v_{front} = %.3g cm/min', vf));
-        if vfLegend, h(end+1) = hl; else, hl.HandleVisibility = 'off'; end %#ok<SAGROW>
+        plot(ax, [tD0 tD1], [0 1], '--', 'Color',0.6*expCol(i,:), 'LineWidth',2, 'HandleVisibility','off')
+        if isempty(hLine)                                   % one legend entry for all lines
+            hLine = plot(ax, NaN, NaN, '--', 'Color',[0.3 0.3 0.3], 'LineWidth',2, 'DisplayName','u_{front}');
+        end
         rows8a2{end+1,1} = table(expName(i), string(srcUsed), p(1), tD0, tD1, vfPost, vfSlope, ...
             'VariableNames', {'experiment','line','slope_zD_per_tD','tD_at_zD0','tD_at_zD1', ...
-            'vfront_postproc_cm_min','vfront_slope_cm_min'}); %#ok<SAGROW>
+            'ufront_postproc_cm_min','ufront_slope_cm_min'}); %#ok<SAGROW>
     end
     if isempty(h), close(fig); continue, end
 
     set(ax, 'FontSize',fsEnvP2, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
     xlabel(ax, 't_D [-]', 'FontSize',fsEnvP2);  ylabel(ax, 'z_D front centre [-]', 'FontSize',fsEnvP2)
     ylim(ax, [-0.02 1.02]);  xlim(ax, [0 1.2]);  grid(ax,'on');  box(ax,'on')
-    legend(ax, h, 'Interpreter','tex', 'FontSize',fsEnvP2-2, 'Location','southeast')
+    legend(ax, [h hLine], 'Interpreter','tex', 'FontSize',fsEnvP2-2, 'Location','southeast')
     if ~isempty(rows8a2)
-        fprintf('\n8a2) Front velocity per experiment (%s%s, line: %s):\n', ds, envVarP2, vfSrc);
+        fprintf('\n8a2) Front velocity u_front per experiment (%s%s, line: %s):\n', ds, envVarP2, vfSrc);
         disp(vertcat(rows8a2{:}))
     end
-    saveFigBoth(fig, exportPath, sprintf('frontCentre_profile_vfront_allExp_%s%s_%s_tD', ds, envVarP2, vfSrc), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('frontCentre_profile_ufront_allExp_%s%s_%s_tD', ds, envVarP2, vfSrc), closeAfterSave)
 end
 %% 8b) Front envelope per experiment: 2D-contour width (colour) vs averaged-profile width (grey)
 % Contour widths zDWidth_<lo>_<hi> (populate_CTframeVars) and averaged-profile widths
