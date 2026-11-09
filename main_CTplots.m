@@ -323,9 +323,11 @@ for ds = dataSources
 end
 
 %% 3) CT outlet BTC: time, tD_total, front-velocity-scaled tD_core
-
+% one dot per scan (markers only, no line: no joins across gaps between scans / runs)
 btcVar3      = "_xtrim";                       % "" = full image | "_xtrim" = x-trimmed (x_D 0.25-0.75)
 CfieldOutlet = "CD1_zD1p0" + btcVar3;
+mk3          = 3;                              % dot size [points]
+mkLeg3       = 10;                             % dot size in the legend [points]
 % {x column, x label, file tag, x limits ([] = auto)}
 btcAxes = {'timeElapsed',            'time elapsed [hh:mm:ss]',                   'time',         []; ...
            'tDtotal',                't_D [-]',                                   'tD',           [0 1.2]; ...
@@ -335,7 +337,7 @@ for ds = dataSources
     for a = 1:size(btcAxes,1)
         xVar = btcAxes{a,1};
         fig = figure('Position',[100 100 900 600]);  hold on
-        nPlotted = 0;
+        hLeg = gobjects(0);
 
         for i = 1:nExp
             vars = expCTDataAll{i}.varsAll.(ds);
@@ -343,16 +345,22 @@ for ds = dataSources
                 warning('%s (%s): column %s or %s missing, skipped', expKeys(i), ds, xVar, CfieldOutlet);
                 continue
             end
-            plot(vars.(xVar), vars.(CfieldOutlet), 'LineWidth',2.5, 'Color',expCol(i,:), ...
-                'DisplayName', expName(i))
-            nPlotted = nPlotted + 1;
+            x = vars.(xVar);  y = vars.(CfieldOutlet);
+            ok = ~ismissing(x) & isfinite(y);
+            if ~any(ok), continue, end
+            % markers only (plot accepts duration x, scatter does not on a held numeric axis)
+            plot(x(ok), y(ok), 'o', 'LineStyle','none', 'MarkerSize',mk3, ...
+                'MarkerFaceColor',expCol(i,:), 'MarkerEdgeColor',expCol(i,:), 'HandleVisibility','off')
+            % legend entry: invisible larger marker (same x type, y = NaN)
+            hLeg(end+1) = plot(x(find(ok,1)), NaN, 'o', 'LineStyle','none', 'MarkerSize',mkLeg3, ...
+                'MarkerFaceColor',expCol(i,:), 'MarkerEdgeColor',expCol(i,:), 'DisplayName', expName(i)); %#ok<SAGROW>
         end
-        if nPlotted == 0, close(fig); continue, end
+        if isempty(hLeg), close(fig); continue, end
 
         xlabel(btcAxes{a,2},'FontSize',14);  ylabel('C_1 at the outlet [-]','FontSize',14)
         ylim([-0.02 1.02]);  set(gca,'FontSize',14);  grid on;  box on
         if ~isempty(btcAxes{a,4}), xlim(btcAxes{a,4}); end
-        legend('Interpreter','none','FontSize',12,'Location','southeast')
+        legend(hLeg, 'Interpreter','none','FontSize',12,'Location','southeast')
         title(sprintf('Outlet BT curves from CT (%s%s)', ds, btcVar3), 'Interpreter','none')
 
         saveFigBoth(fig, exportPath, sprintf('BT_CT_%s%s_%s', ds, btcVar3, btcAxes{a,3}), closeAfterSave)
@@ -853,6 +861,73 @@ for ds = dataSources
             widthPairsProf{p}, ds, widthVarProf, widthUnitProf), closeAfterSave)
     end
 end
+
+%% 7d) Averaged-profile front width vs tD, with the frame of the KL-by-method value (red circle)
+% Same as 7c (zDWidthProf_<lo>_<hi>, one colour per experiment), legend top right, plus, per
+% experiment, the frame used for the XCT 1D-profile bar of section 17 / 17c (rotPos = rsRot +/- rsTol,
+% front centre closest to zD = 0.5 within rsZD, rotZDsel) as a red open circle, as in section 15b.
+% Legend: one entry per experiment + one red circle "theta = rsRot".
+% Uses the settings of section 17 / 17c (rsRot, rsTol, rsZD, rsPair, rsVar): run it first, or the
+% defaults below are used.
+
+if ~exist('rsRot','var'), rsRot = 226; rsTol = 1; rsZD = [0.2 0.8]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; end
+widthPairs7d = {sprintf('%02d_%02d', round(100*rsPair))};   % e.g. {'40_60'}; more pairs: {'10_90','40_60'}
+widthVar7d   = rsVar;              % "" = full image, "_xtrim" = x-trimmed (same as the bar)
+widthUnit7d  = "";                 % "" = zD [-], "_cm" = cm
+fs7d         = 16;                 % font size
+mk7d         = 30;                 % marker size (dots and red circle)
+colBar7d     = [0.85 0 0];         % colour of the red circle
+
+for ds = "conc"
+    for p = 1:numel(widthPairs7d)
+        pField  = "zDWidthProf_" + widthPairs7d{p} + widthVar7d + widthUnit7d;
+        figName = sprintf('Averaged-profile front width %s vs t_D, with the theta = %d deg frame (%s%s)', ...
+            strrep(widthPairs7d{p},'_','-'), rsRot, ds, widthVar7d);
+        fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
+        ax  = axes(fig);  hold(ax,'on')
+        h = gobjects(0);  hBar = gobjects(0);  rows7d = {};
+
+        for i = 1:nExp
+            vars = expCTDataAll{i}.varsAll.(ds);
+            if ~ismember(pField, string(vars.Properties.VariableNames)), continue, end
+            w  = abs(vars.(pField));
+            ok = isfinite(vars.tDtotal) & isfinite(w);
+            if ~any(ok), continue, end
+            h(end+1) = scatter(ax, vars.tDtotal(ok), w(ok), mk7d, expCol(i,:), 'o', 'filled', ...
+                'MarkerEdgeColor',0.6*expCol(i,:), 'LineWidth',0.5, 'DisplayName', expName(i)); %#ok<SAGROW>
+
+            % frame of the KL-by-method bar (same selection as 17 / 17c / 15b)
+            Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, rsVar, rsPair);
+            if isempty(Tk), continue, end
+            fr = Tk.frame(rotZDsel(Tk, rsRot, rsTol, rsZD));
+            fr = fr(ok(fr));
+            if isempty(fr), continue, end
+            hb = scatter(ax, vars.tDtotal(fr), w(fr), mk7d, 'o', 'MarkerEdgeColor',colBar7d, ...
+                'MarkerFaceColor','none', 'LineWidth',2.5, 'DisplayName', sprintf('\\theta = %d°', rsRot));
+            if isempty(hBar), hBar = hb; else, hb.HandleVisibility = 'off'; end
+            rows7d{end+1,1} = table(repmat(expName(i),numel(fr),1), fr, vars.tDtotal(fr), vars.rotPos(fr), w(fr), ...
+                'VariableNames', {'experiment','frame','tD','rotPos_deg', char(pField)}); %#ok<SAGROW>
+        end
+        if isempty(h), close(fig); continue, end
+
+        set(ax, 'FontSize',fs7d, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
+        xlabel(ax, 't_D [-]', 'FontSize',fs7d)
+        if widthUnit7d == "_cm"
+            ylabel(ax, "W_{" + strrep(widthPairs7d{p},'_','-') + "}, averaged profile [cm]", 'FontSize',fs7d)
+        else
+            ylabel(ax, "\Deltaz_{D," + strrep(widthPairs7d{p},'_','-') + "}, averaged profile [-]", 'FontSize',fs7d)
+            ylim(ax, [0 inf])
+        end
+        xlim(ax, [0 1.2]);  grid(ax,'on');  box(ax,'on')
+        legend(ax, [h hBar], 'Location','northeast', 'FontSize',fs7d, 'Interpreter','tex')
+        if ~isempty(rows7d)
+            fprintf('\n7d) Frame of the KL-by-method value (theta = %g deg), width %s:\n', rsRot, pField);
+            disp(vertcat(rows7d{:}))
+        end
+        saveFigBoth(fig, exportPath, sprintf('width_profile_%s_%s%s%s_tD_rot%d', ...
+            widthPairs7d{p}, ds, widthVar7d, widthUnit7d, rsRot), closeAfterSave)
+    end
+end
 %% 8) Measured front envelope, all experiments together
 % front centre (C = 0.5) +/- half width per scan; legend XCT-loM-hiPe etc. (expName, expCol)
 
@@ -946,6 +1021,99 @@ for ds = dataSources
         saveFigBoth(fig, exportPath, sprintf('frontEnvelope_profile_allExp_%s_%s%s_tD', ...
             widthPairsEnvP{p}, ds, envVarP), closeAfterSave)
     end
+end
+
+%% 8a2) Front centre of the AVERAGED PROFILE vs tD, with the front-velocity line (no width bars)
+% Dots = front centre of the averaged profile (zDFrontProf50: erfc-fit z50, addProfileWidths; where
+% missing, the C = 0.5 contour centre zDFront50), as 8a but without the +/- W/2 bars.
+% Line (dashed, same colour) = constant front velocity of each experiment, straight line in t_D:
+%   vfSrc = "C50"   : through the C = 0.5 centre, column tD_corr_vFrontC50 (v_front and t0 of the
+%                     C = 0.5 line from main_CTpreproc) -> lies on the dots
+%   vfSrc = "column": through the leading edge, column tD_corr_contour_scaled (v_front with the
+%                     C = 0.01 contour arrival) -> same slope, earlier (shifted left)
+%   vfSrc = "fit"   : straight line fitted to the plotted centres with z_D in vfZDfit
+% Legend / print: v_front [cm/min] as printed by main_CTpostproc (resultsAll.(ds).vFront_cmmin);
+% fallback: slope [z_D per t_D] * L[in]*2.54 * Q / V_total (filedataExp.L is in inches).
+
+envVarP2  = "_xtrim";           % "" = full image | "_xtrim" = x-trimmed (as the mid-profile KL)
+vfSrc     = "C50";              % "C50" | "column" | "fit"
+vfZDfit   = [0.1 0.9];          % zD range of the centres used when vfSrc = "fit"
+vfLegend  = true;               % v_front in the legend (one entry per line)
+fsEnvP2   = 16;
+mkEnvP2   = 18;
+
+for ds = dataSources
+    cField = "zDFrontProf50" + envVarP2;          % profile centre
+    cFall  = "zDFront50" + envVarP2;              % fallback: C = 0.5 contour centre
+    figName = sprintf('Averaged-profile front centre with the v_front line (%s%s, %s)', ds, envVarP2, vfSrc);
+    fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
+    ax  = axes(fig);  hold(ax,'on')
+    h = gobjects(0);  rows8a2 = {};
+
+    for i = 1:nExp
+        vars = expCTDataAll{i}.varsAll.(ds);
+        vn   = string(vars.Properties.VariableNames);
+        fd   = filedataExpAll{i};
+        tD   = vars.tDtotal;
+        cen  = nan(size(tD));
+        if ismember(cField, vn), cen = vars.(cField); end
+        if ismember(cFall, vn)
+            miss = ~isfinite(cen);  cen(miss) = vars.(cFall)(miss);
+        end
+        ok = isfinite(tD) & isfinite(cen);
+        if ~any(ok), continue, end
+        h(end+1) = scatter(ax, tD(ok), cen(ok), mkEnvP2, expCol(i,:), 'filled', ...
+            'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName', expName(i)); %#ok<SAGROW>
+
+        % front-velocity line z_D = p(2) + p(1) t_D
+        p = [NaN NaN];  srcUsed = vfSrc;
+        colC50 = "tD_corr_vFrontC50" + envVarP2;
+        if vfSrc == "C50" && ismember(colC50, vn)
+            okc = isfinite(tD) & isfinite(vars.(colC50));
+            if nnz(okc) >= 2, p = polyfit(tD(okc), vars.(colC50)(okc), 1); end
+        elseif vfSrc == "column" && ismember("tD_corr_contour_scaled", vn)
+            okc = isfinite(tD) & isfinite(vars.tD_corr_contour_scaled);
+            if nnz(okc) >= 2, p = polyfit(tD(okc), vars.tD_corr_contour_scaled(okc), 1); end
+        end
+        if ~all(isfinite(p))                                  % "fit", or the column is missing
+            if vfSrc ~= "fit"
+                warning('8a2: %s (%s): column for vfSrc = "%s" missing -- line fitted to the centres', ...
+                    expKeys(i), ds, vfSrc);
+            end
+            srcUsed = "fit";
+            okf = ok & cen >= vfZDfit(1) & cen <= vfZDfit(2);
+            if nnz(okf) >= 2, p = polyfit(tD(okf), cen(okf), 1); end
+        end
+        if ~all(isfinite(p)) || p(1) <= 0, continue, end
+        tD0 = -p(2)/p(1);  tD1 = (1 - p(2))/p(1);          % line from z_D = 0 to z_D = 1
+
+        % v_front as printed by main_CTpostproc; fallback: slope with L converted from inches to cm
+        vfPost = NaN;
+        if hasPost(i) && isfield(expCTDataAll{i}, 'resultsAll') && isfield(expCTDataAll{i}.resultsAll, ds) ...
+                && isfield(expCTDataAll{i}.resultsAll.(ds), 'vFront_cmmin')
+            vfPost = expCTDataAll{i}.resultsAll.(ds).vFront_cmmin;
+        end
+        vfSlope = p(1) * fd.L*2.54 * fd.Q / fd.Vtotal;      % [cm/min] (L in inches, Q in ml/min, V in ml)
+        vf = vfPost;  if ~isfinite(vf), vf = vfSlope; end
+
+        hl = plot(ax, [tD0 tD1], [0 1], '--', 'Color',0.6*expCol(i,:), 'LineWidth',2, ...
+            'DisplayName', sprintf('v_{front} = %.3g cm/min', vf));
+        if vfLegend, h(end+1) = hl; else, hl.HandleVisibility = 'off'; end %#ok<SAGROW>
+        rows8a2{end+1,1} = table(expName(i), string(srcUsed), p(1), tD0, tD1, vfPost, vfSlope, ...
+            'VariableNames', {'experiment','line','slope_zD_per_tD','tD_at_zD0','tD_at_zD1', ...
+            'vfront_postproc_cm_min','vfront_slope_cm_min'}); %#ok<SAGROW>
+    end
+    if isempty(h), close(fig); continue, end
+
+    set(ax, 'FontSize',fsEnvP2, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
+    xlabel(ax, 't_D [-]', 'FontSize',fsEnvP2);  ylabel(ax, 'z_D front centre [-]', 'FontSize',fsEnvP2)
+    ylim(ax, [-0.02 1.02]);  xlim(ax, [0 1.2]);  grid(ax,'on');  box(ax,'on')
+    legend(ax, h, 'Interpreter','tex', 'FontSize',fsEnvP2-2, 'Location','southeast')
+    if ~isempty(rows8a2)
+        fprintf('\n8a2) Front velocity per experiment (%s%s, line: %s):\n', ds, envVarP2, vfSrc);
+        disp(vertcat(rows8a2{:}))
+    end
+    saveFigBoth(fig, exportPath, sprintf('frontCentre_profile_vfront_allExp_%s%s_%s_tD', ds, envVarP2, vfSrc), closeAfterSave)
 end
 %% 8b) Front envelope per experiment: 2D-contour width (colour) vs averaged-profile width (grey)
 % Contour widths zDWidth_<lo>_<hi> (populate_CTframeVars) and averaged-profile widths
@@ -2178,7 +2346,8 @@ for ds = "conc"
     writetable(T17, fullfile(exportPath, sprintf('KL_byMethod_rot%d_noBTC_noCont_%s.xlsx', rsRot, ds)));
     if ~isempty(frRows)
         Tfr = vertcat(frRows{:});
-        fprintf('  frames used:\n');  disp(Tfr(:, {'case','frame','run','rotPos_deg','tDtotal','tauD','zD_center_C50', ...
+        fprintf('  frames used:\n');  disp(Tfr(:, {'case','frame','run','rotPos_deg','tDtotal','tauD', ...
+            't_min','tau_min','zD_center_C50', ...
             char("W_prof_" + tagW17 + "_cm"), char("KL_prof_" + tagW17 + "_cm2min"), char("dKL_prof_" + tagW17 + "_cm2min")}))
         writetable(Tfr, fullfile(exportPath, sprintf('KL_byMethod_rot%d_noCont_frames_%s.xlsx', rsRot, ds)));
     end
