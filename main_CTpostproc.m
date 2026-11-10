@@ -20,6 +20,12 @@
 %       W^2 = W0^2 + 4 k^2 KL (t - t_arr)      (10-90: 4 k^2 = 3.625^2)
 %     t_arr = contour arrival; gives KL and the width W0 at arrival (fitKL_W0); compared with the
 %     fit through the origin (W0 = 0)
+%   - initial width from the inlet BTC (CD1_zD0p0): W0 = u_front (t_hi - t_lo) for each level pair,
+%     also corrected for the spreading while the front passes the slice:
+%     W0c^2 = (u_front dt)^2 - 4 k^2 KL dt  (KL of the W0 fit) (inletBTCwidth)
+%   - KL of the frame at theta = klRot (front centre closest to zD = 0.5 within klRotZD, as the
+%     KL-by-method bar of main_CTplots): KL = W^2/(4k^2 tau), and corrected (W^2 - W0^2)/(4k^2 tau)
+%     with W0 from the fit and from the inlet BTC
 %   - plot fitted BTC vs scatter, and compare all methods
 
 %% IMPORT input
@@ -112,6 +118,10 @@ for i = 1:height(inputFileConfig)
     klW0Plot      = true;          % figure W^2 vs t - t_arr with both fits, per data source / variant
     klW0PlotTD    = true;          % (temporary) figure W_pair and per-frame KL vs tD_total, with / without W0
     klW0PlotPair  = [0.40 0.60];   % level pair of that figure (must be one of profWidthPairs)
+    % KL of the frame at a fixed rotation (same frame as the KL-by-method bar of main_CTplots)
+    klRot         = 226;           % rotation position [deg]
+    klRotTol      = 1;             % tolerance [deg]
+    klRotZD       = [0.2 0.8];     % front-centre zD window; the frame closest to zD = 0.5 is used
 
     % load the data produced by main_CTpreproc.m
     expCT_name = pathExportAll + filedataExp.Key;
@@ -340,6 +350,7 @@ for i = 1:height(inputFileConfig)
             resultsOut.(variant).KL_W0fit = table();
             if ismember(variant, klW0Variants)
                 tArrD_W0 = tArrC*filedataExp.Q/filedataExp.Vtotal;
+                uW0 = vFront_cmmin;  if ~(isfinite(uW0) && uW0 > 0), uW0 = uint_cmmin; end   % front velocity [cm/min]
                 rowsW0 = {};  fitsW0 = {};
                 for pp = 1:size(profWidthPairs,1)
                     pair_ = profWidthPairs(pp,:);
@@ -349,6 +360,8 @@ for i = 1:height(inputFileConfig)
                     end
                     Tp_ = KL_allProfileWidths(vars, variantSuffix, pair_, tArrC, tArrD_W0, klAllDtArr, klW0ZDrange);
                     inR = Tp_.zD_center_C50 >= klW0ZDrange(1) & Tp_.zD_center_C50 <= klW0ZDrange(2);
+                    btc0 = inletBTCwidth(vars, variantSuffix, pair_, 0);          % inlet BTC level times
+                    selR = rotZDsel(Tp_, klRot, klRotTol, klRotZD);              % frame at theta = klRot
                     for wsrc = ["prof","cont"]
                         W_ = Tp_.("W_" + wsrc + "_" + tagp + "_cm");
                         r_ = fitKL_W0(Tp_.tau_min(inR), W_(inR), pair_);
@@ -358,8 +371,32 @@ for i = 1:height(inputFileConfig)
                                 fullfile(pathExportAll, filedataExp.Key + "_KL_W0_vsTD_" + tagp + "_" + dataSource + "_" + variant), ...
                                 "(" + filedataExp.Key + ", " + dataSource + ", " + variant + ")");
                         end
+                        c4_ = 4*r_.k^2;
+                        % initial width from the inlet BTC: W0 = u_front dt, and corrected for the
+                        % spreading while the front passes the slice (KL of the W0 fit)
+                        ex = struct('tInlet_lo_min',btc0.t_lo, 'tInlet_hi_min',btc0.t_hi, 'tInlet50_min',btc0.t50, ...
+                            'dtInlet_min',btc0.dt, 'uFront_cmmin',uW0, 'W0btc_cm',uW0*btc0.dt, 'W0btcCorr_cm',NaN, ...
+                            'rot_frame',NaN, 'rot_tD',NaN, 'rot_zD',NaN, 'rot_tau_min',NaN, 'rot_W_cm',NaN, ...
+                            'KLrot_cm2min',NaN, 'KLrot_W0fit_cm2min',NaN, 'KLrot_W0btc_cm2min',NaN, 'KLrot_W0btcCorr_cm2min',NaN);
+                        KLfit_ = r_.KL_cm2min;  if ~isfinite(KLfit_), KLfit_ = 0; end
+                        if isfinite(ex.W0btc_cm)
+                            ex.W0btcCorr_cm = sqrt(max(ex.W0btc_cm^2 - c4_*KLfit_*btc0.dt, 0));
+                        end
+                        % KL of the frame at theta = klRot: plain and with the three W0 corrections
+                        if any(selR)
+                            q_ = find(selR, 1);
+                            Wq = W_(q_);  tq = Tp_.tau_min(q_);
+                            W0f2 = r_.W0sq_cm2;  if ~isfinite(W0f2), W0f2 = 0; end
+                            ex.rot_frame = Tp_.frame(q_);  ex.rot_tD = Tp_.tDtotal(q_);  ex.rot_zD = Tp_.zD_center_C50(q_);
+                            ex.rot_tau_min = tq;  ex.rot_W_cm = Wq;
+                            ex.KLrot_cm2min           = Wq^2/(c4_*tq);
+                            ex.KLrot_W0fit_cm2min     = (Wq^2 - W0f2)/(c4_*tq);
+                            ex.KLrot_W0btc_cm2min     = (Wq^2 - ex.W0btc_cm^2)/(c4_*tq);
+                            ex.KLrot_W0btcCorr_cm2min = (Wq^2 - ex.W0btcCorr_cm^2)/(c4_*tq);
+                        end
                         rowsW0{end+1,1} = [table(string(variant), string(tagp), wsrc, ...
-                            'VariableNames', {'variant','pair','width'}), struct2table(rmfield(r_, {'tau','W2'}))]; %#ok<AGROW>
+                            'VariableNames', {'variant','pair','width'}), struct2table(rmfield(r_, {'tau','W2'})), ...
+                            struct2table(ex)]; %#ok<AGROW>
                         fitsW0{end+1,1} = struct('pair',tagp, 'width',wsrc, 'r',r_); %#ok<AGROW>
                     end
                 end
@@ -370,6 +407,14 @@ for i = 1:height(inputFileConfig)
                              '(%.3g min), centre zD in [%.2f %.2f]:\n'], dataSource, variant, tArrC, klW0ZDrange);
                     disp(TW0(:, {'pair','width','n','KL_cm2min','dKL_cm2min','W0_cm','dW0_cm', ...
                         'tShift_min','R2','KL0_cm2min','R2_0'}))
+                    fprintf('  %s (%s) initial width from the inlet BTC (zD = 0, u_front = %.3g cm/min) vs fitted W0:\n', ...
+                        dataSource, variant, uW0);
+                    disp(TW0(TW0.width == "prof", {'pair','tInlet_lo_min','tInlet_hi_min','dtInlet_min', ...
+                        'W0btc_cm','W0btcCorr_cm','W0_cm','dW0_cm'}))
+                    fprintf('  %s (%s) KL of the frame at theta = %g deg (centre closest to zD = 0.5 in [%.1f %.1f]):\n', ...
+                        dataSource, variant, klRot, klRotZD);
+                    disp(TW0(:, {'pair','width','rot_frame','rot_tD','rot_zD','rot_tau_min','rot_W_cm', ...
+                        'KLrot_cm2min','KLrot_W0fit_cm2min','KLrot_W0btc_cm2min','KLrot_W0btcCorr_cm2min'}))
                     if klW0Plot
                         plotKL_W0(fitsW0, fullfile(pathExportAll, filedataExp.Key + "_KL_W0fit_" + dataSource + "_" + variant), ...
                             "(" + filedataExp.Key + ", " + dataSource + ", " + variant + ")");
@@ -474,6 +519,14 @@ for i = 1:height(inputFileConfig)
                     summaryT.("dKL_" + nm + "_cm2min" + sfx) = TW0.dKL_cm2min(q);
                     summaryT.("W0_" + nm + "_cm" + sfx)      = TW0.W0_cm(q);
                     summaryT.("dW0_" + nm + "_cm" + sfx)     = TW0.dW0_cm(q);
+                    summaryT.("W0btc_" + nm + "_cm" + sfx)     = TW0.W0btc_cm(q);
+                    summaryT.("W0btcCorr_" + nm + "_cm" + sfx) = TW0.W0btcCorr_cm(q);
+                    nmR = "rot" + klRot + "_" + TW0.width(q) + "_" + TW0.pair(q);
+                    summaryT.("KL_" + nmR + "_cm2min" + sfx)           = TW0.KLrot_cm2min(q);
+                    summaryT.("KL_" + nmR + "_W0fit_cm2min" + sfx)     = TW0.KLrot_W0fit_cm2min(q);
+                    summaryT.("KL_" + nmR + "_W0btc_cm2min" + sfx)     = TW0.KLrot_W0btc_cm2min(q);
+                    summaryT.("KL_" + nmR + "_W0btcCorr_cm2min" + sfx) = TW0.KLrot_W0btcCorr_cm2min(q);
+                    summaryT.(nmR + "_tD" + sfx)                         = TW0.rot_tD(q);
                 end
             end
             sa = resultsOut.(variantArr).KL_allProfSum;
@@ -510,7 +563,21 @@ for i = 1:height(inputFileConfig)
 
 end
 
-%% local helper
+%% local helpers
 function out = ternary_str(cond, a, b)
 if cond, out = a; else, out = b; end
+end
+
+function sel = rotZDsel(Tk, rot, tol, zDr, z0)
+% frames at rotation rot +/- tol [deg] (wrapped) with the front centre (C = 0.5) inside zDr;
+% of those, only the one whose centre is closest to z0 (default: middle of zDr) -- same rule as
+% rotZDsel in main_CTplots (KL-by-method bar)
+if nargin < 5 || isempty(z0), z0 = mean(zDr); end
+dRot = mod(Tk.rotPos_deg - rot + 180, 360) - 180;
+sel  = abs(dRot) <= tol & Tk.zD_center_C50 >= zDr(1) & Tk.zD_center_C50 <= zDr(2);
+if isfinite(z0) && nnz(sel) > 1
+    idx = find(sel);
+    [~, b] = min(abs(Tk.zD_center_C50(idx) - z0));
+    sel = false(size(sel));  sel(idx(b)) = true;
+end
 end
