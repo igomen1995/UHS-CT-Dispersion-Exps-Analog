@@ -2633,23 +2633,6 @@ if b(2) > 0
 end
 end
 
-function [KL, dKL, M, Pe] = mfmKL(m)
-% KL +/- total uncertainty (best method of main_Processing), M = mu2/mu1 and Pe = u L / D0
-% of one MFM experiment (struct with .results and .exp_params); NaN where missing
-KL = NaN;  dKL = NaN;  M = NaN;  Pe = NaN;
-if isempty(m), return, end
-pick = @(s, names) firstNum(s, names);
-if isfield(m, 'results')
-    KL  = pick(m.results, {'KL_cm2min'});
-    dKL = pick(m.results, {'totUncertKL_cm2min','dKL_cm2min'});
-end
-if isfield(m, 'exp_params')
-    ep = m.exp_params;
-    M  = pick(ep, {'mu2'}) / pick(ep, {'mu1'});
-    Pe = pick(ep, {'Pe_upump_L_D0'});
-end
-end
-
 function v = firstNum(s, names)
 % first finite numeric value among the given fields / table columns
 v = NaN;
@@ -2749,4 +2732,37 @@ if stat == "wmean" && all(isfinite(dx) & dx > 0)
 else
     v = mean(x);  dv = std(x);
 end
+end
+
+function [KL, dKL, M, Pe] = mfmKL(m)
+% KL +/- total uncertainty (best method of main_Processing) of one MFM experiment, and
+% M = mu2/mu1 from REFPROP at the NOMINAL T and P (exp_params.T_C, P_psig; as main_DataExtract
+% but not at the run-average MFM temperature), Pe = exp_params.Pe_upump_L_D0 (nominal)
+KL = NaN;  dKL = NaN;  M = NaN;  Pe = NaN;
+if isempty(m), return, end
+if isfield(m, 'results')
+    KL  = firstNum(m.results, {'KL_cm2min'});
+    dKL = firstNum(m.results, {'totUncertKL_cm2min','dKL_cm2min'});
+end
+[M, Pe] = nominalMPe(m);
+end
+
+function [M, Pe] = nominalMPe(m, RP)
+% M = mu2/mu1 from REFPROP at the nominal T and P of one MFM experiment, Pe = Pe_upump_L_D0
+persistent RPp
+M = NaN;  Pe = NaN;
+if isempty(m) || ~isfield(m, 'exp_params'), return, end
+if nargin < 2 || isempty(RP)
+    if isempty(RPp), RPp = initREFPROP(); end         % started once, reused
+    RP = RPp;
+end
+ep = m.exp_params;
+Pe    = firstNum(ep, {'Pe_upump_L_D0'});
+T_K   = firstNum(ep, {'T_C'}) + 273.15;
+P_kPa = (firstNum(ep, {'P_psig'}) + 14.7)*6.89476;
+if ~(isfinite(T_K) && isfinite(P_kPa)), return, end
+% fluid names passed exactly as in main_DataExtract: upper(filedataExp.Fluid1(i))
+p1 = getFluidProps_REFPROP(RP, upper(ep.Fluid1(1)), T_K, P_kPa);
+p2 = getFluidProps_REFPROP(RP, upper(ep.Fluid2(1)), T_K, P_kPa);
+M  = p2.mu / p1.mu;
 end
