@@ -15,6 +15,11 @@
 %       level pairs : KL = W^2/(4 k^2 tau),  erfc : KL = w^2/(4 tau),  sigma : sigma^2/(2 tau)
 %     for tau = t - t_arrival from contour detection ("contour", first C = 0.01 contour)
 %     and from the line volume ("lines"); aliases contour / lines = erfc, sigma = sigma
+%   - KL with an initial width (spreading before the core): for every level pair and width
+%     source (averaged profile, 2D contours), linear fit of all frames (front centre in klW0ZDrange)
+%       W^2 = W0^2 + 4 k^2 KL (t - t_arr)      (10-90: 4 k^2 = 3.625^2)
+%     t_arr = contour arrival; gives KL and the width W0 at arrival (fitKL_W0); compared with the
+%     fit through the origin (W0 = 0)
 %   - plot fitted BTC vs scatter, and compare all methods
 
 %% IMPORT input
@@ -100,6 +105,13 @@ for i = 1:height(inputFileConfig)
     klAllVariants = "xtrim";       % "xtrim", "full" or ["full","xtrim"]
     klAllDtArr    = [];            % arrival uncertainty [min]; [] = half the frame interval
     klAllZDrange  = [0.1 0.9];     % front centre zD range of the frames in the summary value
+
+    % KL with initial width W0: W^2 = W0^2 + 4 k^2 KL (t - t_arr), every pair of profWidthPairs
+    klW0Variants  = "xtrim";       % "xtrim", "full" or ["full","xtrim"]
+    klW0ZDrange   = [0.1 0.9];     % front centre zD range of the frames in the fit
+    klW0Plot      = true;          % figure W^2 vs t - t_arr with both fits, per data source / variant
+    klW0PlotTD    = true;          % (temporary) figure W_pair and per-frame KL vs tD_total, with / without W0
+    klW0PlotPair  = [0.40 0.60];   % level pair of that figure (must be one of profWidthPairs)
 
     % load the data produced by main_CTpreproc.m
     expCT_name = pathExportAll + filedataExp.Key;
@@ -321,6 +333,49 @@ for i = 1:height(inputFileConfig)
                     string(Tall_.Properties.VariableNames(contains(Tall_.Properties.VariableNames, ...
                     ["W_prof_","KL_prof_","dKL_prof_","KL_cont_","dKL_cont_"])))]))
             end
+
+            % KL with an initial width (spreading before the core):
+            %   W^2 = W0^2 + 4 k^2 KL (t - t_arr),  t_arr = contour arrival
+            % every level pair, averaged profile and 2D contours; frames with the centre in klW0ZDrange
+            resultsOut.(variant).KL_W0fit = table();
+            if ismember(variant, klW0Variants)
+                tArrD_W0 = tArrC*filedataExp.Q/filedataExp.Vtotal;
+                rowsW0 = {};  fitsW0 = {};
+                for pp = 1:size(profWidthPairs,1)
+                    pair_ = profWidthPairs(pp,:);
+                    tagp  = sprintf('%02d_%02d', round(100*pair_));
+                    if ~ismember("zDWidthProf_" + tagp + variantSuffix + "_cm", string(vars.Properties.VariableNames))
+                        continue
+                    end
+                    Tp_ = KL_allProfileWidths(vars, variantSuffix, pair_, tArrC, tArrD_W0, klAllDtArr, klW0ZDrange);
+                    inR = Tp_.zD_center_C50 >= klW0ZDrange(1) & Tp_.zD_center_C50 <= klW0ZDrange(2);
+                    for wsrc = ["prof","cont"]
+                        W_ = Tp_.("W_" + wsrc + "_" + tagp + "_cm");
+                        r_ = fitKL_W0(Tp_.tau_min(inR), W_(inR), pair_);
+                        % (temporary) W and per-frame KL vs tD_total, without / with the W0 correction
+                        if klW0PlotTD && wsrc == "prof" && isequal(round(100*pair_), round(100*klW0PlotPair))
+                            plotKL_W0_vsTD(Tp_, r_, pair_, klW0ZDrange, ...
+                                fullfile(pathExportAll, filedataExp.Key + "_KL_W0_vsTD_" + tagp + "_" + dataSource + "_" + variant), ...
+                                "(" + filedataExp.Key + ", " + dataSource + ", " + variant + ")");
+                        end
+                        rowsW0{end+1,1} = [table(string(variant), string(tagp), wsrc, ...
+                            'VariableNames', {'variant','pair','width'}), struct2table(rmfield(r_, {'tau','W2'}))]; %#ok<AGROW>
+                        fitsW0{end+1,1} = struct('pair',tagp, 'width',wsrc, 'r',r_); %#ok<AGROW>
+                    end
+                end
+                if ~isempty(rowsW0)
+                    TW0 = vertcat(rowsW0{:});
+                    resultsOut.(variant).KL_W0fit = TW0;
+                    fprintf(['  %s (%s) KL with initial width, W^2 = W0^2 + 4k^2 KL (t - t_arr), t_arr contour ' ...
+                             '(%.3g min), centre zD in [%.2f %.2f]:\n'], dataSource, variant, tArrC, klW0ZDrange);
+                    disp(TW0(:, {'pair','width','n','KL_cm2min','dKL_cm2min','W0_cm','dW0_cm', ...
+                        'tShift_min','R2','KL0_cm2min','R2_0'}))
+                    if klW0Plot
+                        plotKL_W0(fitsW0, fullfile(pathExportAll, filedataExp.Key + "_KL_W0fit_" + dataSource + "_" + variant), ...
+                            "(" + filedataExp.Key + ", " + dataSource + ", " + variant + ")");
+                    end
+                end
+            end
         end
 
         resultsOut.MFM_fitData       = fitDataMFM;
@@ -375,6 +430,9 @@ for i = 1:height(inputFileConfig)
             if ~isempty(d.KL_midProfile.T)
                 writetable(d.KL_midProfile.T, xlsxName, 'Sheet', "KL_midProfile_" + variant);
             end
+            if isfield(d, 'KL_W0fit') && ~isempty(d.KL_W0fit)
+                writetable(d.KL_W0fit, xlsxName, 'Sheet', "KL_W0fit_" + variant);
+            end
             if isfield(d, 'KL_allProf') && ~isempty(d.KL_allProf)
                 writetable(d.KL_allProf, xlsxName, 'Sheet', ...
                     sprintf('KL_allFrames_W%02d_%02d_%s', round(100*klAllPair), variant));
@@ -408,6 +466,16 @@ for i = 1:height(inputFileConfig)
                 summaryT.("KL_mid_" + mm + "_std_cm2min" + sfx)  = r.KL_cm2min_std;
             end
             summaryT.("midProfile_tD" + sfx) = mp.tD_best;
+            if isfield(resultsOut.(variantArr), 'KL_W0fit') && ~isempty(resultsOut.(variantArr).KL_W0fit)
+                TW0 = resultsOut.(variantArr).KL_W0fit;
+                for q = 1:height(TW0)
+                    nm = "W0fit_" + TW0.width(q) + "_" + TW0.pair(q);
+                    summaryT.("KL_" + nm + "_cm2min" + sfx)  = TW0.KL_cm2min(q);
+                    summaryT.("dKL_" + nm + "_cm2min" + sfx) = TW0.dKL_cm2min(q);
+                    summaryT.("W0_" + nm + "_cm" + sfx)      = TW0.W0_cm(q);
+                    summaryT.("dW0_" + nm + "_cm" + sfx)     = TW0.dW0_cm(q);
+                end
+            end
             sa = resultsOut.(variantArr).KL_allProfSum;
             if isfield(sa, 'prof')
                 for wsrc = ["prof","cont"]
