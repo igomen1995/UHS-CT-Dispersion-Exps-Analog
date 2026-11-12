@@ -2468,6 +2468,160 @@ for ds = dataSources
     legend(ax, h, 'Location','northeast', 'FontSize',fs18-4, 'Interpreter','tex')
     saveFigBoth(fig, exportPath, sprintf('CT_profiles_rot%d_zD%02d_%02d_%s%s', rsRot, round(100*rsZD), ds, rsVar), closeAfterSave)
 end
+
+%% 19) Similarity plot at theta = 226 deg: C vs (z_D - t_D,res)/sqrt(t_D,res), with the ADE solution
+% For a 1D ADE front moving at velocity v with dispersion KL (step injection, first term):
+%   C(z, t) = 0.5 erfc( (z - v tau) / (2 sqrt(KL tau)) ),  tau = t - t0
+% In units of the image length L_img (z_D = z / L_img, t_D,res = v tau / L_img, Pe = v L_img / KL):
+%   C = 0.5 erfc( eta sqrt(Pe) / 2 ),   eta = (z_D - t_D,res) / sqrt(t_D,res)
+% so every profile of one experiment collapses onto ONE curve of eta whose steepness is set by Pe.
+% A profile that does not collapse (wider at early / late times) means the width does not grow
+% as sqrt(t), i.e. not Fickian.
+%   v, t0     : straight line through the front centres (zDFrontProf50, fallback zDFront50) with the
+%               centre in ssZDc -> t_D,res = v (t - t0)/L_img  (t_D,res = 0 when the centre crosses z_D = 0)
+%   profiles  : every frame at theta = ssRot +/- ssTol with the centre in ssZDc, averaged x-trimmed
+%               profile, normalized Cn = (C - Ci)/(Cj - Ci)
+%   theory    : solid  = KL of the theta = ssRot bar (section 17c, profile W_40-60, rotZDsel frame)
+%               dotted = KL of the XCT MFM (ssTheoryMFM)
+% ssScaled = true: x = eta sqrt(Pe)/2 with the bar Pe -> all experiments on the single curve 0.5 erfc(x)
+% Figures: one per experiment (profiles coloured by t_D) + all experiments together.
+
+ssRot       = 226;            % rotation position [deg]
+ssTol       = 1;              % tolerance [deg]
+ssVar       = "_xtrim";       % "" = full image | "_xtrim" = x-trimmed
+ssZDc       = [0.1 0.9];      % front-centre zD range: frames plotted and centres used for v, t0
+ssPair      = [0.40 0.60];    % width of the KL bar (as 17c)
+ssRotZD     = [0.2 0.8];      % zD window of the bar frame (as 17c)
+ssScaled    = false;          % false: x = eta (theory differs per experiment); true: eta sqrt(Pe)/2
+ssTheoryMFM = true;           % also the ADE curve with the MFM KL (dotted)
+ssXLim      = [];             % [] = auto (eta: [-1.5 1.5]; scaled: [-3 3])
+ssTrim      = 0.02;           % fraction of the core left out at each end of every profile
+fs19Ax = 20;  fs19Lbl = 24;  fs19Leg = 16;  lw19 = 1.5;
+
+if isempty(ssXLim), if ssScaled, ssXLim = [-3 3]; else, ssXLim = [-1.5 1.5]; end, end
+if ssScaled, xLbl19 = '\eta \surd{Pe} / 2 = (z_D - t_{D,res}) / (2 \surd{t_{D,res}/Pe})  [-]';
+else,        xLbl19 = '\eta = (z_D - t_{D,res}) / \surd{t_{D,res}}  [-]'; end
+tagW19 = sprintf('%02d_%02d', round(100*ssPair));
+
+for ds = "conc"
+    allExp = {};  rows19 = {};
+    for i = 1:nExp
+        vars = expCTDataAll{i}.varsAll.(ds);
+        vn   = string(vars.Properties.VariableNames);
+        fd   = filedataExpAll{i};
+        Ci = fd.C1init/100;  Cj = fd.C1j/100;
+        t  = vars.secondsElapsed/60;                              % [min]
+        cen = nan(height(vars),1);
+        if ismember("zDFrontProf50" + ssVar, vn), cen = vars.("zDFrontProf50" + ssVar); end
+        if ismember("zDFront50" + ssVar, vn)
+            miss = ~isfinite(cen);  cen(miss) = vars.("zDFront50" + ssVar)(miss);
+        end
+
+        % front velocity and time origin from the centres: z_D,c = b (t - t0)
+        okc = isfinite(t) & isfinite(cen) & cen >= ssZDc(1) & cen <= ssZDc(2);
+        if nnz(okc) < 3, warning('19: %s: too few front centres', expKeys(i)); continue, end
+        p  = polyfit(t(okc), cen(okc), 1);   b = p(1);   t0 = -p(2)/p(1);
+        tauD = b*(t - t0);                                         % t_D,res [-] (image length)
+
+        % frames at theta = ssRot with the centre inside ssZDc
+        dAng = abs(mod(vars.rotPos - ssRot + 180, 360) - 180);
+        fr   = find(dAng <= ssTol & tauD > 0 & okc);
+        if isempty(fr), warning('19: %s: no frame at theta = %g deg', expKeys(i), ssRot); continue, end
+        pr1  = cellRow(vars.C1Profile, fr(1));  if iscell(pr1), pr1 = pr1{1}; end
+        Limg = max(pr1.zVertcm);                                   % [cm]
+        v    = b*Limg;                                             % [cm/min]
+
+        % KL of the bar (theta = ssRot frame, profile W_40-60) and of the XCT MFM -> Pe = v L_img / KL
+        KLb = NaN;
+        Tk = klAllFrames(expCTDataAll{i}, fd, hasPost(i), ds, ssVar, ssPair);
+        if ~isempty(Tk)
+            sk = rotZDsel(Tk, ssRot, ssTol, ssRotZD);
+            if any(sk), KLb = Tk.("KL_prof_" + tagW19 + "_cm2min")(find(sk,1)); end
+        end
+        KLm = NaN;
+        mCT = MFM_CT_DataAll{i}.(ds);
+        if ~isempty(mCT) && isfield(mCT, 'results'), KLm = firstNum(mCT.results, {'KL_cm2min'}); end
+        PeB = v*Limg/KLb;  PeM = v*Limg/KLm;
+
+        % profiles in the similarity variable
+        prf = struct('x',{},'C',{},'tD',{});
+        for l = fr(:)'
+            pr = cellRow(vars.C1Profile, l);  if iscell(pr), pr = pr{1}; end
+            zD = pr.zDimLess(:);  Cn = (pr.("CVert" + ssVar)(:) - Ci)/(Cj - Ci);
+            keep = isfinite(zD) & isfinite(Cn) & zD >= ssTrim & zD <= 1 - ssTrim;
+            eta  = (zD(keep) - tauD(l))/sqrt(tauD(l));
+            x = eta;  if ssScaled, x = eta*sqrt(PeB)/2; end
+            prf(end+1) = struct('x',x, 'C',Cn(keep), 'tD',vars.tDtotal(l)); %#ok<SAGROW>
+        end
+        allExp{end+1} = struct('i',i, 'prf',prf, 'PeB',PeB, 'PeM',PeM); %#ok<SAGROW>
+        rows19{end+1,1} = table(expName(i), numel(fr), b, v, t0, Limg, KLb, PeB, KLm, PeM, ...
+            'VariableNames', {'experiment','nFrames','b_zD_per_min','v_front_cmmin','t0_min','L_img_cm', ...
+            'KL_bar_cm2min','Pe_bar','KL_MFM_cm2min','Pe_MFM'}); %#ok<SAGROW>
+
+        % ---- one figure per experiment: profiles coloured by t_D + ADE curves
+        fig = figure('Position',[100 100 1000 650], 'NumberTitle','off', 'Name', ...
+            sprintf('%s: similarity plot at theta = %d deg (%s%s)', expName(i), ssRot, ds, ssVar));
+        ax = axes(fig);  hold(ax,'on')
+        tDs = [prf.tD];  cmap = parula(256);
+        tDl = [min(tDs) max(tDs)];  if diff(tDl) <= 0, tDl = tDl + [-0.05 0.05]; end
+        for q = 1:numel(prf)
+            cq = interp1(linspace(tDl(1), tDl(2), 256), cmap, prf(q).tD);
+            plot(ax, prf(q).x, prf(q).C, '-', 'Color',cq, 'LineWidth',lw19, 'HandleVisibility','off')
+        end
+        colormap(ax, cmap);  clim(ax, tDl);  cb = colorbar(ax);
+        cb.Label.String = 't_D [-]';  cb.FontSize = fs19Ax;  cb.Label.FontSize = fs19Lbl;
+        xs = linspace(ssXLim(1), ssXLim(2), 400);
+        if ssScaled, yB = 0.5*erfc(xs); else, yB = 0.5*erfc(xs*sqrt(PeB)/2); end
+        hB = plot(ax, xs, yB, 'k-', 'LineWidth',3, 'DisplayName', ...
+            sprintf('ADE, K_L(\\theta = %d°) = %.3g cm^2/min (Pe = %.3g)', ssRot, KLb, PeB));
+        hT = hB;
+        if ssTheoryMFM && isfinite(PeM)
+            if ssScaled, yM = 0.5*erfc(xs*sqrt(PeM/PeB)); else, yM = 0.5*erfc(xs*sqrt(PeM)/2); end
+            hT(end+1) = plot(ax, xs, yM, 'k:', 'LineWidth',3, 'DisplayName', ...
+                sprintf('ADE, K_L MFM = %.3g cm^2/min (Pe = %.3g)', KLm, PeM));
+        end
+        set(ax, 'FontSize',fs19Ax, 'LabelFontSizeMultiplier',1);  grid(ax,'on');  box(ax,'on')
+        xlabel(ax, xLbl19, 'FontSize',fs19Lbl);  ylabel(ax, 'C_D [-]', 'FontSize',fs19Lbl)
+        xlim(ax, ssXLim);  ylim(ax, [-0.02 1.02])
+        legend(ax, hT, 'Location','northeast', 'FontSize',fs19Leg, 'Interpreter','tex')
+        saveFigBoth(fig, exportPath, sprintf('similarity_rot%d_%s_%s%s%s', ssRot, expKeys(i), ds, ssVar, ...
+            ternaryStr(ssScaled, "_scaled", "")), closeAfterSave)
+    end
+    if isempty(allExp), continue, end
+    T19 = vertcat(rows19{:});
+    fprintf('\n19) Similarity plot at theta = %g deg (%s%s): front velocity, time origin and Pe of the ADE curves:\n', ...
+        ssRot, ds, ssVar);
+    disp(T19)
+
+    % ---- all experiments together
+    fig = figure('Position',[100 100 1000 650], 'NumberTitle','off', 'Name', ...
+        sprintf('Similarity plot at theta = %d deg, all experiments (%s%s)', ssRot, ds, ssVar));
+    ax = axes(fig);  hold(ax,'on');  hL = gobjects(0);
+    xs = linspace(ssXLim(1), ssXLim(2), 400);
+    for e = 1:numel(allExp)
+        E = allExp{e};  i = E.i;
+        for q = 1:numel(E.prf)
+            plot(ax, E.prf(q).x, E.prf(q).C, '-', 'Color',[expCol(i,:) 0.5], 'LineWidth',lw19, 'HandleVisibility','off')
+        end
+        hL(end+1) = plot(ax, NaN, NaN, '-', 'Color',expCol(i,:), 'LineWidth',3, 'DisplayName', expName(i)); %#ok<SAGROW>
+        if ~ssScaled                                           % one ADE curve per experiment
+            plot(ax, xs, 0.5*erfc(xs*sqrt(E.PeB)/2), '--', 'Color',0.6*expCol(i,:), 'LineWidth',2.5, ...
+                'HandleVisibility','off')
+        end
+    end
+    if ssScaled
+        hL(end+1) = plot(ax, xs, 0.5*erfc(xs), 'k-', 'LineWidth',3, 'DisplayName','ADE: 0.5 erfc(x)');
+    else
+        hL(end+1) = plot(ax, NaN, NaN, '--', 'Color',[0.3 0.3 0.3], 'LineWidth',2.5, ...
+            'DisplayName', sprintf('ADE, K_L(\\theta = %d°)', ssRot));
+    end
+    set(ax, 'FontSize',fs19Ax, 'LabelFontSizeMultiplier',1);  grid(ax,'on');  box(ax,'on')
+    xlabel(ax, xLbl19, 'FontSize',fs19Lbl);  ylabel(ax, 'C_D [-]', 'FontSize',fs19Lbl)
+    xlim(ax, ssXLim);  ylim(ax, [-0.02 1.02])
+    legend(ax, hL, 'Location','northeast', 'FontSize',fs19Leg, 'Interpreter','tex')
+    saveFigBoth(fig, exportPath, sprintf('similarity_rot%d_allExp_%s%s%s', ssRot, ds, ssVar, ...
+        ternaryStr(ssScaled, "_scaled", "")), closeAfterSave)
+end
 %% Local functions
 
 function out = loadMFMbyDataSource(fileMat, key, fitDataOf)
