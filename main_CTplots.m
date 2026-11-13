@@ -52,6 +52,18 @@ mfmTimeVar  = 'tD';           % MFM BT time axis ('tD' core-based, or 'tDtotal')
 
 closeAfterSave = false;       % true: close each figure once saved
 
+% time axis of every plot vs time (and colour scale by time):
+%   "tDres" = t_D,res = t_D - t_D,arrival (contour arrival C = 0.01; column tD_corr_contour of varsAll,
+%             tauD of the per-frame KL tables) -- the same time origin as the KL (tau = t - t_arr)
+%   "tD"    = t_D,total = Q t / V_total
+% The tag (tD / tDres) is added to the file name of every figure that uses it.
+tAxis = "tDres";
+if tAxis == "tDres"
+    tXcol = "tD_corr_contour";  tXkl = "tauD";     tXlbl = 't_{D,res} [-]';  tXtag = "tDres";  tXlim = [0 1];
+else
+    tXcol = "tDtotal";          tXkl = "tDtotal";  tXlbl = 't_D [-]';        tXtag = "tD";     tXlim = [0 1.2];
+end
+
 %% Load data
 
 nExp = height(inputFileConfig);
@@ -322,7 +334,7 @@ for ds = dataSources
     end
 end
 
-%% 3) CT outlet BTC: time, tD_total, front-velocity-scaled tD_core
+%% 3) CT outlet BTC: time, tD_total or tD_res (tAxis), front-velocity-scaled tD_core
 % one dot per scan (markers only, no line: no joins across gaps between scans / runs)
 btcVar3      = "_xtrim";                       % "" = full image | "_xtrim" = x-trimmed (x_D 0.25-0.75)
 CfieldOutlet = "CD1_zD1p0" + btcVar3;
@@ -330,7 +342,7 @@ mk3          = 3;                              % dot size [points]
 mkLeg3       = 10;                             % dot size in the legend [points]
 % {x column, x label, file tag, x limits ([] = auto)}
 btcAxes = {'timeElapsed',            'time elapsed [hh:mm:ss]',                   'time',         []; ...
-           'tDtotal',                't_D [-]',                                   'tD',           [0 1.2]; ...
+           char(tXcol),              tXlbl,                                       char(tXtag),    tXlim; ...
            'tD_corr_contour_scaled', 't_{D,core} (v_{front}-scaled, contour arrival) [-]', 'tDcoreScaled', [0 1.2]};
 
 for ds = dataSources
@@ -372,7 +384,7 @@ zDlevelsPlot = 0:0.1:1.0;
 btcVariant   = "";            % "" = full x-range, "_xtrim" = x-trimmed columns
 zDcols       = parula(numel(zDlevelsPlot) + 1);   % +1 avoids the pale last colour
 % {x column, x label, x limits}
-zDaxes = {'tDtotal',                't_D [-]',                                        [0 1.2]; ...
+zDaxes = {char(tXcol),              tXlbl,                                            tXlim; ...
           'tD_corr_contour_scaled', 't_{D,core} (v_{front}-scaled, contour arrival) [-]', [-0.2 1.2]};
 
 for ds = dataSources
@@ -411,7 +423,7 @@ for ds = dataSources
         title(tl, sprintf('%s (%s%s): BTC at each zD', expKeys(i), ds, btcVariant), ...
             'Interpreter','none')
         saveFigBoth(fig, exportPath, ...
-            sprintf('BT_CT_allZD_%s_%s%s', expKeys(i), ds, btcVariant), closeAfterSave)
+            sprintf('BT_CT_allZD_%s_%s%s_%s', expKeys(i), ds, btcVariant, tXtag), closeAfterSave)
     end
 end
 %% 3c) Front position of every C-level vs tD_total and the three tD_core definitions
@@ -758,18 +770,18 @@ for ds = dataSources
         for i = 1:nExp
             vars = expCTDataAll{i}.varsAll.(ds);
             if ~ismember(measField, vars.Properties.VariableNames), continue, end
-            scatter(vars.tDtotal, vars.(measField), 8, 'filled', ...
+            scatter(vars.(tXcol), vars.(measField), 8, 'filled', ...
                 'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor','none', 'DisplayName', expKeys(i))
             nPlotted = nPlotted + 1;
         end
         if nPlotted == 0, close(fig); continue, end
 
-        xlabel('t_D [-]','FontSize',14);  ylabel('\DeltaZ_D [-]','FontSize',14)
-        ylim([-0.02 1]);  xlim([0 1.2]);  set(gca,'FontSize',14);  grid on
+        xlabel(tXlbl,'FontSize',14);  ylabel('\DeltaZ_D [-]','FontSize',14)
+        ylim([-0.02 1]);  xlim(tXlim);  set(gca,'FontSize',14);  grid on
         legend('Interpreter','none','FontSize',8,'Location','northeast')
         title(sprintf('Measured front width (%s) from CT (%s)', strrep(widthPairs{p},'_','-'), ds), ...
             'Interpreter','none')
-        saveFigBoth(fig, exportPath, sprintf('width_CT_%s_%s_tD', widthPairs{p}, ds), closeAfterSave)
+        saveFigBoth(fig, exportPath, sprintf('width_CT_%s_%s_%s', widthPairs{p}, ds, tXtag), closeAfterSave)
     end
 end
 
@@ -791,13 +803,13 @@ for ds = dataSources
             vars = expCTDataAll{i}.varsAll.(ds);
             vn   = string(vars.Properties.VariableNames);
             if ismember(cField, vn)
-                scatter(vars.tDtotal, abs(vars.(cField)), 10, 'filled', 'o', ...
+                scatter(vars.(tXcol), abs(vars.(cField)), 10, 'filled', 'o', ...
                     'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor','none', ...
                     'DisplayName', expName(i) + " contours")
                 nPlotted = nPlotted + 1;
             end
             if ismember(pField, vn)
-                scatter(vars.tDtotal, abs(vars.(pField)), 26, 's', ...
+                scatter(vars.(tXcol), abs(vars.(pField)), 26, 's', ...
                     'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor',colsDark(i,:), 'LineWidth',0.8, ...
                     'DisplayName', expName(i) + " profile")
                 nPlotted = nPlotted + 1;
@@ -805,13 +817,13 @@ for ds = dataSources
         end
         if nPlotted == 0, close(fig); continue, end
 
-        xlabel('t_D [-]','FontSize',14);  ylabel('\DeltaZ_D [-]','FontSize',14)
-        ylim([-0.02 1]);  xlim([0 1.2]);  set(gca,'FontSize',14);  grid on
+        xlabel(tXlbl,'FontSize',14);  ylabel('\DeltaZ_D [-]','FontSize',14)
+        ylim([-0.02 1]);  xlim(tXlim);  set(gca,'FontSize',14);  grid on
         legend('Interpreter','none','FontSize',8,'Location','northeast','NumColumns',2)
         title(sprintf('Front width (%s): 2D contours (circles) vs averaged profile (squares) (%s%s)', ...
             strrep(widthPairsCmp{p},'_','-'), ds, widthVarCmp), 'Interpreter','tex')
-        saveFigBoth(fig, exportPath, sprintf('width_contour_profile_%s_%s%s_tD', ...
-            widthPairsCmp{p}, ds, widthVarCmp), closeAfterSave)
+        saveFigBoth(fig, exportPath, sprintf('width_contour_profile_%s_%s%s_%s', ...
+            widthPairsCmp{p}, ds, widthVarCmp, tXtag), closeAfterSave)
     end
 end
 
@@ -843,9 +855,9 @@ for ds = dataSources
             vars = expCTDataAll{i}.varsAll.(ds);
             if ~ismember(pField, string(vars.Properties.VariableNames)), continue, end
             w  = abs(vars.(pField));
-            ok = isfinite(vars.tDtotal) & isfinite(w);
+            ok = isfinite(vars.(tXcol)) & isfinite(w);
             if ~any(ok), continue, end
-            scatter(ax, vars.tDtotal(ok), w(ok), mk7c, expCol(i,:), 'o', 'filled', ...
+            scatter(ax, vars.(tXcol)(ok), w(ok), mk7c, expCol(i,:), 'o', 'filled', ...
                 'MarkerEdgeColor',0.6*expCol(i,:), 'LineWidth',0.5, 'HandleVisibility','off')
             % legend entry: invisible larger marker (scatter legend icons stay small)
             hLeg(end+1) = plot(ax, NaN, NaN, 'o', 'LineStyle','none', 'MarkerSize',legMk7c, ...
@@ -854,7 +866,7 @@ for ds = dataSources
         if isempty(hLeg), close(fig); continue, end
 
         set(ax, 'FontSize',fs7cAx, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
-        xlabel(ax, 't_D [-]', 'FontSize',fs7cLbl)
+        xlabel(ax, tXlbl, 'FontSize',fs7cLbl)
         if widthUnitProf == "_cm"
             ylabel(ax, "W_{" + strrep(widthPairsProf{p},'_','-') + "}, profile [cm]", 'FontSize',fs7cLbl)
             ylim(ax, [0 inf])
@@ -862,10 +874,10 @@ for ds = dataSources
             ylabel(ax, "\Deltaz_{D," + strrep(widthPairsProf{p},'_','-') + "}, profile [-]", 'FontSize',fs7cLbl)
             if isempty(yLim7c), ylim(ax, [0 inf]), else, ylim(ax, yLim7c), end
         end
-        xlim(ax, [0 1.2]);  grid(ax,'on');  box(ax,'on')
+        xlim(ax, tXlim);  grid(ax,'on');  box(ax,'on')
         legend(ax, hLeg, 'Location','northeast', 'FontSize',fs7cLeg, 'Interpreter','none')
-        saveFigBoth(fig, exportPath, sprintf('width_profile_%s_%s%s%s_tD', ...
-            widthPairsProf{p}, ds, widthVarProf, widthUnitProf), closeAfterSave)
+        saveFigBoth(fig, exportPath, sprintf('width_profile_%s_%s%s%s_%s', ...
+            widthPairsProf{p}, ds, widthVarProf, widthUnitProf, tXtag), closeAfterSave)
     end
 end
 %% 7d) Profile front width vs tD, with the frame of the KL-by-method value (red circle)
@@ -903,9 +915,9 @@ for ds = "conc"
             vars = expCTDataAll{i}.varsAll.(ds);
             if ~ismember(pField, string(vars.Properties.VariableNames)), continue, end
             w  = abs(vars.(pField));
-            ok = isfinite(vars.tDtotal) & isfinite(w);
+            ok = isfinite(vars.(tXcol)) & isfinite(w);
             if ~any(ok), continue, end
-            scatter(ax, vars.tDtotal(ok), w(ok), mk7d, expCol(i,:), 'o', 'filled', ...
+            scatter(ax, vars.(tXcol)(ok), w(ok), mk7d, expCol(i,:), 'o', 'filled', ...
                 'MarkerEdgeColor',0.6*expCol(i,:), 'LineWidth',0.5, ...
                 'MarkerFaceAlpha',alpha7d, 'MarkerEdgeAlpha',min(1, alpha7d + 0.3), ...
                 'HandleVisibility','off')
@@ -919,21 +931,21 @@ for ds = "conc"
             fr = Tk.frame(rotZDsel(Tk, rsRot, rsTol, rsZD));
             fr = fr(ok(fr));
             if isempty(fr), continue, end
-            hRed(end+1) = scatter(ax, vars.tDtotal(fr), w(fr), mk7d, 'o', 'MarkerEdgeColor',colBar7d, ...
+            hRed(end+1) = scatter(ax, vars.(tXcol)(fr), w(fr), mk7d, 'o', 'MarkerEdgeColor',colBar7d, ...
                 'MarkerFaceColor','none', 'LineWidth',2.5, 'HandleVisibility','off'); %#ok<SAGROW>
             if isempty(hBar)                                     % one legend entry for all red circles
                 hBar = plot(ax, NaN, NaN, 'o', 'LineStyle','none', 'MarkerSize',legMk7d, ...
                     'MarkerEdgeColor',colBar7d, 'MarkerFaceColor','none', 'LineWidth',2.5, ...
                     'DisplayName', sprintf('\\theta = %d°', rsRot));
             end
-            rows7d{end+1,1} = table(repmat(expName(i),numel(fr),1), fr, vars.tDtotal(fr), vars.rotPos(fr), w(fr), ...
-                'VariableNames', {'experiment','frame','tD','rotPos_deg', char(pField)}); %#ok<SAGROW>
+            rows7d{end+1,1} = table(repmat(expName(i),numel(fr),1), fr, vars.(tXcol)(fr), vars.rotPos(fr), w(fr), ...
+                'VariableNames', {'experiment','frame',char(tXtag),'rotPos_deg', char(pField)}); %#ok<SAGROW>
         end
         if ~isempty(hRed), uistack(hRed, 'top'); end        % red circles above all dots
         if isempty(hLeg), close(fig); continue, end
 
         set(ax, 'FontSize',fs7dAx, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
-        xlabel(ax, 't_D [-]', 'FontSize',fs7dLbl)
+        xlabel(ax, tXlbl, 'FontSize',fs7dLbl)
         if widthUnit7d == "_cm"
             ylabel(ax, "W_{" + strrep(widthPairs7d{p},'_','-') + "}, profile [cm]", 'FontSize',fs7dLbl)
             ylim(ax, [0 inf])
@@ -941,14 +953,14 @@ for ds = "conc"
             ylabel(ax, "\Deltaz_{D," + strrep(widthPairs7d{p},'_','-') + "}, profile [-]", 'FontSize',fs7dLbl)
             if isempty(yLim7d), ylim(ax, [0 inf]), else, ylim(ax, yLim7d), end
         end
-        xlim(ax, [0 1.2]);  grid(ax,'on');  box(ax,'on')
+        xlim(ax, tXlim);  grid(ax,'on');  box(ax,'on')
         legend(ax, [hLeg hBar], 'Location','northeast', 'FontSize',fs7dLeg, 'Interpreter','tex')
         if ~isempty(rows7d)
             fprintf('\n7d) Frame of the KL-by-method value (theta = %g deg), width %s:\n', rsRot, pField);
             disp(vertcat(rows7d{:}))
         end
-        saveFigBoth(fig, exportPath, sprintf('width_profile_%s_%s%s%s_tD_rot%d', ...
-            widthPairs7d{p}, ds, widthVar7d, widthUnit7d, rsRot), closeAfterSave)
+        saveFigBoth(fig, exportPath, sprintf('width_profile_%s_%s%s%s_%s_rot%d', ...
+            widthPairs7d{p}, ds, widthVar7d, widthUnit7d, tXtag, rsRot), closeAfterSave)
     end
 end
 %% 8) Measured front envelope, all experiments together
@@ -968,7 +980,7 @@ for ds = dataSources
             vars = expCTDataAll{i}.varsAll.(ds);
             if ~all(ismember([measField cenField], string(vars.Properties.VariableNames))), continue, end
 
-            tD = vars.tDtotal;
+            tD = vars.(tXcol);
             centerMeas = vars.(cenField);
             halfMeas   = abs(vars.(measField))/2;
             validMeas  = isfinite(centerMeas) & isfinite(halfMeas);
@@ -982,13 +994,13 @@ for ds = dataSources
                 'DisplayName', expName(i))
         end
 
-        xlabel('t_D [-]','FontSize',14);  ylabel('z_D [-]','FontSize',14)
-        ylim([-0.02 1.02]);  xlim([0 1.2]);  set(gca,'FontSize',14);  grid on
+        xlabel(tXlbl,'FontSize',14);  ylabel('z_D [-]','FontSize',14)
+        ylim([-0.02 1.02]);  xlim(tXlim);  set(gca,'FontSize',14);  grid on
         legend('Interpreter','none','FontSize',12,'Location','southeast')
         title(sprintf('Measured front envelope (%s, centred on C=0.5) (%s%s)', ...
             strrep(widthPairsEnv{p},'_','-'), ds, envVar8), 'Interpreter','none')
-        saveFigBoth(fig, exportPath, sprintf('frontEnvelope_CT_allExp_%s_%s%s_tD', ...
-            widthPairsEnv{p}, ds, envVar8), closeAfterSave)
+        saveFigBoth(fig, exportPath, sprintf('frontEnvelope_CT_allExp_%s_%s%s_%s', ...
+            widthPairsEnv{p}, ds, envVar8, tXtag), closeAfterSave)
     end
 end
 
@@ -1018,7 +1030,7 @@ for ds = dataSources
             vn   = string(vars.Properties.VariableNames);
             if ~ismember(wField, vn), continue, end
 
-            tD   = vars.tDtotal;
+            tD   = vars.(tXcol);
             half = abs(vars.(wField))/2;
             cen  = nan(size(tD));
             if ismember(cField, vn), cen = vars.(cField); end
@@ -1038,11 +1050,11 @@ for ds = dataSources
         if nPlotted == 0, close(fig); continue, end
 
         set(ax, 'FontSize',fsEnvP, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
-        xlabel(ax, 't_D [-]', 'FontSize',fsEnvP);  ylabel(ax, 'z_D [-]', 'FontSize',fsEnvP)
-        ylim(ax, [-0.02 1.02]);  xlim(ax, [0 1.2]);  grid(ax,'on');  box(ax,'on')
+        xlabel(ax, tXlbl, 'FontSize',fsEnvP);  ylabel(ax, 'z_D [-]', 'FontSize',fsEnvP)
+        ylim(ax, [-0.02 1.02]);  xlim(ax, tXlim);  grid(ax,'on');  box(ax,'on')
         legend(ax, 'Interpreter','none', 'FontSize',fsEnvP, 'Location','southeast')
-        saveFigBoth(fig, exportPath, sprintf('frontEnvelope_profile_allExp_%s_%s%s_tD', ...
-            widthPairsEnvP{p}, ds, envVarP), closeAfterSave)
+        saveFigBoth(fig, exportPath, sprintf('frontEnvelope_profile_allExp_%s_%s%s_%s', ...
+            widthPairsEnvP{p}, ds, envVarP, tXtag), closeAfterSave)
     end
 end
 
@@ -1077,7 +1089,7 @@ for ds = dataSources
         vars = expCTDataAll{i}.varsAll.(ds);
         vn   = string(vars.Properties.VariableNames);
         fd   = filedataExpAll{i};
-        tD   = vars.tDtotal;
+        tD   = vars.(tXcol);
         cen  = nan(size(tD));
         if ismember(cField, vn), cen = vars.(cField); end
         if ismember(cFall, vn)
@@ -1124,20 +1136,20 @@ for ds = dataSources
             hLine = plot(ax, NaN, NaN, '--', 'Color',[0.3 0.3 0.3], 'LineWidth',2, 'DisplayName','u_{front}');
         end
         rows8a2{end+1,1} = table(expName(i), string(srcUsed), p(1), tD0, tD1, vfPost, vfSlope, ...
-            'VariableNames', {'experiment','line','slope_zD_per_tD','tD_at_zD0','tD_at_zD1', ...
+            'VariableNames', {'experiment','line','slope_zD_per_tD', char(tXtag + "_at_zD0"), char(tXtag + "_at_zD1"), ...
             'ufront_postproc_cm_min','ufront_slope_cm_min'}); %#ok<SAGROW>
     end
     if isempty(h), close(fig); continue, end
 
     set(ax, 'FontSize',fsEnvP2, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
-    xlabel(ax, 't_D [-]', 'FontSize',fsEnvP2);  ylabel(ax, 'z_D front centre [-]', 'FontSize',fsEnvP2)
-    ylim(ax, [-0.02 1.02]);  xlim(ax, [0 1.2]);  grid(ax,'on');  box(ax,'on')
+    xlabel(ax, tXlbl, 'FontSize',fsEnvP2);  ylabel(ax, 'z_D front centre [-]', 'FontSize',fsEnvP2)
+    ylim(ax, [-0.02 1.02]);  xlim(ax, tXlim);  grid(ax,'on');  box(ax,'on')
     legend(ax, [h hLine], 'Interpreter','tex', 'FontSize',fsEnvP2-2, 'Location','southeast')
     if ~isempty(rows8a2)
         fprintf('\n8a2) Front velocity u_front per experiment (%s%s, line: %s):\n', ds, envVarP2, vfSrc);
         disp(vertcat(rows8a2{:}))
     end
-    saveFigBoth(fig, exportPath, sprintf('frontCentre_profile_ufront_allExp_%s%s_%s_tD', ds, envVarP2, vfSrc), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('frontCentre_profile_ufront_allExp_%s%s_%s_%s', ds, envVarP2, vfSrc, tXtag), closeAfterSave)
 end
 %% 8b) Front envelope per experiment: 2D-contour width (colour) vs averaged-profile width (grey)
 % Contour widths zDWidth_<lo>_<hi> (populate_CTframeVars) and averaged-profile widths
@@ -1163,7 +1175,7 @@ for ds = dataSources
 
         fig = figure('Position',[60 60 1400 950]);
         tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
-        tD  = vars.tDtotal;
+        tD  = vars.(tXcol);
         zc  = vars.("zDFront50" + envVariant);
 
         for p = 1:numel(envPairs)
@@ -1180,15 +1192,15 @@ for ds = dataSources
             ok = isfinite(tD) & isfinite(zc);
             scatter(ax, tD(ok), zc(ok), 10, 0.6*expCol(i,:), 'filled', 'DisplayName','front centre (C = 0.5)')
 
-            xlabel(ax, 't_D [-]', 'FontSize',13);  ylabel(ax, 'z_D [-]', 'FontSize',13)
-            ylim(ax, [-0.02 1.02]);  xlim(ax, [0 1.2]);  set(ax, 'FontSize',12);  grid(ax,'on')
+            xlabel(ax, tXlbl, 'FontSize',13);  ylabel(ax, 'z_D [-]', 'FontSize',13)
+            ylim(ax, [-0.02 1.02]);  xlim(ax, tXlim);  set(ax, 'FontSize',12);  grid(ax,'on')
             title(ax, "width " + strrep(envPairs{p},'_','-'), 'FontSize',12)
             legend(ax, 'Location','southeast', 'FontSize',9)
         end
         title(tl, sprintf('%s (%s): front envelope, 2D contours (colour) vs averaged profile (grey)', ...
             expName(i), ds), 'Interpreter','none')
-        saveFigBoth(fig, exportPath, sprintf('frontEnvelope_contour_vs_profile_%s_%s%s', ...
-            expKeys(i), ds, envVariant), closeAfterSave)
+        saveFigBoth(fig, exportPath, sprintf('frontEnvelope_contour_vs_profile_%s_%s%s_%s', ...
+            expKeys(i), ds, envVariant, tXtag), closeAfterSave)
     end
 end
 
@@ -1452,9 +1464,9 @@ end
 
 for ds = dataSources
     fig = figure('Position',[100 100 650 2200]);
-    panels = {'tDtotal','frontTiltSlope',      't_D [-]',                    'front tilt slope [z_D/x_D]', 'Front tilt vs t_D', false; ...
+    panels = {char(tXcol),'frontTiltSlope',    tXlbl,                        'front tilt slope [z_D/x_D]', 'Front tilt vs t_D', false; ...
               'rotPos', 'frontTiltSlope',      'rotation position [\circ]', 'front tilt slope [z_D/x_D]', 'Front tilt vs rotation position', false; ...
-              'tDtotal','frontArcLengthRatio', 't_D [-]',                    'arc length ratio [-]',       'Front non-planarity vs t_D', true; ...
+              char(tXcol),'frontArcLengthRatio', tXlbl,                      'arc length ratio [-]',       'Front non-planarity vs t_D', true; ...
               'rotPos', 'frontArcLengthRatio', 'rotation position [\circ]', 'arc length ratio [-]',       'Front non-planarity vs rotation position', true};
 
     for s = 1:size(panels,1)
@@ -1472,7 +1484,7 @@ for ds = dataSources
         legend('Interpreter','none','FontSize',8,'Location','northwest')
     end
     sgtitle(sprintf('Front planarity diagnostics (%s)', ds), 'Interpreter','none')
-    saveFigBoth(fig, exportPath, sprintf('frontTiltShape_%s_tD', ds), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('frontTiltShape_%s_%s', ds, tXtag), closeAfterSave)
 end
 
 %% 10) Front tilt vs rotation position, coloured by tD
@@ -1484,16 +1496,16 @@ for ds = dataSources
     for i = 1:nExp
         vars = expCTDataAll{i}.varsAll.(ds);
         ax = nexttile(tl);
-        scatter(ax, vars.rotPos, vars.frontTiltSlope, 25, vars.tDtotal, 'filled')
-        colormap(ax, parula);  clim(ax, [0 1.5])
-        cb = colorbar(ax);  cb.Label.String = 't_D [-]';
+        scatter(ax, vars.rotPos, vars.frontTiltSlope, 25, vars.(tXcol), 'filled')
+        colormap(ax, parula);  clim(ax, tXlim)
+        cb = colorbar(ax);  cb.Label.String = tXlbl;
         xlabel(ax,'rotation position [\circ]','FontSize',11)
         ylabel(ax,'front tilt slope [z_D/x_D]','FontSize',11)
         title(ax, expKeys(i), 'Interpreter','none','FontSize',11)
         grid(ax,'on');  xlim(ax,[0 360])
     end
     title(tl, sprintf('Front tilt vs rotation position, coloured by t_D (%s)', ds), 'Interpreter','none')
-    saveFigBoth(fig, exportPath, sprintf('frontTilt_rotPos_tDcolor_%s', ds), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('frontTilt_rotPos_%scolor_%s', tXtag, ds), closeAfterSave)
 end
 
 
@@ -1521,6 +1533,9 @@ for ds = dataSources
                 Sm = fr.(nm);
                 if isempty(Sm.KL_pts) || all(~isfinite(Sm.KL_pts)), continue, end
                 tD_pts = (Sm.t_fit*fd.Q + fd.Vlinesbefore) / fd.Vtotal;   % back to tD_total
+                if tAxis == "tDres" && isfield(rs, 'tD_arrival_contour')
+                    tD_pts = tD_pts - rs.tD_arrival_contour;              % t_D,res (contour arrival)
+                end
                 scatter(tD_pts, Sm.KL_pts, 14, cols(i,:), markers{mod(mI-1,numel(markers))+1}, ...
                     'DisplayName', expKeys(i) + " (" + strrep(nm,"_"," ") + ")")
                 nPlotted = nPlotted + 1;
@@ -1544,12 +1559,12 @@ for ds = dataSources
         end
     end
 
-    xlabel('t_D [-]','FontSize',14);  ylabel('K_L [cm^2/min]','FontSize',14)
-    xlim([0 1.2]);  ylim([0 10]);  set(gca,'FontSize',14);  grid on
+    xlabel(tXlbl,'FontSize',14);  ylabel('K_L [cm^2/min]','FontSize',14)
+    xlim(tXlim);  ylim([0 10]);  set(gca,'FontSize',14);  grid on
     legend('Interpreter','none','FontSize',7,'Location','best','NumColumns',2)
     title(sprintf('K_L: pointwise front (markers), BTC CT (--), MFM analog (:), MFM UHS (-.) (%s)', ds), ...
         'Interpreter','none','FontSize',10)
-    saveFigBoth(fig, exportPath, sprintf('KL_compare_%s_tD', ds), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('KL_compare_%s_%s', ds, tXtag), closeAfterSave)
 end
 
 %% 12) Outlet BTC width (tD16 - tD84), one row per experiment
@@ -1581,8 +1596,8 @@ end
 
 CeffLevels = 0.1:0.1:0.9;     % thresholds C* (all traced in main_CTpreproc)   % thresholds C* (must be among Clevels in main_CTpreproc)
 effVariant = "";              % "" = full image, "_xtrim" = x-trimmed image
-effXVar    = 'tDtotal';       % x-axis: 'tDtotal', 'tD_corr_lines', 'tD_corr_contour', 'tD_corr_contour_scaled'
-effXLabel  = 't_{D,total} = Qt/V_{total} [-]';
+effXVar    = char(tXcol);     % x-axis (tAxis); or 'tD_corr_lines', 'tD_corr_contour_scaled'
+effXLabel  = tXlbl;
 effXLim    = [0 1.5];
 
 if effVariant == "", vTxt = "full image"; else, vTxt = "x-trimmed"; end
@@ -1628,7 +1643,7 @@ for ds = dataSources
 
         title(tl, sprintf('Efficiencies at C^* = %.2f (%s, %s)', CeffLevels(m), ds, vTxt), 'Interpreter','tex')
         saveFigBoth(fig, exportPath, ...
-            sprintf('efficiencies_C%s_allExp_%s%s_%s', tag, ds, effVariant, effXVar), closeAfterSave)
+            sprintf('efficiencies_C%s_allExp_%s%s_%s', tag, ds, effVariant, tTagOf(effXVar)), closeAfterSave)
     end
 end
 
@@ -1636,8 +1651,8 @@ end
 
 zDcompare  = 0:0.1:1.0;
 cmpVariant = "";            % "" = full x-range, "_xtrim" = x-trimmed columns
-cmpXVar    = 'tDtotal';     % or 'tD_corr_lines', 'tD_corr_contour', 'tD_corr_contour_scaled'
-cmpXLabel  = 't_{D,total} = Qt/V_{total} [-]';
+cmpXVar    = char(tXcol);   % x-axis (tAxis); or 'tD_corr_lines', 'tD_corr_contour_scaled'
+cmpXLabel  = tXlbl;
 cmpXLim    = [0 1.5];
 
 % colours {pressure index, Q index}: row = pressure (1st = lower P), col = Q (1 = light/lower Q, 2 = dark/higher Q)
@@ -1693,7 +1708,7 @@ for m = 1:numel(zDcompare)
         zDcompare(m), vTxt), 'Interpreter','tex')
     saveFigBoth(fig, exportPath, ...
         sprintf('BT_rhoNorm_vs_conc_byQ_zD%s%s_%s', strrep(sprintf('%.1f',zDcompare(m)),'.','p'), ...
-        cmpVariant, cmpXVar), closeAfterSave)
+        cmpVariant, tTagOf(cmpXVar)), closeAfterSave)
 end
 
 %% 14) Flow capacity vs storage capacity (F-Phi) from the BTC at several zD, and predicted sweep vs measured
@@ -1857,7 +1872,7 @@ writetable(fpSummary, fullfile(exportPath, 'FPhi_summary.xlsx'));
  
 klfPair  = [0.40 0.60];        % level pair of the width
 klfVar   = "_xtrim";           % "_xtrim" or "" (full image)
-klfXVar  = "tauD";          % "tDtotal" (t_D,total) or "tauD" (t_D since arrival)
+klfXVar  = tXkl;               % from tAxis: "tauD" (t_D,res) or "tDtotal" (t_D,total)
 klfLogY  = false;               % log K_L axis
 klfYLim  = [];                 % [] = auto, e.g. [0.1 100]
 klfErr   = true;               % error bars
@@ -1900,7 +1915,7 @@ for ds = "conc"
     else,                 xlabel(ax, 't_D [-]', 'FontSize',fs15); end
     ylabel(ax, sprintf('K_L from W_{%d-%d} [cm^2/min]', round(100*klfPair)), 'FontSize',fs15)
     legend(ax, h, 'Location','northeast', 'FontSize',fs15-4, 'NumColumns',1, 'Interpreter','none')
-    saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_profile_contour_%s%s', klfXVar, tagW15, ds, klfVar), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_profile_contour_%s%s', tTagOf(klfXVar), tagW15, ds, klfVar), closeAfterSave)
 end
 
 %% 15b) KL vs tD from the 40-60 profile width of every frame, with the KL-by-method value (section 17 / 17c)
@@ -1912,9 +1927,10 @@ end
 % or the defaults below are used.
 
 if ~exist('rsRot','var'), rsRot = 226; rsTol = 1; rsZD = [0.2 0.8]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; rsStat = "wmean"; end
-klfPair  = rsPair;             % level pair of the width (same as the bar)
+if ~exist('rsStat','var'), rsStat = "wmean"; end    % only matters if several frames are kept
+% klfPair  = rsPair;             % level pair of the width (same as the bar)
 klfVar   = rsVar;              % "_xtrim" or "" (same as the bar)
-klfXVar  = "tauD";          % "tDtotal" (t_D,total) or "tauD" (t_D since arrival)
+klfXVar  = tXkl;               % from tAxis: "tauD" (t_D,res) or "tDtotal" (t_D,total)
 klfLogY  = false;              % log K_L axis
 klfYLim  = [];                 % [] = auto, e.g. [0 2]
 klfXLim  = [0 0.8];            % x-axis limits ([] = auto)
@@ -1986,7 +2002,7 @@ for ds = "conc"
             rsRot, rsZD);
         disp(vertcat(rows15b{:}))
     end
-    saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_profile_rot%d_bar_%s%s', klfXVar, tagW15, rsRot, ds, klfVar), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_profile_rot%d_bar_%s%s', tTagOf(klfXVar), tagW15, rsRot, ds, klfVar), closeAfterSave)
 end
 %% 15c) KL vs rotation position from the 40-60 profile width of every frame, with the KL-by-method value
 % Same as section 15b, but x = rotation position theta [deg] instead of t_D: every frame's KL from
@@ -2626,7 +2642,7 @@ for ds = "conc"
             keep = isfinite(zD) & isfinite(Cn) & zD >= ssTrim & zD <= 1 - ssTrim;
             eta  = (zD(keep) - tauD(l))/sqrt(tauD(l));
             x = eta;  if ssScaled, x = eta*sqrt(PeB)/2; end
-            prf(end+1) = struct('x',x, 'C',Cn(keep), 'tD',vars.tDtotal(l)); %#ok<SAGROW>
+            prf(end+1) = struct('x',x, 'C',Cn(keep), 'tD',vars.(tXcol)(l)); %#ok<SAGROW>
         end
         allExp{end+1} = struct('i',i, 'prf',prf, 'PeB',PeB, 'PeM',PeM); %#ok<SAGROW>
         rows19{end+1,1} = table(expName(i), numel(fr), b, v, t0, Limg, KLb, PeB, KLm, PeM, ...
@@ -2644,7 +2660,7 @@ for ds = "conc"
             plot(ax, prf(q).x, prf(q).C, '-', 'Color',cq, 'LineWidth',lw19, 'HandleVisibility','off')
         end
         colormap(ax, cmap);  clim(ax, tDl);  cb = colorbar(ax);
-        cb.Label.String = 't_D [-]';  cb.FontSize = fs19Ax;  cb.Label.FontSize = fs19Lbl;
+        cb.Label.String = tXlbl;  cb.FontSize = fs19Ax;  cb.Label.FontSize = fs19Lbl;
         xs = linspace(ssXLim(1), ssXLim(2), 400);
         if ssScaled, yB = 0.5*erfc(xs); else, yB = 0.5*erfc(xs*sqrt(PeB)/2); end
         hB = plot(ax, xs, yB, 'k-', 'LineWidth',3, 'DisplayName', ...
@@ -2698,6 +2714,15 @@ for ds = "conc"
         ternaryStr(ssScaled, "_scaled", "")), closeAfterSave)
 end
 %% Local functions
+
+function tag = tTagOf(col)
+% short time-axis tag for file names: tDtotal -> "tD", tD_corr_contour / tauD -> "tDres"
+switch string(col)
+    case "tDtotal",                    tag = "tD";
+    case {"tD_corr_contour","tauD"},   tag = "tDres";
+    otherwise,                         tag = string(col);
+end
+end
 
 function out = loadMFMbyDataSource(fileMat, key, fitDataOf)
 % MFM results for one experiment, one entry per CT data source:
