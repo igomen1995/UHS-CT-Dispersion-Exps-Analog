@@ -591,7 +591,8 @@ for i = 1:height(inputFileConfig)
         writetable(summaryT, xlsxName, 'Sheet', 'Summary');
 
         % comparison plot
-        plotKLComparison(resultsOut, filedataExp.Key, dataSource, pathExportAll);
+        % mid-profile bar = erfc width with the selected arrival (tArrProfRef)
+        plotKLComparison(resultsOut, filedataExp.Key, dataSource, pathExportAll, [], [], "erfc_" + tArrProfRef);
 
     end
 

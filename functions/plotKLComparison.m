@@ -1,9 +1,10 @@
 function plotKLComparison(resultsOut, Key, dataSource, pathExportAll, plotSources, zDcompare, midMethod)
 % PLOTKLCOMPARISON
 %   Runs only for the data sources in plotSources (default "conc"); others return at once.
-%   0) mid-core comparison (KLmidCompare_<Key>_<ds>): BTC at zD = zDcompare (default 0.5),
+%   0) mid-core comparison (KLmidCompare_<Key>_<ds>): BTC at every zD in zDcompare (default [0.5 1]),
 %      mid-profile KL (method midMethod, default "contour": w^2/(4 tau), tau from the
-%      contour arrival), full and xtrim, against MFM CT and MFM UHS
+%      contour arrival; e.g. "erfc_C50" for the C = 0.5 front-line arrival), full and xtrim,
+%      against MFM CT and MFM UHS. midMethod is also the first mid-profile group of the bar chart.
 %   1) KL bar chart (0-10 cm2/min): BTC per zD (full/xtrim), front
 %      width/sigma (full/xtrim), mid-core profile (full/xtrim, if computed),
 %      MFM CT and MFM UHS (with total uncertainty)
@@ -14,8 +15,11 @@ function plotKLComparison(resultsOut, Key, dataSource, pathExportAll, plotSource
 %   Individual fits -> <pathExportAll>/KLfits_<Key>_<dataSource>/
 
 if nargin < 5 || isempty(plotSources), plotSources = "conc"; end
-if nargin < 6 || isempty(zDcompare),   zDcompare   = 0.5;    end
+if nargin < 6 || isempty(zDcompare),   zDcompare   = [0.5 1.0]; end   % BTC zD of the mid-core figure
 if nargin < 7 || isempty(midMethod),   midMethod   = "contour"; end
+midMethod = string(midMethod);
+% arrival tag of midMethod for the legend ("erfc_C50" -> "C50", alias "contour" -> "contour")
+midArr = midMethod;  if contains(midArr, "_"), midArr = extractAfter(midArr, "_"); end
 Key = string(Key);  dataSource = string(dataSource);
 if ~ismember(dataSource, string(plotSources)), return, end
 if ~isfolder(pathExportAll), mkdir(pathExportAll); end
@@ -28,27 +32,32 @@ if isfield(resultsOut, 'MFM_fitData'), mfmTag = " (" + string(resultsOut.MFM_fit
 variants = ["full","xtrim"];
 KLmax = 10;   % bar chart x-limit [cm2/min]
 
-%% 0) mid-core comparison: BTC at zDcompare vs mid-profile KL vs MFM
-zTag = "zD" + strrep(sprintf('%.1f', zDcompare), '.', 'p');
+%% 0) mid-core comparison: BTC at every zDcompare vs mid-profile KL vs MFM
 cLab = strings(0,1);  cVal = [];  cErr = [];  cMean = [];  cStd = [];  cCol = zeros(0,3);
-colBTC = [0.00 0.45 0.74; 0.55 0.75 0.90];      % full / xtrim
-colMid = [0.55 0.35 0.65; 0.80 0.65 0.90];
+% BTC colours: one blue shade per zD (rows), full = dark / xtrim = light
+colBTCz = [0.00 0.45 0.74; 0.00 0.25 0.50; 0.30 0.60 0.85; 0.10 0.35 0.60];
+colMid  = [0.55 0.35 0.65; 0.80 0.65 0.90];
 for v = 1:numel(variants)
     variant = variants(v);
-    % BTC at zDcompare
-    kl = NaN;  dkl = NaN;
-    if isfield(resultsOut.(variant), 'KL_BTC_CT_byZD') && isfield(resultsOut.(variant).KL_BTC_CT_byZD, zTag)
-        e = resultsOut.(variant).KL_BTC_CT_byZD.(zTag);
-        if e.complete && isfield(e.best,'KL_cm2min')
-            kl = e.best.KL_cm2min;
-            if isfield(e.best,'dKL_cm2min'), dkl = e.best.dKL_cm2min; end
+    % BTC at each zDcompare
+    for z = 1:numel(zDcompare)
+        zTag = "zD" + strrep(sprintf('%.1f', zDcompare(z)), '.', 'p');
+        kl = NaN;  dkl = NaN;
+        if isfield(resultsOut.(variant), 'KL_BTC_CT_byZD') && isfield(resultsOut.(variant).KL_BTC_CT_byZD, zTag)
+            e = resultsOut.(variant).KL_BTC_CT_byZD.(zTag);
+            if e.complete && isfield(e.best,'KL_cm2min')
+                kl = e.best.KL_cm2min;
+                if isfield(e.best,'dKL_cm2min'), dkl = e.best.dKL_cm2min; end
+            end
         end
+        cz = colBTCz(mod(z-1, size(colBTCz,1)) + 1, :);
+        if variant == "xtrim", cz = cz + 0.5*(1 - cz); end              % lighter shade for xtrim
+        cLab(end+1,1) = sprintf("BTC z_D = %.1f, %s", zDcompare(z), variant);  %#ok<AGROW>
+        cVal(end+1) = kl;  cErr(end+1) = dkl;  cMean(end+1) = NaN;  cStd(end+1) = NaN;  %#ok<AGROW>
+        cCol(end+1,:) = cz;                                                  %#ok<AGROW>
     end
-    cLab(end+1,1) = sprintf("BTC z_D = %.1f, %s", zDcompare, variant);  %#ok<AGROW>
-    cVal(end+1) = kl;  cErr(end+1) = dkl;  cMean(end+1) = NaN;  cStd(end+1) = NaN;  %#ok<AGROW>
-    cCol(end+1,:) = colBTC(v,:);                                         %#ok<AGROW>
     % mid-profile
-    kl = NaN;  dkl = NaN;  km = NaN;  ks = NaN;  zmid = zDcompare;  lblM = midMethod;
+    kl = NaN;  dkl = NaN;  km = NaN;  ks = NaN;  zmid = zDcompare(1);  lblM = midMethod;
     if isfield(resultsOut.(variant), 'KL_midProfile') && isfield(resultsOut.(variant).KL_midProfile, 'methods') ...
             && isfield(resultsOut.(variant).KL_midProfile.methods, midMethod)
         mp = resultsOut.(variant).KL_midProfile;  r = mp.methods.(midMethod);
@@ -103,8 +112,8 @@ end
 set(axC, 'YTick',yC, 'YTickLabel',cLab, 'TickLabelInterpreter','tex', 'FontSize',9, 'YDir','reverse')
 ylim(axC, [0.4, nC+0.6]);  xlim(axC, [0 KLmax]);  grid(axC,'on')
 xlabel(axC, 'K_L [cm^2/min]')
-title(axC, sprintf('%s (%s): K_L at mid-core -- BTC z_D = %.1f vs front profile vs MFM', ...
-    Key, dataSource, zDcompare), 'Interpreter','tex', 'FontSize',10)
+title(axC, sprintf('%s (%s): K_L -- BTC z_D = %s vs mid-core front profile vs MFM', ...
+    strrep(Key, '_', '\_'), dataSource, strjoin(compose('%.1f', zDcompare), ', ')), 'Interpreter','tex', 'FontSize',10)
 fnC = sprintf('KLmidCompare_%s_%s', Key, dataSource);
 saveas(figC, fullfile(pathExportAll, fnC), 'png');
 saveas(figC, fullfile(pathExportAll, fnC), 'fig');
@@ -149,11 +158,12 @@ for v = 1:numel(variants)
     end
 
     % KL from the profile with the front centre at mid-core (KL_profileAt),
-    % three methods: w^2/(4 tau) with t_arr contour, w^2/(4 tau) with t_arr lines, sigma
+    % three methods: w^2/(4 tau) with the midMethod arrival, w^2/(4 tau) with t_arr lines, sigma
     if isfield(resultsOut.(variant), 'KL_midProfile') && isfield(resultsOut.(variant).KL_midProfile, 'methods')
         mp = resultsOut.(variant).KL_midProfile;
-        mNames = ["contour","lines","sigma"];
+        mNames = [midMethod,"lines","sigma"];
         for mm = 1:numel(mNames)
+            if ~isfield(mp.methods, mNames(mm)), continue, end
             r = mp.methods.(mNames(mm));
             if ~isfinite(r.KL_cm2min_best), continue, end
             labels(end+1,1) = sprintf("mid z_D=%.1f, %s %s", mp.zDtarget, r.label, variant); %#ok<AGROW>
@@ -176,7 +186,7 @@ mVals(end+1) = NaN;  sVals(end+1) = NaN;
 errs(~isfinite(errs)) = 0;
 grpNames = ["BTC full","BTC xtrim","front full (no int)","front xtrim (no int)", ...
             "MFM CT","MFM UHS","front full (int)","front xtrim (int)", ...
-            "mid w^2/4\tau contour full","mid w^2/4\tau contour xtrim", ...
+            "mid w^2/4\tau " + midArr + " full","mid w^2/4\tau " + midArr + " xtrim", ...
             "mid w^2/4\tau lines full","mid w^2/4\tau lines xtrim", ...
             "mid sigma full","mid sigma xtrim", ...
             "profile width full (no int)","profile width xtrim (no int)", ...
