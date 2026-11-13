@@ -333,6 +333,44 @@ for ds = dataSources
     end
 end
 
+%% 2a) Z profiles at a range of t_D,res targets (all experiments, one figure per t_D,res)
+% Same as section 2, but the scans are picked by t_D,res = t_D - t_D,arr (column tD_res, arrival
+% tResRef, default C50 = time the front centre enters the rock) instead of t_D,total, so every
+% experiment is shown at the same time since its front entered the core.
+% Note: t_D,res is on the Q t / V_total scale, so the front centre crosses the image in about
+% 0.35-0.4 of t_D,res (set the targets accordingly).
+tDres_target = 0.05:0.05:1.0;
+var2a        = "_xtrim";             % "" = full image (CVert), "_xtrim" = x-trimmed (CVert_xtrim)
+tolTD2a      = 0.03;                 % warning if the nearest scan is farther than this from the target
+for ds = dataSources
+    for m = 1:numel(tDres_target)
+        fig = figure('Position',[100 100 900 600]);  hold on
+        h = gobjects(0);
+        for i = 1:nExp
+            vars = expCTDataAll{i}.varsAll.(ds);
+            if ~ismember("tD_res", string(vars.Properties.VariableNames))
+                warning('%s (%s): no tD_res column (run the load block)', expKeys(i), ds);  continue
+            end
+            [minDist, l] = min(abs(vars.tD_res - tDres_target(m)));
+            if minDist > tolTD2a
+                warning('%s (%s): nearest scan is t_D,res = %.3f (target %.2f)', ...
+                    expKeys(i), ds, vars.tD_res(l), tDres_target(m));
+            end
+            prof = cellRow(vars.C1Profile, l);  if iscell(prof), prof = prof{1}; end
+            h(end+1) = plot(prof.zDimLess, prof.("CVert" + var2a), 'LineWidth',3, 'Color',expCol(i,:), ...
+                'DisplayName', expName(i) + sprintf(", t_{D,res} = %.2f", vars.tD_res(l))); %#ok<SAGROW>
+        end
+        xlabel('z_D [-]','FontSize',14);  ylabel('C_1 [-]','FontSize',14)
+        xlim([0 1]);  ylim([0 1.02]);  set(gca,'FontSize',14);  grid on;  box on
+        if tDres_target(m) < 0.2, loc = 'northeast'; else, loc = 'southwest'; end   % front past mid-core
+        legend(h, 'Interpreter','tex','FontSize',12,'Location',loc)
+        title(sprintf('Z profiles (%s%s) @ t_{D,res} = %.2f (t_{arr}: %s)', ds, var2a, tDres_target(m), tResRef), ...
+            'Interpreter','tex')
+        fname = sprintf('Zprofiles_%s%s_%s%s', ds, var2a, tXtagRes(tResRef), ...
+            strrep(sprintf('%.2f',tDres_target(m)),'.','p'));
+        saveFigBoth(fig, exportPath, fname, closeAfterSave)
+    end
+end
 %% 2b) Profile evolution with time, one figure per experiment
 
 tD_evol = 0.3:0.1:1.2;         % t_D of the profiles drawn (nearest scan, within 0.05)
@@ -3093,4 +3131,9 @@ if ~(isfinite(T_K) && isfinite(P_kPa)), return, end
 p1 = getFluidProps_REFPROP(RP, upper(ep.Fluid1(1)), T_K, P_kPa);
 p2 = getFluidProps_REFPROP(RP, upper(ep.Fluid2(1)), T_K, P_kPa);
 M  = p2.mu / p1.mu;
+end
+
+function tag = tXtagRes(ref)
+% file-name tag of t_D,res for arrival ref: "C50" -> "tDres", others -> "tDres_<ref>"
+if string(ref) == "C50", tag = "tDres"; else, tag = "tDres_" + string(ref); end
 end
