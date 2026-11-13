@@ -400,6 +400,43 @@ for ds = dataSources
     end
 end
 
+%% 2ba) Profile evolution with t_D,res, one figure per experiment
+% Same as 2b, but the scans are picked by t_D,res = t_D - t_D,arr (column tD_res, arrival tResRef,
+% default C50 = time the front centre enters the rock), so the profiles of every experiment are
+% drawn at the same times since the front entered the core.
+% t_D,res is on the Q t / V_total scale: the front centre crosses the image in about 0.35-0.4.
+tDres_evol = 0.05:0.05:1.00;      % t_D,res of the profiles drawn (nearest scan, within tolTD2ba)
+var2ba     = "_xtrim";            % "" = full image, "_xtrim" = x-trimmed
+tolTD2ba   = 0.025;               % max distance of the nearest scan to the target
+for ds = dataSources
+    for i = 1:nExp
+        vars = expCTDataAll{i}.varsAll.(ds);
+        if ~ismember("tD_res", string(vars.Properties.VariableNames))
+            warning('%s (%s): no tD_res column (run the load block)', expKeys(i), ds);  continue
+        end
+        fig = figure('Position',[100 100 900 600]);  hold on
+        h = gobjects(0);
+        nT = numel(tDres_evol);
+        for m = 1:nT
+            [minDist, l] = min(abs(vars.tD_res - tDres_evol(m)));
+            if minDist > tolTD2ba, continue, end
+            prof = cellRow(vars.C1Profile, l);  if iscell(prof), prof = prof{1}; end
+            f  = (m - 1)/max(nT - 1, 1);                         % 0 = early, 1 = late
+            cm = (1 - f)*(0.25 + 0.75*expCol(i,:)) + f*(0.45*expCol(i,:));   % light -> dark
+            h(end+1) = plot(prof.zDimLess, prof.("CVert" + var2ba), 'LineWidth',2.5, 'Color',cm, ...
+                'DisplayName', sprintf('t_{D,res} = %.2f', vars.tD_res(l))); %#ok<SAGROW>
+        end
+        if isempty(h), close(fig); continue, end
+        xlabel('z_D [-]','FontSize',14);  ylabel('C_1 [-]','FontSize',14)
+        xlim([0 1]);  ylim([0 1.02]);  set(gca,'FontSize',14);  grid on;  box on
+        legend(h, 'Interpreter','tex','FontSize',11,'Location','eastoutside')
+        title(sprintf('%s: Z profiles vs t_{D,res} (%s%s, t_{arr}: %s)', expName(i), ds, var2ba, tResRef), ...
+            'Interpreter','tex')
+        saveFigBoth(fig, exportPath, sprintf('Zprofiles_evolution_%s_%s%s_%s', expKeys(i), ds, var2ba, ...
+            tXtagRes(tResRef)), closeAfterSave)
+    end
+end
+
 %% 3) CT outlet BTC: time, tD_total or tD_res (tAxis), front-velocity-scaled tD_core
 % one dot per scan (markers only, no line: no joins across gaps between scans / runs)
 btcVar3      = "_xtrim";                       % "" = full image | "_xtrim" = x-trimmed (x_D 0.25-0.75)
