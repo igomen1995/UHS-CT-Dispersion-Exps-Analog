@@ -1857,7 +1857,7 @@ writetable(fpSummary, fullfile(exportPath, 'FPhi_summary.xlsx'));
  
 klfPair  = [0.40 0.60];        % level pair of the width
 klfVar   = "_xtrim";           % "_xtrim" or "" (full image)
-klfXVar  = "tDtotal";          % "tDtotal" (t_D,total) or "tauD" (t_D since arrival)
+klfXVar  = "tauD";          % "tDtotal" (t_D,total) or "tauD" (t_D since arrival)
 klfLogY  = false;               % log K_L axis
 klfYLim  = [];                 % [] = auto, e.g. [0.1 100]
 klfErr   = true;               % error bars
@@ -1896,7 +1896,7 @@ for ds = "conc"
     set(ax, 'FontSize',fs15, 'LabelFontSizeMultiplier',1);  grid(ax,'on');  box(ax,'on')
     if klfLogY, set(ax, 'YScale','log'); end
     if ~isempty(klfYLim), ylim(ax, klfYLim); end
-    if klfXVar == "tauD", xlabel(ax, 't_D - t_{D,arrival} [-]', 'FontSize',fs15)
+    if klfXVar == "tauD", xlabel(ax, 't_{D,res} [-]', 'FontSize',fs15)
     else,                 xlabel(ax, 't_D [-]', 'FontSize',fs15); end
     ylabel(ax, sprintf('K_L from W_{%d-%d} [cm^2/min]', round(100*klfPair)), 'FontSize',fs15)
     legend(ax, h, 'Location','northeast', 'FontSize',fs15-4, 'NumColumns',1, 'Interpreter','none')
@@ -1914,10 +1914,10 @@ end
 if ~exist('rsRot','var'), rsRot = 226; rsTol = 1; rsZD = [0.2 0.8]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; rsStat = "wmean"; end
 klfPair  = rsPair;             % level pair of the width (same as the bar)
 klfVar   = rsVar;              % "_xtrim" or "" (same as the bar)
-klfXVar  = "tDtotal";          % "tDtotal" (t_D,total) or "tauD" (t_D since arrival)
+klfXVar  = "tauD";          % "tDtotal" (t_D,total) or "tauD" (t_D since arrival)
 klfLogY  = false;              % log K_L axis
 klfYLim  = [];                 % [] = auto, e.g. [0 2]
-klfXLim  = [0 1.2];            % x-axis limits ([] = auto)
+klfXLim  = [0 0.8];            % x-axis limits ([] = auto)
 klfErr   = false;              % error bars on the per-frame points
 fs15Ax   = 20;                 % font size: tick labels
 fs15Lbl  = 24;                 % font size: axis labels
@@ -1976,7 +1976,7 @@ for ds = "conc"
     if klfLogY, set(ax, 'YScale','log'); end
     if ~isempty(klfYLim), ylim(ax, klfYLim); end
     if ~isempty(klfXLim), xlim(ax, klfXLim); end
-    if klfXVar == "tauD", xlabel(ax, 't_D - t_{D,arrival} [-]', 'FontSize',fs15Lbl)
+    if klfXVar == "tauD", xlabel(ax, 't_{D,res} [-]', 'FontSize',fs15Lbl)
     else,                 xlabel(ax, 't_D [-]', 'FontSize',fs15Lbl); end
     ylabel(ax, sprintf('K_L from W_{%d-%d}, profile [cm^2/min]', round(100*klfPair)), 'FontSize',fs15Lbl)
     grid(ax,'on');  box(ax,'on')
