@@ -27,6 +27,13 @@
 %     KL-by-method bar of main_CTplots): KL = W^2/(4k^2 tau), and corrected (W^2 - W0^2)/(4k^2 tau)
 %     with W0 from the fit and from the inlet BTC
 %   - plot fitted BTC vs scatter, and compare all methods
+%   - ARRIVAL TIME of the single-profile KL (mid-profile, every frame, W0 fit, theta = klRot frame):
+%     tArrProfRef = "C50" (default) | "contour" | "lines"
+%       C50     : t0 = -b/v of the straight line z = v t + b through the C = 0.5 front centres
+%                 (frontVel, main_CTpreproc) -> time the front centre enters the rock
+%       contour : first frame with a C = 0.01 contour (leading edge)
+%       lines   : line volume before the core / Q
+%     stored in resultsAll.(ds).tArr_profKL_min / tArr_profKL_ref (read by klAllFrames in main_CTplots)
 
 %% IMPORT input
 Root = CT_setupPaths;
@@ -95,7 +102,14 @@ for i = 1:height(inputFileConfig)
     zDtarget_mid = 0.5;       % target position zD of the profile ...
     CDtarget_mid = 0.5;       % ... at this concentration (0.5 = front centre)
     zDwin_mid    = 0.05;      % frames with |zD(C = CDtarget) - zDtarget| <= window are averaged
-    sigmaTau_mid = "contour"; % arrival time used by the sigma method: "contour" | "lines"
+
+    % arrival time (origin of tau = t - t_arr) of every KL from single profiles / per-frame widths:
+    % mid-profile (KL_profileAt), every frame (KL_allProfileWidths), W0 fit, theta = klRot frame
+    tArrProfRef  = "C50";     % "C50" (centre line, -b/v) | "contour" (C = 0.01) | "lines" (Vlines/Q)
+    sigmaTau_mid = tArrProfRef; % arrival used by the sigma alias of the mid-profile KL
+    % arrival time of the width-growth / moment fits vs time (fitKL_frontWidth, fitKL_moments,
+    % widthVsTime plot): "lines" keeps the previous results; "C50" / "contour" also possible
+    tArrFitRef   = "lines";
 
     % front width from the averaged profile (addProfileWidths -> columns of varsAll)
     profWidthPairs = [0.10 0.90; 0.20 0.80; 0.30 0.70; 0.40 0.60];   % [low high] levels
@@ -159,7 +173,6 @@ for i = 1:height(inputFileConfig)
         % averaged-profile widths per frame: old columns deleted, rebuilt, stored with time
         vars = addProfileWidths(vars, Ci, Cj, profWidthPairs, L_cm, profErfcFit);
         expCTData.varsAll.(dataSource) = vars;
-        t_arrival_min = max(tLines_min, 0);   % scalar, broadcasts in fitKL_frontWidth/fitKL_moments
 
         % measured front velocity and contour arrival from main_CTpreproc
         % (missing contour arrival -> KL_profileAt uses the line-volume arrival)
@@ -182,6 +195,16 @@ for i = 1:height(inputFileConfig)
         fprintf(['%s (%s): v_front = %.4g cm/min (u_int = %.4g); t_arr contour C=0.01 = %.3g min, ' ...
                  't_arr lines = %.3g min, t0 of the C=0.5 line = %.3g min\n'], ...
             filedataExp.Key, dataSource, vFront_cmmin, uint_cmmin, tArrContour_min, tLines_min, t0C50_min);
+
+        % arrival times used below (fallback C50 -> contour -> lines when one is missing)
+        tArrC = tArrContour_min;  if ~isfinite(tArrC), tArrC = tLines_min; end     % contour, else lines
+        tArrAll = struct('C50', t0C50_min, 'contour', tArrC, 'lines', tLines_min);
+        tArrP = pickArrival(tArrAll, tArrProfRef, filedataExp.Key, dataSource);     % single-profile KL
+        tArrF = pickArrival(tArrAll, tArrFitRef,  filedataExp.Key, dataSource);     % width-growth fits
+        t_arrival_min = max(tArrF, 0);   % scalar, broadcasts in fitKL_frontWidth/fitKL_moments
+        tArrD_P = tArrP*filedataExp.Q/filedataExp.Vtotal;                           % tD = Q t / Vtotal
+        fprintf('  arrival used: single-profile KL = %s (%.3g min, tD = %.3f), width-growth fits = %s (%.3g min)\n', ...
+            tArrProfRef, tArrP, tArrD_P, tArrFitRef, tArrF);
 
         resultsOut = struct();
 
@@ -307,8 +330,12 @@ for i = 1:height(inputFileConfig)
 
             % KL from the profile(s) with the front centre at zDtarget_mid
             plotFile_mid = fullfile(pathExportAll, filedataExp.Key + "_KLmidProfile_" + dataSource + "_" + variant);
-            tArrC = tArrContour_min;  if ~isfinite(tArrC), tArrC = tLines_min; end   % no contour arrival -> lines
-            tArr  = struct('contour', tArrC, 'lines', tLines_min);
+            % every arrival is evaluated (methods <m>_C50, <m>_contour, <m>_lines); the selected one
+            % first, so the per-frame KL plot of KL_profileAt uses it
+            tArr = struct();  tArr.(tArrProfRef) = tArrP;
+            for a = ["C50","contour","lines"]
+                if ~isfield(tArr, a) && isfinite(tArrAll.(a)), tArr.(a) = tArrAll.(a); end
+            end
             resultsOut.(variant).KL_midProfile = KL_profileAt(vars, variantSuffix, ...
                 zDtarget_mid, CDtarget_mid, zDwin_mid, tArr, Ci, Cj, profWidthPairs, L_cm, ...
                 plotFile_mid, sigmaTau_mid);
@@ -326,14 +353,13 @@ for i = 1:height(inputFileConfig)
             % KL from the width of every frame (profile and 2D contours, level pair klAllPair)
             resultsOut.(variant).KL_allProf = table();  resultsOut.(variant).KL_allProfSum = struct();
             if ismember(variant, klAllVariants)
-                tArrD_C = tArrC*filedataExp.Q/filedataExp.Vtotal;          % tD = Q t / Vtotal
-                [Tall_, Sall_] = KL_allProfileWidths(vars, variantSuffix, klAllPair, tArrC, tArrD_C, ...
+                [Tall_, Sall_] = KL_allProfileWidths(vars, variantSuffix, klAllPair, tArrP, tArrD_P, ...
                     klAllDtArr, klAllZDrange);
                 resultsOut.(variant).KL_allProf    = Tall_;
                 resultsOut.(variant).KL_allProfSum = Sall_;
-                fprintf(['  %s (%s) KL from every frame, W %02d-%02d, t_arr contour (tD = %.3f), ' ...
+                fprintf(['  %s (%s) KL from every frame, W %02d-%02d, t_arr %s (tD = %.3f), ' ...
                          'centre zD in [%.2f %.2f]:\n'], dataSource, variant, round(100*klAllPair), ...
-                    tArrD_C, klAllZDrange);
+                    tArrProfRef, tArrD_P, klAllZDrange);
                 for wsrc = ["prof","cont"]
                     q = Sall_.(wsrc);
                     fprintf('    %-8s n = %2d  KL = %.4g +/- %.2g (weighted), mean = %.4g +/- %.2g, median = %.4g cm2/min\n', ...
@@ -345,11 +371,11 @@ for i = 1:height(inputFileConfig)
             end
 
             % KL with an initial width (spreading before the core):
-            %   W^2 = W0^2 + 4 k^2 KL (t - t_arr),  t_arr = contour arrival
+            %   W^2 = W0^2 + 4 k^2 KL (t - t_arr),  t_arr = tArrProfRef arrival (C50: W0 = width
+            %   when the front centre is at the inlet)
             % every level pair, averaged profile and 2D contours; frames with the centre in klW0ZDrange
             resultsOut.(variant).KL_W0fit = table();
             if ismember(variant, klW0Variants)
-                tArrD_W0 = tArrC*filedataExp.Q/filedataExp.Vtotal;
                 uW0 = vFront_cmmin;  if ~(isfinite(uW0) && uW0 > 0), uW0 = uint_cmmin; end   % front velocity [cm/min]
                 rowsW0 = {};  fitsW0 = {};
                 for pp = 1:size(profWidthPairs,1)
@@ -358,7 +384,7 @@ for i = 1:height(inputFileConfig)
                     if ~ismember("zDWidthProf_" + tagp + variantSuffix + "_cm", string(vars.Properties.VariableNames))
                         continue
                     end
-                    Tp_ = KL_allProfileWidths(vars, variantSuffix, pair_, tArrC, tArrD_W0, klAllDtArr, klW0ZDrange);
+                    Tp_ = KL_allProfileWidths(vars, variantSuffix, pair_, tArrP, tArrD_P, klAllDtArr, klW0ZDrange);
                     inR = Tp_.zD_center_C50 >= klW0ZDrange(1) & Tp_.zD_center_C50 <= klW0ZDrange(2);
                     btc0 = inletBTCwidth(vars, variantSuffix, pair_, 0);          % inlet BTC level times
                     selR = rotZDsel(Tp_, klRot, klRotTol, klRotZD);              % frame at theta = klRot
@@ -403,8 +429,8 @@ for i = 1:height(inputFileConfig)
                 if ~isempty(rowsW0)
                     TW0 = vertcat(rowsW0{:});
                     resultsOut.(variant).KL_W0fit = TW0;
-                    fprintf(['  %s (%s) KL with initial width, W^2 = W0^2 + 4k^2 KL (t - t_arr), t_arr contour ' ...
-                             '(%.3g min), centre zD in [%.2f %.2f]:\n'], dataSource, variant, tArrC, klW0ZDrange);
+                    fprintf(['  %s (%s) KL with initial width, W^2 = W0^2 + 4k^2 KL (t - t_arr), t_arr %s ' ...
+                             '(%.3g min), centre zD in [%.2f %.2f]:\n'], dataSource, variant, tArrProfRef, tArrP, klW0ZDrange);
                     disp(TW0(:, {'pair','width','n','KL_cm2min','dKL_cm2min','W0_cm','dW0_cm', ...
                         'tShift_min','R2','KL0_cm2min','R2_0'}))
                     fprintf('  %s (%s) initial width from the inlet BTC (zD = 0, u_front = %.3g cm/min) vs fitted W0:\n', ...
@@ -423,6 +449,12 @@ for i = 1:height(inputFileConfig)
             end
         end
 
+        resultsOut.tArr_profKL_ref   = string(tArrProfRef);   % arrival of the single-profile KL
+        resultsOut.tArr_profKL_min   = tArrP;                 % (read by klAllFrames in main_CTplots)
+        resultsOut.tD_arr_profKL     = tArrD_P;
+        resultsOut.tArr_fitKL_ref    = string(tArrFitRef);
+        resultsOut.tArr_fitKL_min    = tArrF;
+        resultsOut.t0_C50line_min    = t0C50_min;
         resultsOut.MFM_fitData       = fitDataMFM;
         resultsOut.KL_MFM_CT         = KL_MFM_CT;
         resultsOut.dKL_MFM_CT        = dKL_MFM_CT;
@@ -546,6 +578,11 @@ for i = 1:height(inputFileConfig)
         summaryT.tArr_contour_min  = tArrContour_min;
         summaryT.tArr_lines_min    = tLines_min;
         summaryT.t0_C50line_min    = t0C50_min;
+        summaryT.tArr_profKL_ref   = string(tArrProfRef);
+        summaryT.tArr_profKL_min   = tArrP;
+        summaryT.tD_arr_profKL     = tArrD_P;
+        summaryT.tArr_fitKL_ref    = string(tArrFitRef);
+        summaryT.tArr_fitKL_min    = tArrF;
         summaryT.sigma_tArr_source = string(sigmaTau_mid);
         if ismember('tD_corr_vFrontC50', vars.Properties.VariableNames)
             summaryT.tD_corr_vFrontC50       = median(vars.tD_corr_vFrontC50,'omitnan');
@@ -566,6 +603,18 @@ end
 %% local helpers
 function out = ternary_str(cond, a, b)
 if cond, out = a; else, out = b; end
+end
+
+function t = pickArrival(tArrAll, ref, key, ds)
+% arrival time [min] of reference ref ("C50" | "contour" | "lines"); a missing C50 line falls
+% back to the contour arrival, a missing contour arrival is already the line-volume time
+ref = string(ref);
+if ~isfield(tArrAll, ref), error('unknown arrival reference "%s" (C50 | contour | lines)', ref); end
+t = tArrAll.(ref);
+if ~isfinite(t) && ref == "C50"
+    warning('%s (%s): no C = 0.5 front line (t0_C50) -> contour arrival used', key, ds);
+    t = tArrAll.contour;
+end
 end
 
 function sel = rotZDsel(Tk, rot, tol, zDr, z0)
