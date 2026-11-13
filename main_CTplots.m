@@ -2417,7 +2417,82 @@ for ds = "conc"
     ylabel(tl, 'Pe  \rightarrow  (bottom: low Pe, top: high Pe)', 'FontSize',fs17)
     saveFigBoth(fig, exportPath, sprintf('KL_byMethod_rot%d_noBTC_noCont_MPe_quadrants_%s', rsRot, ds), closeAfterSave)
 end
- 
+
+%% 17e) KL by method, XCT only (profile at theta = rsRot and XCT MFM), one figure per case
+% Same as 17c without the UHS MFM bar, and every case saved as its own figure (no M / Pe title),
+% to be arranged later in a 2 x 2 grid: low Pe bottom, high Pe top, low M left, high M right
+% (the grid position is in the file name: ..._<row>-<col>_<case>, row 1 = top).
+% All four figures share the same y-axis limits so the bars can be compared across the grid.
+% Uses the frame selection of 17c (rotZDsel: theta = rsRot +/- rsTol, centre closest to zD = 0.5
+% within rsZD) and mfmKL for the MFM KL.
+
+rsRot   = 226;                 % rotation position [deg]
+rsTol   = 1;                   % tolerance [deg]
+rsZD    = [0.2 0.8];           % front-centre zD window
+rsPair  = [0.40 0.60];
+rsVar   = "_xtrim";
+rsStat  = "wmean";             % only used if several frames are kept (rotZDsel keeps one)
+fs17e   = 20;                  % font size (ticks, labels, legend)
+leg17e  = "all";               % legend: "all" figures | "first" (top-left only) | "none"
+yLim17e = [];                  % common y limits; [] = 0 to 1.1 x max over the four cases
+tagW17  = sprintf('%02d_%02d', round(100*rsPair));
+srcNames17e = ["XCT 1D profile" + newline + sprintf("(\\theta = %d°)", rsRot), "XCT MFM"];   % 2-line legend entry
+srcCols17e  = [0.85 0.33 0.10; 0.35 0.35 0.35];
+% cases: {name, M token in key, Pe token in key, grid position [row col] (row 1 = top = high Pe)}
+cases17e = {"XCT-loM-loPe", "P725", "Q1", [2 1]; ...
+            "XCT-loM-hiPe", "P725", "Q5", [1 1]; ...
+            "XCT-hiM-loPe", "P900", "Q1", [2 2]; ...
+            "XCT-hiM-hiPe", "P900", "Q5", [1 2]};
+
+for ds = "conc"
+    nC = size(cases17e,1);  nS = numel(srcNames17e);
+    KL = nan(nC,nS);  dKL = nan(nC,nS);  tDf = nan(nC,1);
+    for c = 1:nC
+        i = find(contains(expKeys, "_" + cases17e{c,2} + "_") & contains(expKeys, "_" + cases17e{c,3} + "_"), 1);
+        if isempty(i), warning('17e: no experiment for %s', cases17e{c,1}); continue, end
+        Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, rsVar, rsPair);
+        if ~isempty(Tk)
+            Ts = Tk(rotZDsel(Tk, rsRot, rsTol, rsZD), :);
+            if height(Ts) > 0
+                [KL(c,1), dKL(c,1)] = aggKL(Ts.("KL_prof_" + tagW17 + "_cm2min"), Ts.("dKL_prof_" + tagW17 + "_cm2min"), rsStat);
+                tDf(c) = Ts.tDtotal(1);
+            else
+                warning('17e: %s (%s) has no frame at theta = %g +/- %g with the centre in zD [%.2f %.2f]', ...
+                    expKeys(i), ds, rsRot, rsTol, rsZD);
+            end
+        end
+        [KL(c,2), dKL(c,2)] = mfmKL(MFM_CT_DataAll{i}.(ds));
+    end
+    dKL(~isfinite(dKL)) = 0;
+    caseNames = string(cases17e(:,1));
+    T17e = table(caseNames, tDf, KL(:,1), dKL(:,1), KL(:,2), dKL(:,2), ...
+        'VariableNames', {'case','tD_frame','KL_profile','dKL_profile','KL_MFM_XCT','dKL_MFM_XCT'});
+    fprintf('\n17e) KL [cm2/min], XCT profile (theta = %g deg) and XCT MFM (%s):\n', rsRot, ds);
+    disp(T17e)
+    writetable(T17e, fullfile(exportPath, sprintf('KL_byMethod_rot%d_XCTonly_%s.xlsx', rsRot, ds)));
+
+    yl = yLim17e;
+    if isempty(yl)
+        yMax = 1.1*max(KL(:) + dKL(:), [], 'omitnan');  if ~(isfinite(yMax) && yMax > 0), yMax = 1; end
+        yl = [0 yMax];
+    end
+
+    for c = 1:nC
+        pos = cases17e{c,4};
+        fig = figure('Position',[100 100 850 550], 'NumberTitle','off', ...
+            'Name', sprintf('KL by method, %s, theta = %d deg, XCT only (%s)', caseNames(c), rsRot, ds));
+        ax = axes(fig);  hold(ax,'on')
+        klBars(ax, KL(c,:), dKL(c,:), srcCols17e, srcNames17e, "", fs17e);
+        set(ax, 'XTick', [], 'FontSize',fs17e, 'LabelFontSizeMultiplier',1);
+        ylim(ax, yl);  ylabel(ax, 'K_L [cm^2/min]', 'FontSize',fs17e)
+        if leg17e == "all" || (leg17e == "first" && isequal(pos, [1 1]))
+            legend(ax, 'Location','northeast', 'FontSize',fs17e-4, 'Interpreter','tex')
+        end
+        saveFigBoth(fig, exportPath, sprintf('KL_byMethod_rot%d_XCTonly_%d-%d_%s_%s', rsRot, pos(1), pos(2), ...
+            strrep(caseNames(c), '-', ''), ds), closeAfterSave)
+    end
+end
+
 %% 18) Profiles used for the theta = 270 deg KL (section 17), as section 1
 % Every frame of section 17 (rotPos = rsRot +/- rsTol, front centre at zD in rsZD), averaged
 % x-trimmed profile vs zD, with the two levels of rsPair (dashed) and the crossings (dots) whose
