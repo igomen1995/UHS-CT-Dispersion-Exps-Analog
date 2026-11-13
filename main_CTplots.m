@@ -53,15 +53,22 @@ mfmTimeVar  = 'tD';           % MFM BT time axis ('tD' core-based, or 'tDtotal')
 closeAfterSave = false;       % true: close each figure once saved
 
 % time axis of every plot vs time (and colour scale by time):
-%   "tDres" = t_D,res = t_D - t_D,arrival (contour arrival C = 0.01; column tD_corr_contour of varsAll,
-%             tauD of the per-frame KL tables) -- the same time origin as the KL (tau = t - t_arr)
+%   "tDres" = t_D,res = t_D - t_D,arr = (t - t_arr) Q / V_total  (column tD_res, added to varsAll at
+%             load; tauD of the per-frame KL tables uses the same t_arr -> same origin as the KL)
 %   "tD"    = t_D,total = Q t / V_total
-% The tag (tD / tDres) is added to the file name of every figure that uses it.
-tAxis = "tDres";
+% t_arr (tResRef):
+%   "C50"     t0 of the straight line z = v t + b through the C = 0.5 front centres, t0 = -b/v
+%             (frontVel, main_CTpreproc) -> time the front centre enters the rock   [default]
+%   "contour" first frame with a C = 0.01 contour (leading edge)
+%   "lines"   line volume before the core / Q
+% The tag (tD / tDres, tDres_contour, tDres_lines) is added to the file name of every figure that uses it.
+tAxis   = "tDres";
+tResRef = "C50";              % "C50" | "contour" | "lines"
 if tAxis == "tDres"
-    tXcol = "tD_corr_contour";  tXkl = "tauD";     tXlbl = 't_{D,res} [-]';  tXtag = "tDres";  tXlim = [0 1];
+    tXcol = "tD_res";   tXkl = "tauD";     tXlbl = 't_{D,res} [-]';  tXtag = "tDres";  tXlim = [0 1];
+    if tResRef ~= "C50", tXtag = "tDres_" + tResRef; end
 else
-    tXcol = "tDtotal";          tXkl = "tDtotal";  tXlbl = 't_D [-]';        tXtag = "tD";     tXlim = [0 1.2];
+    tXcol = "tDtotal";  tXkl = "tDtotal";  tXlbl = 't_D [-]';        tXtag = "tD";     tXlim = [0 1.2];
 end
 
 %% Load data
@@ -102,6 +109,27 @@ for i = 1:nExp
     MFM_CT_DataAll{i}  = loadMFMbyDataSource(MFM_CT_file,  inputFileConfig.MFM_BTC_CT_Key{i},  fitDataOf);
     MFM_UHS_DataAll{i} = loadMFMbyDataSource(MFM_UHS_file, inputFileConfig.MFM_BTC_UHS_Key{i}, fitDataOf);
 end
+
+% arrival time t_arr (tResRef) per experiment and data source -> column tD_res = tD_total - t_arr Q/V_total
+% in varsAll, and resultsAll.(ds).tArr_plot_min / tD_arr_plot (also used by klAllFrames for tau, so
+% the per-frame KL and the t_D,res axis share the same origin)
+arrRows = {};
+for i = 1:nExp
+    fd = filedataExpAll{i};
+    for ds = dataSources
+        if ~isfield(expCTDataAll{i}.varsAll, ds), continue, end
+        [tArr_, src_] = arrivalTime(expCTDataAll{i}, fd, ds, tResRef);
+        tDarr_ = tArr_*fd.Q/fd.Vtotal;
+        expCTDataAll{i}.varsAll.(ds).tD_res = expCTDataAll{i}.varsAll.(ds).tDtotal - tDarr_;
+        expCTDataAll{i}.resultsAll.(ds).tArr_plot_min = tArr_;
+        expCTDataAll{i}.resultsAll.(ds).tD_arr_plot   = tDarr_;
+        expCTDataAll{i}.resultsAll.(ds).tArr_plot_ref = src_;
+        arrRows{end+1,1} = table(expKeys(i), ds, src_, tArr_, tDarr_, ...
+            'VariableNames', {'experiment','dataSource','t_arr_ref','t_arr_min','tD_arr'}); %#ok<SAGROW>
+    end
+end
+fprintf('\nArrival time of t_D,res (tResRef = %s):\n', tResRef);
+disp(vertcat(arrRows{:}))
 
 % one colour per experiment (first four = original palette)
 baseCols = [0.318 0.654 0.976; 0.09 0.306 0.525; 0.435 0.753 0.251; 0.059 0.361 0.102];
@@ -1533,8 +1561,8 @@ for ds = dataSources
                 Sm = fr.(nm);
                 if isempty(Sm.KL_pts) || all(~isfinite(Sm.KL_pts)), continue, end
                 tD_pts = (Sm.t_fit*fd.Q + fd.Vlinesbefore) / fd.Vtotal;   % back to tD_total
-                if tAxis == "tDres" && isfield(rs, 'tD_arrival_contour')
-                    tD_pts = tD_pts - rs.tD_arrival_contour;              % t_D,res (contour arrival)
+                if tAxis == "tDres" && isfield(rs, 'tD_arr_plot')
+                    tD_pts = tD_pts - rs.tD_arr_plot;                     % t_D,res (tResRef arrival)
                 end
                 scatter(tD_pts, Sm.KL_pts, 14, cols(i,:), markers{mod(mI-1,numel(markers))+1}, ...
                     'DisplayName', expKeys(i) + " (" + strrep(nm,"_"," ") + ")")
@@ -1865,7 +1893,7 @@ writetable(fpSummary, fullfile(exportPath, 'FPhi_summary.xlsx'));
 
 %% 15) KL vs tD from the 40-60 width of every frame: averaged profile and 2D contours (x-trimmed)
 % KL = W^2/(4 k^2 tau) for every frame (KL_allProfileWidths, same as main_CTpostproc),
-% tau = t - t_arr (contour arrival of the mid-profile KL; fallback: line volume).
+% tau = t - t_arr (tResRef arrival, same origin as the t_D,res axis; see klAllFrames).
 % Filled circles = averaged profile (zDWidthProf_40_60_xtrim), open squares = 2D contours
 % (zDWidth_40_60_xtrim); error bars dKL (slice spacing + frame interval, see KL_allProfileWidths).
 % Frames just after arrival (small tau) give very large, uncertain KL -> log y-axis by default.
@@ -1927,8 +1955,7 @@ end
 % or the defaults below are used.
 
 if ~exist('rsRot','var'), rsRot = 226; rsTol = 1; rsZD = [0.2 0.8]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; rsStat = "wmean"; end
-if ~exist('rsStat','var'), rsStat = "wmean"; end    % only matters if several frames are kept
-% klfPair  = rsPair;             % level pair of the width (same as the bar)
+klfPair  = rsPair;             % level pair of the width (same as the bar)
 klfVar   = rsVar;              % "_xtrim" or "" (same as the bar)
 klfXVar  = tXkl;               % from tAxis: "tauD" (t_D,res) or "tDtotal" (t_D,total)
 klfLogY  = false;              % log K_L axis
@@ -2716,11 +2743,49 @@ end
 %% Local functions
 
 function tag = tTagOf(col)
-% short time-axis tag for file names: tDtotal -> "tD", tD_corr_contour / tauD -> "tDres"
+% short time-axis tag for file names: tDtotal -> "tD", tD_res / tauD -> "tDres"
 switch string(col)
-    case "tDtotal",                    tag = "tD";
-    case {"tD_corr_contour","tauD"},   tag = "tDres";
-    otherwise,                         tag = string(col);
+    case "tDtotal",                             tag = "tD";
+    case {"tD_res","tauD"},                     tag = "tDres";
+    case "tD_corr_contour",                     tag = "tDres_contour";
+    otherwise,                                  tag = string(col);
+end
+end
+
+function [tArr, src] = arrivalTime(ctData, fd, ds, ref)
+% arrival time [min] of one experiment / data source:
+%   "C50"     t0 = -b/v of the C = 0.5 front-centre line (resultsAll.(ds).vFront of main_CTpreproc;
+%             fallback: t0_C50line_min stored by main_CTpostproc)
+%   "contour" first C = 0.01 contour (resultsAll.(ds).tD_arrival_contour, tD = Q t / V_total)
+%   "lines"   line volume before the core / Q
+% a missing C50 falls back to contour, a missing contour to lines; src = arrival actually used
+ref  = string(ref);
+tL   = fd.Vlinesbefore/fd.Q;
+tC   = NaN;  t50 = NaN;
+if isfield(ctData, 'resultsAll') && isfield(ctData.resultsAll, ds)
+    rA = ctData.resultsAll.(ds);
+    if isfield(rA, 'tD_arrival_contour') && isfinite(rA.tD_arrival_contour)
+        tC = rA.tD_arrival_contour*fd.Vtotal/fd.Q;
+    end
+    if isfield(rA, 'vFront') && isstruct(rA.vFront) && isfinite(rA.vFront.v_front_cmmin) && rA.vFront.v_front_cmmin > 0
+        t50 = -rA.vFront.intercept_cm/rA.vFront.v_front_cmmin;
+    elseif isfield(rA, 't0_C50line_min') && isfinite(rA.t0_C50line_min)
+        t50 = rA.t0_C50line_min;
+    end
+end
+switch ref
+    case "C50",     tArr = t50;  src = "C50";
+    case "contour", tArr = tC;   src = "contour";
+    case "lines",   tArr = tL;   src = "lines";
+    otherwise,      error('arrivalTime: unknown reference "%s" (C50 | contour | lines)', ref);
+end
+if ~isfinite(tArr) && src == "C50"
+    warning('%s (%s): no C = 0.5 front line -> contour arrival', fd.Key, ds);
+    tArr = tC;  src = "contour";
+end
+if ~isfinite(tArr) && src == "contour"
+    warning('%s (%s): no contour arrival -> line volume', fd.Key, ds);
+    tArr = tL;  src = "lines";
 end
 end
 
@@ -2935,8 +3000,13 @@ if ~isempty(j) && j < numel(Cn), zc(2) = z(j) + (Cn(j) - lv(2))*(z(j+1) - z(j))/
 end
 
 function Tk = klAllFrames(ctData, fd, hasPostI, ds, variant, pair)
-% KL per frame from the width of the level pair (KL_allProfileWidths) for one experiment.
-% Arrival: contour arrival stored with the mid-profile KL (main_CTpostproc), else line volume.
+% KL per frame from the width of the level pair (KL_allProfileWidths) for one experiment,
+% KL = W^2/(4 k^2 tau), tau = t - t_arr. Arrival, first one found:
+%   1) resultsAll.(ds).tArr_plot_min -- tResRef arrival set at load in this script (default C50),
+%      the same origin as the t_D,res axis (column tD_res)
+%   2) resultsAll.(ds).tArr_profKL_min -- arrival selected in main_CTpostproc (tArrProfRef)
+%   3) contour arrival stored with the mid-profile KL (older postproc results)
+%   4) line volume before the core
 Tk = table();
 vars = ctData.varsAll.(ds);
 tag  = sprintf('%02d_%02d', round(100*pair));
@@ -2944,13 +3014,17 @@ if ~ismember("zDWidthProf_" + tag + variant + "_cm", string(vars.Properties.Vari
     warning('klAllFrames: zDWidthProf_%s%s_cm missing for %s -- run main_CTpostproc first', tag, variant, fd.Key);
     return
 end
-tArr  = fd.Vlinesbefore/fd.Q;                         % fallback: line volume before the core [min]
+tArr  = fd.Vlinesbefore/fd.Q;                         % 4) fallback: line volume before the core [min]
 vName = "full";  if variant == "_xtrim", vName = "xtrim"; end
-if hasPostI && isfield(ctData, 'resultsAll') && isfield(ctData.resultsAll, ds)
+if isfield(ctData, 'resultsAll') && isfield(ctData.resultsAll, ds)
     rs = ctData.resultsAll.(ds);
-    if isfield(rs, vName) && isfield(rs.(vName), 'KL_midProfile') && ...
+    if isfield(rs, 'tArr_plot_min') && isfinite(rs.tArr_plot_min)
+        tArr = rs.tArr_plot_min;                                                     % 1)
+    elseif hasPostI && isfield(rs, 'tArr_profKL_min') && isfinite(rs.tArr_profKL_min)
+        tArr = rs.tArr_profKL_min;                                                   % 2)
+    elseif hasPostI && isfield(rs, vName) && isfield(rs.(vName), 'KL_midProfile') && ...
             isfield(rs.(vName).KL_midProfile.methods, 'erfc_contour')
-        tc = rs.(vName).KL_midProfile.methods.erfc_contour.tArr_min;
+        tc = rs.(vName).KL_midProfile.methods.erfc_contour.tArr_min;                 % 3)
         if isfinite(tc), tArr = tc; end
     end
 end
