@@ -652,6 +652,205 @@ for i = 1:height(inputFileConfig)
 
 end
 
+%% check_arrivalLevels.m
+% Stand-alone check, NOTHING is re-run or saved back: reads the <Key>_postproc.mat files already
+% written by main_CTpostproc (fallback: <Key>.mat of main_CTpreproc) and estimates the arrival time
+% from the trajectories of every contour level C = 0.01 ... 0.5 (zDFront<CC><arrVar>_cm vs t).
+%
+% ADE front whose centre enters at t0c and that has been spreading since t0s:
+%       z_C(t) = v (t - t0c) + 2 erfcinv(2C) sqrt(KL (t - t0s))
+%   (C = 0.5: straight line through t0c; C < 0.5: ahead of it by a sqrt(t) term)
+% Fits (arrUseV50 = true: v of every fit = v of the C = 0.5 straight line, only origins / KL fitted):
+%   1) per level, straight line   z = v_C (t - t0_C)                       (as frontVel; exact only for C = 0.5)
+%   2) per level, curved           z = v_C (t - t0_C) + a_C sqrt(t - t0_C)  -> t0_C, KL_C = (a_C/(2 erfcinv(2C)))^2
+%                                  (a_C >= 0 for C < 0.5, else a_C = 0: each curve rises from z = 0 at its own t0_C)
+%   3) all levels together         a) one origin t0c = t0s (sharp step at the inlet)
+%                                  b) two origins: t0c (centre enters) and t0s (spreading starts = front, C > 0, enters)
+% Then KL of the profile width with tau = t - t0s (no W0):  KL = W^2/(4 k^2 (t - t0s)),
+% compared with tau = t - t0 of the C = 0.5 line (tArr_profKL_min of main_CTpostproc):
+%   every frame with the centre in klZD (weighted mean of KL_allProfileWidths style, median), and
+%   the frame at theta = klRot (centre closest to zD = 0.5 in klRotZD), as the KL-by-method bar.
+% Frames used per level: 0.03 < z_D < 0.97 (as frontVel). t in min since the start of injection.
+% Output: printed tables + arrival_levels_check.xlsx in exportPathChk, one figure per experiment.
+
+Root = CT_setupPaths;
+cfg  = readtable('inputCTExpConfig.xlsx');
+
+arrDS     = "conc";                                 % data source(s), e.g. ["rhoNorm","conc"]
+arrVar    = "_xtrim";                               % "" = full image | "_xtrim" (as the profile KL)
+arrLevels = [0.01 0.05 0.1 0.16 0.2 0.3 0.4 0.5];   % levels not traced in main_CTpreproc are skipped
+arrSearch = 120;                                    % t0 searched up to this many min before the first point
+klPair    = [0.40 0.60];                            % profile width for the KL check
+klZD      = [0.1 0.9];                              % front-centre window of the all-frame KL
+klRot     = 226;  klRotTol = 1;  klRotZD = [0.2 0.8];
+arrPlot   = true;
+arrUseV50 = true;                                   % true: every fit uses the velocity of the C = 0.5 line (v50)
+arrPlots  = ["joint2","perLevel"];                  % figures: "joint2" (common v, two origins) | "perLevel" | "joint1"
+exportPathChk = 'results/';  if ~isfolder(exportPathChk), mkdir(exportPathChk); end
+
+rowsLvl = {};  rowsJ = {};  rowsKL = {};
+for i = 1:height(cfg)
+    fd   = import_inputCTExp(cfg.inputFileName{i});
+    pth  = cfg.exportPath{i};
+    fPost = fullfile(pth, fd.Key + "_postproc.mat");  fPre = fullfile(pth, fd.Key + ".mat");
+    if isfile(fPost), S = load(fPost); else, S = load(fPre); warning('%s: no _postproc.mat, preproc file used (no KL check)', fd.Key); end
+    E = S.expCTDataSave;
+    for ds = arrDS
+        vars = E.varsAll.(ds);  vn = string(vars.Properties.VariableNames);
+        rA   = struct();  if isfield(E,'resultsAll') && isfield(E.resultsAll, ds), rA = E.resultsAll.(ds); end
+        t    = vars.secondsElapsed/60;
+
+        % ---- data of every level
+        T = [];  lv = [];
+        for C = arrLevels
+            cz = "zDFront" + sprintf('%02d', round(100*C)) + arrVar;
+            if ~all(ismember([cz, cz + "_cm"], vn)), continue, end
+            z  = vars.(cz + "_cm");  zD = vars.(cz);
+            ok = isfinite(t) & isfinite(z) & zD > 0.03 & zD < 0.97;
+            if nnz(ok) < 5, continue, end
+            T  = [T; t(ok), z(ok), C*ones(nnz(ok),1)]; %#ok<AGROW>
+            lv(end+1) = C; %#ok<AGROW>
+        end
+        if isempty(lv), warning('%s (%s): no level traced', fd.Key, ds); continue, end
+        miss = setdiff(arrLevels, lv);
+        if ~isempty(miss), fprintf('%s (%s): levels not available: %s\n', fd.Key, ds, mat2str(miss)); end
+
+        % ---- velocity of the C = 0.5 line (v50): used by every fit when arrUseV50
+        v50 = NaN;
+        if any(abs(lv - 0.5) < 1e-9)
+            s50 = abs(T(:,3) - 0.5) < 1e-9;  p50 = polyfit(T(s50,1), T(s50,2), 1);  v50 = p50(1);
+        elseif arrUseV50
+            warning('%s (%s): no C = 0.5 level -> velocity fitted freely', fd.Key, ds);
+        end
+        vFix = NaN;  if arrUseV50, vFix = v50; end
+
+        % ---- 1) and 2) per level (C = 0.5: the ADE form is the straight line, a = 0)
+        lvT0 = nan(size(lv));  lvV = lvT0;  lvA = lvT0;
+        for q = 1:numel(lv)
+            C  = lv(q);
+            s  = T(:,3) == C;  tt = T(s,1);  zz = T(s,2);
+            p  = polyfit(tt, zz, 1);
+            if abs(C - 0.5) < 1e-9
+                t0q = -p(2)/p(1);  vq = p(1);  aq = 0;
+            else
+                [t0q, vq, aq] = fitLevelCurve(tt, zz, min(tt) - arrSearch, min(tt) - 1e-3, sign(0.5 - C), vFix);
+            end
+            lvT0(q) = t0q;  lvV(q) = vq;  lvA(q) = aq;
+            eC = 2*erfcinv(2*C);  KLq = NaN;
+            if abs(eC) > 1e-6, KLq = (aq/eC)^2; end   % 0 when the constraint a = 0 is active
+            rowsLvl{end+1,1} = table(string(fd.Key), ds, C, nnz(s), -p(2)/p(1), p(1), t0q, vq, aq, KLq, ...
+                'VariableNames', {'experiment','ds','C','n','t0_line_min','v_line_cmmin', ...
+                't0_curve_min','v_curve_cmmin','a_curve','KL_curve_cm2min'}); %#ok<SAGROW>
+        end
+
+        % ---- 3) all levels together
+        e   = 2*erfcinv(2*T(:,3));                                 % 0 for C = 0.5
+        tHi = min(T(:,1)) - 1e-3;  tLo = tHi - arrSearch;
+        t0a = gridFminbnd(@(x) jointSSE(T(:,1), T(:,2), e, x, x, vFix), tLo, tHi);         % a) one origin
+        [~, va, ~, KLa] = jointSSE(T(:,1), T(:,2), e, t0a, t0a, vFix);
+        t0s = gridFminbnd(@(x) jointSSE(T(:,1), T(:,2), e, NaN, x, vFix), tLo, tHi);       % b) two origins
+        [sseB, vb, t0c, KLb] = jointSSE(T(:,1), T(:,2), e, NaN, t0s, vFix);
+
+        tLines = fd.Vlinesbefore/fd.Q;
+        tArrC  = NaN;  if isfield(rA,'tD_arrival_contour'), tArrC = rA.tD_arrival_contour*fd.Vtotal/fd.Q; end
+        t0C50  = NaN;  if isfield(rA,'vFront'), t0C50 = -rA.vFront.intercept_cm/rA.vFront.v_front_cmmin; end
+        rowsJ{end+1,1} = table(string(fd.Key), ds, numel(lv), size(T,1), tLines, tArrC, t0C50, ...
+            t0a, va, KLa, t0c, t0s, t0c - t0s, vb, KLb, sqrt(sseB/size(T,1)), t0s*fd.Q/fd.Vtotal, ...
+            'VariableNames', {'experiment','ds','nLevels','nPts','tArr_lines','tArr_contour01','t0_C50line', ...
+            't0_joint1','v_joint1','KL_joint1','t0c_joint2','t0s_joint2','t0c_minus_t0s','v_joint2','KL_joint2', ...
+            'rmse_joint2_cm','tD_arr_t0s'}); %#ok<SAGROW>
+
+        % ---- KL of the profile width with tau = t - t0s vs tau = t - t0 (C = 0.5 line)
+        tag = sprintf('%02d_%02d', round(100*klPair));  cW = "zDWidthProf_" + tag + arrVar + "_cm";
+        cZ  = "zDFrontProfC50" + arrVar;  if ~ismember(cZ, vn), cZ = "zDFront50" + arrVar; end
+        if ismember(cW, vn) && ismember(cZ, vn)
+            k  = erfcinv(2*klPair(1)) - erfcinv(2*klPair(2));
+            W  = abs(vars.(cW));  zc = vars.(cZ);
+            tRefs = [t0s, t0C50];  nmRef = ["t0s","t0C50"];
+            if isfield(rA,'tArr_profKL_min'), tRefs(end+1) = rA.tArr_profKL_min; nmRef(end+1) = "postproc_" + string(rA.tArr_profKL_ref); end
+            rot = nan(height(vars),1);  if ismember("rotPos", vn), rot = vars.rotPos; end
+            dR  = abs(mod(rot - klRot + 180, 360) - 180);
+            selR = find(dR <= klRotTol & zc >= klRotZD(1) & zc <= klRotZD(2));
+            if ~isempty(selR), [~, b] = min(abs(zc(selR) - 0.5)); selR = selR(b); end
+            for r = 1:numel(tRefs)
+                tau = t - tRefs(r);  KL = W.^2 ./ (4*k^2*tau);  KL(~(tau > 0)) = NaN;
+                inS = isfinite(KL) & KL > 0 & zc >= klZD(1) & zc <= klZD(2);
+                KLrot = NaN;  tauRot = NaN;  if ~isempty(selR), KLrot = KL(selR); tauRot = tau(selR); end
+                rowsKL{end+1,1} = table(string(fd.Key), ds, nmRef(r), tRefs(r), nnz(inS), median(KL(inS)), ...
+                    mean(KL(inS)), std(KL(inS)), KLrot, tauRot, ...
+                    'VariableNames', {'experiment','ds','origin','t_arr_min','n','KL_median','KL_mean','KL_std', ...
+                    sprintf('KL_rot%d', klRot), sprintf('tau_rot%d_min', klRot)}); %#ok<SAGROW>
+            end
+        end
+
+        % ---- figures
+        %   "joint1"  : one ADE for all levels, all curves start at z = 0 at the same t_arr (= t0_joint1)
+        %   "perLevel": every level its own ADE form, z = v_C (t - t0_C) + a_C sqrt(t - t0_C), each curve
+        %               starts at z = 0 at its own t0_C (C = 0.5: straight line)
+        %   "joint2"  : two origins (t0c centre, t0s spreading start), curves meet below z = 0
+        if arrPlot
+            cm = parula(numel(lv) + 1);  tEnd = max(T(:,1));
+            for pk = arrPlots
+                fig = figure('Position',[100 100 1000 650], 'NumberTitle','off', 'Name', ...
+                    sprintf('%s: front trajectories, %s (%s%s)', fd.Key, pk, ds, arrVar));
+                ax = axes(fig);  hold(ax,'on');  hh = gobjects(0);
+                for q = 1:numel(lv)
+                    s = T(:,3) == lv(q);
+                    switch pk
+                        case "joint1"
+                            tf = linspace(t0a, tEnd, 400)';
+                            zf = va*(tf - t0a) + 2*erfcinv(2*lv(q))*sqrt(max(KLa,0)*(tf - t0a));
+                            nm = sprintf('C = %.2f', lv(q));
+                        case "perLevel"
+                            tf = linspace(lvT0(q), tEnd, 400)';
+                            zf = lvV(q)*(tf - lvT0(q)) + lvA(q)*sqrt(tf - lvT0(q));
+                            nm = sprintf('C = %.2f, t_0 = %.1f', lv(q), lvT0(q));
+                            plot(ax, lvT0(q), 0, 'o', 'MarkerSize',8, 'MarkerFaceColor',cm(q,:), ...
+                                'MarkerEdgeColor','k', 'HandleVisibility','off')
+                        case "joint2"
+                            tf = linspace(t0s, tEnd, 400)';
+                            zf = vb*(tf - t0c) + 2*erfcinv(2*lv(q))*sqrt(max(KLb,0)*(tf - t0s));
+                            nm = sprintf('C = %.2f', lv(q));
+                    end
+                    hh(end+1) = scatter(ax, T(s,1), T(s,2), 8, cm(q,:), 'filled', 'DisplayName', nm); %#ok<SAGROW>
+                    plot(ax, tf, zf, '-', 'Color',0.7*cm(q,:), 'LineWidth',1.5, 'HandleVisibility','off')
+                end
+                switch pk
+                    case "joint1"
+                        xline(ax, t0a, 'k--', 't_{arr}', 'LineWidth',1.5, 'HandleVisibility','off');
+                        ttl = sprintf('one ADE, common origin: t_{arr} = %.1f min, v = %.3g cm/min, K_L = %.3g cm^2/min', t0a, va, KLa);
+                    case "perLevel"
+                        ttl = sprintf('one ADE form per level: t_0 from %.1f (C = %.2f) to %.1f min (C = %.2f)', ...
+                            lvT0(1), lv(1), lvT0(end), lv(end));
+                    case "joint2"
+                        xline(ax, t0s, 'k--', 't_{0s}', 'LineWidth',1.5, 'HandleVisibility','off');
+                        xline(ax, t0c, 'k-',  't_{0c}', 'LineWidth',1.5, 'HandleVisibility','off');
+                        ttl = sprintf('two origins: t_{0s} = %.1f, t_{0c} = %.1f min, v = %.3g cm/min, K_L = %.3g cm^2/min', t0s, t0c, vb, KLb);
+                end
+                if isfinite(tArrC), xline(ax, tArrC, 'r:', 't_{arr,C=0.01}', 'LineWidth',1.5, 'HandleVisibility','off'); end
+                yline(ax, 0, 'k-', 'HandleVisibility','off');
+                set(ax, 'FontSize',16);  grid(ax,'on');  box(ax,'on')
+                xlabel(ax, 't [min]');  ylabel(ax, 'z of the contour [cm]')
+                title(ax, {strrep(fd.Key,'_','\_'), ttl}, 'FontSize',12)
+                legend(ax, hh, 'Location','northwest', 'FontSize',12)
+                saveas(fig, fullfile(exportPathChk, sprintf('arrival_levels_%s_%s_%s%s.png', pk, fd.Key, ds, arrVar)));
+            end
+        end
+    end
+end
+
+TL = vertcat(rowsLvl{:});  TJ = vertcat(rowsJ{:});
+fprintf('\nPer level (%s): straight-line and curved t0 [min since start]:\n', arrVar);  disp(TL)
+fprintf('\nAll levels together: one origin (joint1), two origins (joint2: t0c centre, t0s spreading start):\n');  disp(TJ)
+fx = fullfile(exportPathChk, 'arrival_levels_check.xlsx');
+writetable(TL, fx, 'Sheet','perLevel');  writetable(TJ, fx, 'Sheet','joint');
+if ~isempty(rowsKL)
+    TK = vertcat(rowsKL{:});
+    fprintf('\nKL from the profile width W%02d-%02d%s with each origin (centre zD %.1f-%.1f; frame at theta = %d deg):\n', ...
+        round(100*klPair), arrVar, klZD, klRot);  disp(TK)
+    writetable(TK, fx, 'Sheet','KL_byOrigin');
+end
+
 
 %% local helpers
 function out = ternary_str(cond, a, b)
@@ -687,4 +886,68 @@ if isfinite(z0) && nnz(sel) > 1
     [~, b] = min(abs(Tk.zD_center_C50(idx) - z0));
     sel = false(size(sel));  sel(idx(b)) = true;
 end
+end
+
+
+function [t0, v, a] = fitLevelCurve(t, z, tLo, tHi, sgn, vFix)
+% z = v (t - t0) + a sqrt(t - t0); linear in v, a for a given t0 -> 1D search on t0.
+% ADE form: a = 2 erfcinv(2C) sqrt(KL), so sign(a) = sgn = sign(0.5 - C): for C < 0.5, a >= 0 (the
+% level is ahead of the centre and its curve rises from z = 0 at t0). A wrong-sign a lets the curve
+% dip below z = 0 and puts t0 far too early (artifact) -> a = 0 instead (straight line from t0).
+% vFix (finite): v fixed (e.g. v of the C = 0.5 line), only t0 and a fitted.
+if nargin < 6, vFix = NaN; end
+t0 = gridFminbnd(@(x) levelSSE(t, z, x, sgn, vFix), tLo, tHi);
+[~, v, a] = levelSSE(t, z, t0, sgn, vFix);
+end
+
+function [sse, v, a] = levelSSE(t, z, t0, sgn, vFix)
+tau = t - t0;  r = sqrt(tau);
+if isnan(vFix)
+    X = [tau, r];  p = X\z;
+    if p(2) ~= 0 && sign(p(2)) ~= sgn        % constraint active: a = 0, z = v (t - t0)
+        p = [tau\z; 0];
+    end
+    v = p(1);  a = p(2);
+else
+    v = vFix;  y = z - v*tau;  a = r\y;      % z - v (t - t0) = a sqrt(t - t0)
+    if a ~= 0 && sign(a) ~= sgn, a = 0; end
+end
+sse = sum((z - v*tau - a*r).^2);
+end
+
+function [sse, v, t0c, KL] = jointSSE(t, z, e, t0c, t0s, vFix)
+% all levels: z = v (t - t0c) + e sqrt(KL (t - t0s)), e = 2 erfcinv(2C)
+% t0c = NaN: t0c free (from the intercept), else fixed (= t0s for the one-origin fit)
+% vFix (finite): v fixed (e.g. v of the C = 0.5 line); sqrt(KL) >= 0 (else KL = 0)
+if nargin < 6, vFix = NaN; end
+s = e.*sqrt(t - t0s);
+if isnan(vFix)
+    if isnan(t0c)
+        X = [t, ones(size(t)), s];  p = X\z;
+        if p(3) < 0, p = [X(:,1:2)\z; 0]; end
+        v = p(1);  t0c = -p(2)/p(1);  q = p(3);  zh = X*p;
+    else
+        X = [t - t0c, s];  p = X\z;
+        if p(2) < 0, p = [X(:,1)\z; 0]; end
+        v = p(1);  q = p(2);  zh = X*p;
+    end
+else
+    v = vFix;
+    if isnan(t0c)                            % z - v t = -v t0c + q s
+        X = [ones(size(t)), s];  p = X\(z - v*t);
+        if p(2) < 0, p = [mean(z - v*t); 0]; end
+        t0c = -p(1)/v;  q = p(2);  zh = v*t + X*p;
+    else                                     % z - v (t - t0c) = q s
+        q = s\(z - v*(t - t0c));  if q < 0, q = 0; end
+        zh = v*(t - t0c) + q*s;
+    end
+end
+sse = sum((z - zh).^2);
+KL  = q^2;
+end
+
+function x = gridFminbnd(f, lo, hi)
+% coarse grid, then fminbnd around the best grid point (avoids local minima)
+g = linspace(lo, hi, 241);  F = arrayfun(f, g);  [~, k] = min(F);
+x = fminbnd(f, g(max(k-1,1)), g(min(k+1,numel(g))));
 end
