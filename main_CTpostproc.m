@@ -655,7 +655,10 @@ end
 %% check_arrivalLevels.m
 % Stand-alone check, NOTHING is re-run or saved back: reads the <Key>_postproc.mat files already
 % written by main_CTpostproc (fallback: <Key>.mat of main_CTpreproc) and estimates the arrival time
-% from the trajectories of every contour level C = 0.01 ... 0.5 (zDFront<CC><arrVar>_cm vs t).
+% from the trajectories of every level C = 0.01 ... 0.5, run twice (arrSources):
+%   contour: mean z of the C contour (zDFront<CC><arrVar>_cm vs t)
+%   profile: crossing of level C on the averaged profile CVert<arrVar> (computed here, as profileWidth;
+%            low levels also before the C = 0.5 crossing exists, anchored at the inlet side)
 %
 % ADE front whose centre enters at t0c and that has been spreading since t0s:
 %       z_C(t) = v (t - t0c) + 2 erfcinv(2C) sqrt(KL (t - t0s))
@@ -684,6 +687,10 @@ klPair    = [0.40 0.60];                            % profile width for the KL c
 klZD      = [0.1 0.9];                              % front-centre window of the all-frame KL
 klRot     = 226;  klRotTol = 1;  klRotZD = [0.2 0.8];
 arrPlot   = true;
+arrSources = ["contour","profile"];                % where the level positions come from (both are run):
+                                                    %   "contour": mean z of the C contour (zDFront<CC><arrVar>_cm, main_CTpreproc)
+                                                    %   "profile": crossing of level C on the averaged profile CVert<arrVar>,
+                                                    %              searched outward from its C = 0.5 crossing (as profileWidth)
 arrUseV50 = true;                                   % true: every fit uses the velocity of the C = 0.5 line (v50)
 arrPlots  = ["joint2","perLevel"];                  % figures: "joint2" (common v, two origins) | "perLevel" | "joint1"
 exportPathChk = 'results/';  if ~isfolder(exportPathChk), mkdir(exportPathChk); end
@@ -700,20 +707,29 @@ for i = 1:height(cfg)
         rA   = struct();  if isfield(E,'resultsAll') && isfield(E.resultsAll, ds), rA = E.resultsAll.(ds); end
         t    = vars.secondsElapsed/60;
 
+        % level positions on the averaged profile, every frame (computed here from C1Profile)
+        [Zprof, ZDprof] = profLevels(vars.C1Profile, "CVert" + arrVar, fd.C1init/100, fd.C1j/100, arrLevels);
+
+        for src = arrSources
         % ---- data of every level
         T = [];  lv = [];
-        for C = arrLevels
-            cz = "zDFront" + sprintf('%02d', round(100*C)) + arrVar;
-            if ~all(ismember([cz, cz + "_cm"], vn)), continue, end
-            z  = vars.(cz + "_cm");  zD = vars.(cz);
+        for qL = 1:numel(arrLevels)
+            C = arrLevels(qL);
+            if src == "contour"
+                cz = "zDFront" + sprintf('%02d', round(100*C)) + arrVar;
+                if ~all(ismember([cz, cz + "_cm"], vn)), continue, end
+                z  = vars.(cz + "_cm");  zD = vars.(cz);
+            else
+                z  = Zprof(:,qL);  zD = ZDprof(:,qL);
+            end
             ok = isfinite(t) & isfinite(z) & zD > 0.03 & zD < 0.97;
             if nnz(ok) < 5, continue, end
             T  = [T; t(ok), z(ok), C*ones(nnz(ok),1)]; %#ok<AGROW>
             lv(end+1) = C; %#ok<AGROW>
         end
-        if isempty(lv), warning('%s (%s): no level traced', fd.Key, ds); continue, end
+        if isempty(lv), warning('%s (%s, %s): no level traced', fd.Key, ds, src); continue, end
         miss = setdiff(arrLevels, lv);
-        if ~isempty(miss), fprintf('%s (%s): levels not available: %s\n', fd.Key, ds, mat2str(miss)); end
+        if ~isempty(miss), fprintf('%s (%s, %s): levels not available: %s\n', fd.Key, ds, src, mat2str(miss)); end
 
         % ---- velocity of the C = 0.5 line (v50): used by every fit when arrUseV50
         v50 = NaN;
@@ -738,8 +754,8 @@ for i = 1:height(cfg)
             lvT0(q) = t0q;  lvV(q) = vq;  lvA(q) = aq;
             eC = 2*erfcinv(2*C);  KLq = NaN;
             if abs(eC) > 1e-6, KLq = (aq/eC)^2; end   % 0 when the constraint a = 0 is active
-            rowsLvl{end+1,1} = table(string(fd.Key), ds, C, nnz(s), -p(2)/p(1), p(1), t0q, vq, aq, KLq, ...
-                'VariableNames', {'experiment','ds','C','n','t0_line_min','v_line_cmmin', ...
+            rowsLvl{end+1,1} = table(string(fd.Key), ds, src, C, nnz(s), -p(2)/p(1), p(1), t0q, vq, aq, KLq, ...
+                'VariableNames', {'experiment','ds','source','C','n','t0_line_min','v_line_cmmin', ...
                 't0_curve_min','v_curve_cmmin','a_curve','KL_curve_cm2min'}); %#ok<SAGROW>
         end
 
@@ -754,9 +770,9 @@ for i = 1:height(cfg)
         tLines = fd.Vlinesbefore/fd.Q;
         tArrC  = NaN;  if isfield(rA,'tD_arrival_contour'), tArrC = rA.tD_arrival_contour*fd.Vtotal/fd.Q; end
         t0C50  = NaN;  if isfield(rA,'vFront'), t0C50 = -rA.vFront.intercept_cm/rA.vFront.v_front_cmmin; end
-        rowsJ{end+1,1} = table(string(fd.Key), ds, numel(lv), size(T,1), tLines, tArrC, t0C50, ...
+        rowsJ{end+1,1} = table(string(fd.Key), ds, src, numel(lv), size(T,1), tLines, tArrC, t0C50, ...
             t0a, va, KLa, t0c, t0s, t0c - t0s, vb, KLb, sqrt(sseB/size(T,1)), t0s*fd.Q/fd.Vtotal, ...
-            'VariableNames', {'experiment','ds','nLevels','nPts','tArr_lines','tArr_contour01','t0_C50line', ...
+            'VariableNames', {'experiment','ds','source','nLevels','nPts','tArr_lines','tArr_contour01','t0_C50line', ...
             't0_joint1','v_joint1','KL_joint1','t0c_joint2','t0s_joint2','t0c_minus_t0s','v_joint2','KL_joint2', ...
             'rmse_joint2_cm','tD_arr_t0s'}); %#ok<SAGROW>
 
@@ -776,9 +792,9 @@ for i = 1:height(cfg)
                 tau = t - tRefs(r);  KL = W.^2 ./ (4*k^2*tau);  KL(~(tau > 0)) = NaN;
                 inS = isfinite(KL) & KL > 0 & zc >= klZD(1) & zc <= klZD(2);
                 KLrot = NaN;  tauRot = NaN;  if ~isempty(selR), KLrot = KL(selR); tauRot = tau(selR); end
-                rowsKL{end+1,1} = table(string(fd.Key), ds, nmRef(r), tRefs(r), nnz(inS), median(KL(inS)), ...
+                rowsKL{end+1,1} = table(string(fd.Key), ds, src, nmRef(r), tRefs(r), nnz(inS), median(KL(inS)), ...
                     mean(KL(inS)), std(KL(inS)), KLrot, tauRot, ...
-                    'VariableNames', {'experiment','ds','origin','t_arr_min','n','KL_median','KL_mean','KL_std', ...
+                    'VariableNames', {'experiment','ds','source','origin','t_arr_min','n','KL_median','KL_mean','KL_std', ...
                     sprintf('KL_rot%d', klRot), sprintf('tau_rot%d_min', klRot)}); %#ok<SAGROW>
             end
         end
@@ -792,7 +808,7 @@ for i = 1:height(cfg)
             cm = parula(numel(lv) + 1);  tEnd = max(T(:,1));
             for pk = arrPlots
                 fig = figure('Position',[100 100 1000 650], 'NumberTitle','off', 'Name', ...
-                    sprintf('%s: front trajectories, %s (%s%s)', fd.Key, pk, ds, arrVar));
+                    sprintf('%s: front trajectories from the %s, %s (%s%s)', fd.Key, src, pk, ds, arrVar));
                 ax = axes(fig);  hold(ax,'on');  hh = gobjects(0);
                 for q = 1:numel(lv)
                     s = T(:,3) == lv(q);
@@ -830,12 +846,13 @@ for i = 1:height(cfg)
                 if isfinite(tArrC), xline(ax, tArrC, 'r:', 't_{arr,C=0.01}', 'LineWidth',1.5, 'HandleVisibility','off'); end
                 yline(ax, 0, 'k-', 'HandleVisibility','off');
                 set(ax, 'FontSize',16);  grid(ax,'on');  box(ax,'on')
-                xlabel(ax, 't [min]');  ylabel(ax, 'z of the contour [cm]')
-                title(ax, {strrep(fd.Key,'_','\_'), ttl}, 'FontSize',12)
+                xlabel(ax, 't [min]');  ylabel(ax, "z of the level [cm] (" + src + ")")
+                title(ax, {strrep(fd.Key,'_','\_') + " (" + src + " levels)", ttl}, 'FontSize',12)
                 legend(ax, hh, 'Location','northwest', 'FontSize',12)
-                saveas(fig, fullfile(exportPathChk, sprintf('arrival_levels_%s_%s_%s%s.png', pk, fd.Key, ds, arrVar)));
+                saveas(fig, fullfile(exportPathChk, sprintf('arrival_levels_%s_%s_%s_%s%s.png', src, pk, fd.Key, ds, arrVar)));
             end
         end
+        end   % src
     end
 end
 
@@ -950,4 +967,71 @@ function x = gridFminbnd(f, lo, hi)
 % coarse grid, then fminbnd around the best grid point (avoids local minima)
 g = linspace(lo, hi, 241);  F = arrayfun(f, g);  [~, k] = min(F);
 x = fminbnd(f, g(max(k-1,1)), g(min(k+1,numel(g))));
+end
+
+function [Z, ZD] = profLevels(profCol, cCol, Ci, Cj, levels, trimFrac, nSmooth)
+% Position of every level C on the averaged profile of every frame, as profileWidth does it:
+% Cn = (C - Ci)/(Cj - Ci), 2 % of the column dropped at each end, injection end first, 5-slice moving
+% median; anchor = the Cn = 0.5 down-crossing with the steepest drop; levels < 0.5 searched downstream
+% of it, levels > 0.5 upstream (linear interpolation between slices). Before the centre is inside
+% (no Cn = 0.5 crossing), the anchor is the highest Cn in the first 20 % of the column (inlet side),
+% so the low levels (C = 0.01, 0.05, ...) are found from their first appearance, as the contours.
+% z from the injection end [cm],
+% zD = z / image length. Z, ZD: frames x levels (NaN where the level is not crossed).
+if nargin < 6, trimFrac = 0.02; end
+if nargin < 7, nSmooth = 5; end
+if iscell(profCol) || isstruct(profCol), n = numel(profCol); else, n = height(profCol); end
+Z = nan(n, numel(levels));  ZD = Z;
+for r = 1:n
+    pr = getProfRow(profCol, r);
+    if isempty(pr) || ~ismember(cCol, string(pr.Properties.VariableNames)), continue, end
+    z = double(pr.zVertcm(:));  C = double(pr.(cCol)(:));
+    ok = isfinite(z) & isfinite(C);  z = z(ok);  C = C(ok);
+    if numel(z) < 10, continue, end
+    Limg = max(z);
+    [z, o] = sort(z);  C = C(o);  Cn = (C - Ci)/(Cj - Ci);
+    L  = z(end) - z(1);
+    in = z >= z(1) + trimFrac*L & z <= z(end) - trimFrac*L;  z = z(in);  Cn = Cn(in);
+    nE = ceil(numel(Cn)/5);
+    if mean(Cn(1:nE)) < mean(Cn(end-nE+1:end)), Cn = flipud(Cn); end
+    zz = z - z(1) + trimFrac*L;  Cm = movmedian(Cn, nSmooth);
+    k50 = find(Cm(1:end-1) >= 0.5 & Cm(2:end) < 0.5);
+    if isempty(k50)
+        % centre not inside yet: anchor at the highest Cn in the first 20 % (inlet side), so the low
+        % levels already in the core are found as soon as they appear (as the contours); levels >= 0.5
+        % stay NaN until the C = 0.5 crossing exists
+        nA = max(2, ceil(0.2*numel(Cm)));  [cMax, k50] = max(Cm(1:nA));
+        if cMax <= min(levels), continue, end
+        noCentre = true;
+    else
+        g = -gradient(Cm, zz);  [~, b] = max(g(k50));  k50 = k50(b);
+        noCentre = false;
+    end
+    for q = 1:numel(levels)
+        c = levels(q);
+        if noCentre && c >= 0.5, continue, end
+        if abs(c - 0.5) < 1e-9
+            zc = interpLev(zz, Cm, k50, 0.5);
+        elseif c < 0.5                                   % downstream of the centre
+            j = find(Cm(k50+1:end) < c, 1);  zc = NaN;
+            if ~isempty(j), j = k50 + j;  zc = interpLev(zz, Cm, j-1, c); end
+        else                                             % upstream of the centre
+            j = find(Cm(1:k50) > c, 1, 'last');  zc = NaN;
+            if ~isempty(j) && j < numel(Cm), zc = interpLev(zz, Cm, j, c); end
+        end
+        Z(r,q) = zc;  ZD(r,q) = zc/Limg;
+    end
+end
+end
+
+function zc = interpLev(z, C, k, c0)
+% position of c0 between samples k and k+1
+if C(k) == C(k+1), zc = z(k); return, end
+zc = z(k) + (c0 - C(k))*(z(k+1) - z(k))/(C(k+1) - C(k));
+end
+
+function pr = getProfRow(col, l)
+if iscell(col), pr = col{l}; elseif istable(col), pr = col(l,:); else, pr = col(l); end
+if iscell(pr), pr = pr{1}; end
+if isstruct(pr), pr = struct2table(pr); end
 end
