@@ -1421,6 +1421,103 @@ for ds = dataSources
     end
     saveFigBoth(fig, exportPath, sprintf('frontCentre_profile_ufront_allExp_%s%s_%s_%s', ds, envVarP2, vfSrc, tXtag), closeAfterSave)
 end
+
+%% 8a2a) Front center of the 2D CONTOURS in dimensions: z [cm] vs t_res [min], with the u_front line
+% Dots and line from the SAME quantity, the C = 0.5 2D-contour center over the full image
+% (zDFront50_cm, populate_CTframeVars), which is what main_CTpreproc fits for v_front (frontVel):
+%   y = z = zDFront50_cm [cm]
+%   x = t_res = t - t_arr [min] (t_arr = tResRef arrival of the load block, resultsAll.(ds).tArr_plot_min,
+%                               the same origin as the t_D,res axis; C50 = time the center enters the rock)
+% Filled dots = frames used in the v_front fit (0.03 < z_D < 0.97, as frontVel); open = the rest.
+% Here the slopes ARE the front velocities, so faster (higher Q) fronts are steeper: unlike 8a2,
+% where t_D = Q t / V divides the velocity by Q and the slopes collapse.
+% Line (dashed, same color): z = v_front t + b of main_CTpreproc (resultsAll.(ds).vFront), shifted to
+% t_res; fallback (no vFront): the same fit done here on the plotted dots.
+% ufLineA = true also draws z = u_int t_res, u_int = Q/(A phi) (dotted, piston flow).
+% Printed: v_front, u_int = Q/(A phi) and v_front/u_int (> 1: center faster than piston flow).
+
+ufLineA   = false;              % true: also the piston-flow line z = u_int t_res (dotted)
+fsA       = 16;
+mkA       = 18;
+
+for ds = dataSources
+    figName = sprintf('Contour front center z [cm] vs t_res [min] with the u_front line (%s, t_arr %s)', ds, tResRef);
+    fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
+    ax  = axes(fig);  hold(ax,'on')
+    h = gobjects(0);  hLine = gobjects(0);  hU = gobjects(0);  rowsA = {};  zMax = 0;
+
+    for i = 1:nExp
+        vars = expCTDataAll{i}.varsAll.(ds);
+        vn   = string(vars.Properties.VariableNames);
+        fd   = filedataExpAll{i};
+        if ~all(ismember(["zDFront50_cm","zDFront50"], vn))
+            warning('8a2a: %s (%s): zDFront50_cm / zDFront50 missing', expKeys(i), ds);  continue
+        end
+        rA   = struct();
+        if isfield(expCTDataAll{i}, 'resultsAll') && isfield(expCTDataAll{i}.resultsAll, ds)
+            rA = expCTDataAll{i}.resultsAll.(ds);
+        end
+        if ~isfield(rA, 'tArr_plot_min') || ~isfinite(rA.tArr_plot_min)
+            warning('8a2a: %s (%s): no t_arr (run the load block)', expKeys(i), ds);  continue
+        end
+        tArr = rA.tArr_plot_min;
+
+        t    = vars.secondsElapsed/60;                           % [min since start]
+        tRes = t - tArr;                                         % t_res [min]
+        z    = vars.zDFront50_cm;                                % contour center [cm]
+        zD   = vars.zDFront50;
+        ok   = isfinite(tRes) & isfinite(z);
+        if ~any(ok), continue, end
+        inFit = ok & zD > 0.03 & zD < 0.97;                     % frames of the frontVel fit
+        h(end+1) = scatter(ax, tRes(inFit), z(inFit), mkA, expCol(i,:), 'filled', ...
+            'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName', expName(i)); %#ok<SAGROW>
+        scatter(ax, tRes(ok & ~inFit), z(ok & ~inFit), mkA, 0.6*expCol(i,:), 'HandleVisibility','off')
+
+        % length of the column: z where z_D = 1 (zDFront50_cm / zDFront50), fallback core length
+        rL   = z(ok & zD > 0.05) ./ zD(ok & zD > 0.05);
+        Limg = median(rL, 'omitnan');  if ~isfinite(Limg), Limg = fd.L*2.54; end
+        zMax = max(zMax, Limg);
+
+        % front-velocity line z = v t + b (t in min since the start), shifted to t_res = t - t_arr
+        v = NaN;  b = NaN;  srcUsed = "preproc vFront";
+        if isfield(rA, 'vFront') && isstruct(rA.vFront) && isfinite(rA.vFront.v_front_cmmin) && rA.vFront.v_front_cmmin > 0
+            v = rA.vFront.v_front_cmmin;  b = rA.vFront.intercept_cm;
+        elseif nnz(inFit) >= 5
+            srcUsed = "fit here";
+            p = polyfit(t(inFit), z(inFit), 1);  v = p(1);  b = p(2);
+        end
+        uInt = fd.Q/(fd.phi*pi*(fd.D*2.54/2)^2);                % interstitial velocity [cm/min]
+        if isfinite(v) && v > 0
+            tRes0 = -b/v - tArr;  tRes1 = (Limg - b)/v - tArr;    % z = 0 and z = L
+            plot(ax, [tRes0 tRes1], [0 Limg], '--', 'Color',0.6*expCol(i,:), 'LineWidth',2, 'HandleVisibility','off')
+            if isempty(hLine)
+                hLine = plot(ax, NaN, NaN, '--', 'Color',[0.3 0.3 0.3], 'LineWidth',2, 'DisplayName','u_{front}');
+            end
+        else
+            tRes0 = NaN;  tRes1 = NaN;
+        end
+        if ufLineA
+            plot(ax, [0 Limg/uInt], [0 Limg], ':', 'Color',0.6*expCol(i,:), 'LineWidth',2, 'HandleVisibility','off')
+            if isempty(hU)
+                hU = plot(ax, NaN, NaN, ':', 'Color',[0.3 0.3 0.3], 'LineWidth',2, 'DisplayName','u_{int} = Q/(A\phi)');
+            end
+        end
+        rowsA{end+1,1} = table(expName(i), srcUsed, tArr, Limg, v, uInt, v/uInt, tRes0, tRes1, nnz(inFit), ...
+            'VariableNames', {'experiment','line','t_arr_min','L_cm','v_front_cmmin','u_int_cmmin', ...
+            'v_front_over_u_int','tres_at_z0_min','tres_at_L_min','n_fit'}); %#ok<SAGROW>
+    end
+    if isempty(h), close(fig); continue, end
+
+    set(ax, 'FontSize',fsA, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
+    xlabel(ax, 't_{res} [min]', 'FontSize',fsA);  ylabel(ax, 'z front center [cm]', 'FontSize',fsA)
+    ylim(ax, [-0.02 1.02]*zMax);  xlim(ax, [0 inf]);  grid(ax,'on');  box(ax,'on')
+    legend(ax, [h hLine hU], 'Interpreter','tex', 'FontSize',fsA-2, 'Location','southeast')
+    if ~isempty(rowsA)
+        fprintf('\n8a2a) Contour front center in dimensions (%s, t_arr %s): v_front vs u_int = Q/(A phi):\n', ds, tResRef);
+        disp(vertcat(rowsA{:}))
+    end
+    saveFigBoth(fig, exportPath, sprintf('frontCenter_contour_ufront_dim_allExp_%s_%s', ds, tXtagRes(tResRef)), closeAfterSave)
+end
 %% 8b) Front envelope per experiment: 2D-contour width (colour) vs averaged-profile width (grey)
 % Contour widths zDWidth_<lo>_<hi> (populate_CTframeVars) and averaged-profile widths
 % zDWidthProf_<lo>_<hi> (addProfileWidths, written by main_CTpostproc into <Key>_postproc.mat).
