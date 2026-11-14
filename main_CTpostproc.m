@@ -36,9 +36,18 @@
 %                 zDFrontProfC50<vfProfVariant>_cm = Cn = 0.5 crossing of the profile, no fit, as the
 %                 C = 0.5 contour; vfProfCenter = "erfc" uses the erfc-fit z50 instead) -> the time
 %                 origin of the profile's own centre, consistent with the profile widths used for KL
+%       levels  : arrival from the trajectories of every level C = 0.01 ... 0.5 (arrivalLevels, below):
+%                 each level of the averaged profile (and of the contours) fitted with its own ADE form
+%                 z_C = v50 (t - t0_C) + a_C sqrt(t - t0_C), a_C >= 0; stored arrival = t0_C of
+%                 arrOpt.refSource / refLevel / refFit (default: profile, C = 0.01 -> time the front,
+%                 C > 0, enters the rock); all inlet spreading goes into t_res, no W0 needed
 %       contour : first frame with a C = 0.01 contour (leading edge)
 %       lines   : line volume before the core / Q
 %     stored in resultsAll.(ds).tArr_profKL_min / tArr_profKL_ref (read by klAllFrames in main_CTplots)
+%   - level arrivals stored in resultsAll.(ds).arrLevels (.contour / .profile: .perLevel, .joint tables,
+%     .v50), resultsAll.(ds).tArr_levels_min / tArr_levels_ref / tD_arr_levels (main_CTplots: tResRef
+%     = "levels"); Excel sheets arrLevels_perLevel / arrLevels_joint, Summary columns tArr_levels_*;
+%     figures <Key>_arrLevels_<ds>_<source>_<joint2|perLevel>.png
 
 %% IMPORT input
 Root = CT_setupPaths;
@@ -110,15 +119,29 @@ for i = 1:height(inputFileConfig)
 
     % arrival time (origin of tau = t - t_arr) of every KL from single profiles / per-frame widths:
     % mid-profile (KL_profileAt), every frame (KL_allProfileWidths), W0 fit, theta = klRot frame
-    tArrProfRef  = "C50";     % "C50" (contour centre line, -b/v) | "C50prof" (profile centre line)
-                              % | "contour" (C = 0.01) | "lines" (Vlines/Q)
+    tArrProfRef  = "levels";  % "levels" (level trajectories, arrOpt below) | "C50" (contour centre line, -b/v)
+                              % | "C50prof" (profile centre line) | "contour" (C = 0.01) | "lines" (Vlines/Q)
     vfProfVariant = "_xtrim"; % profile centre used for C50prof: "_xtrim" (as the profile KL) | "" (full)
     vfProfCenter  = "crossing"; % profile centre: "crossing" (Cn = 0.5 crossing, no fit, zDFrontProfC50)
                                 % | "erfc" (erfc-fit z50, zDFrontProf50)
     sigmaTau_mid = tArrProfRef; % arrival used by the sigma alias of the mid-profile KL
     % arrival time of the width-growth / moment fits vs time (fitKL_frontWidth, fitKL_moments,
     % widthVsTime plot): "lines" keeps the previous results; "C50" / "contour" also possible
-    tArrFitRef   = "lines";   % "lines" | "C50" | "C50prof" | "contour"
+    tArrFitRef   = "lines";   % "lines" | "levels" | "C50" | "C50prof" | "contour"
+
+    % arrival from the trajectories of every level (arrivalLevels): "levels" arrival above
+    arrOpt = struct( ...
+        'levels',    [0.01 0.05 0.1 0.16 0.2 0.3 0.4 0.5], ... % contour levels not traced in preproc are skipped
+        'variant',   "_xtrim", ...              % "" = full image | "_xtrim" (as the profile KL)
+        'sources',   ["contour","profile"], ... % level positions from the 2D contours and the averaged profile
+        'useV50',    true, ...                  % every fit uses the velocity of that source's C = 0.5 line
+        'search',    120, ...                   % t0 searched up to this many min before the first point
+        'refSource', "profile", ...             % stored arrival: "profile" | "contour"
+        'refLevel',  0.01, ...                  % ... of level C (refFit "curve" / "line")
+        'refFit',    "curve", ...               % ... "curve" (per-level ADE form, t0 at z = 0) | "line" | "t0s"
+        'doPlot',    true, ...                  % figures per data source and level source
+        'plots',     ["joint2","perLevel"], ... % "joint2" (common v, two origins) | "perLevel" | "joint1"
+        'closeFig',  true);
 
     % front width from the averaged profile (addProfileWidths -> columns of varsAll)
     profWidthPairs = [0.10 0.90; 0.20 0.80; 0.30 0.70; 0.40 0.60];   % [low high] levels
@@ -223,15 +246,24 @@ for i = 1:height(inputFileConfig)
         vFrontProf_cmmin = vpSel.v_front_cmmin;
         t0C50prof_min    = vpSel.t0_min;
 
+        % arrival from the trajectories of every level (contours and averaged profile)
+        rAll = struct();
+        if isfield(expCTData, 'resultsAll') && isfield(expCTData.resultsAll, dataSource)
+            rAll = expCTData.resultsAll.(dataSource);
+        end
+        [arrLevels, tArrLev_min, tArrLevRef] = arrivalLevels(vars, filedataExp, rAll, arrOpt, ...
+            fullfile(pathExportAll, filedataExp.Key + "_arrLevels_" + dataSource));
+
         fprintf(['%s (%s): v_front contour = %.4g cm/min, v_front profile%s (%s) = %.4g cm/min (u_int = %.4g); ' ...
                  't_arr contour C=0.01 = %.3g min, t_arr lines = %.3g min, t0 of the C=0.5 line: contour = %.3g, ' ...
-                 'profile = %.3g min\n'], ...
+                 'profile = %.3g min; t_arr levels (%s) = %.3g min\n'], ...
             filedataExp.Key, dataSource, vFront_cmmin, vfProfVariant, vfProfCenter, vFrontProf_cmmin, uint_cmmin, ...
-            tArrContour_min, tLines_min, t0C50_min, t0C50prof_min);
+            tArrContour_min, tLines_min, t0C50_min, t0C50prof_min, tArrLevRef, tArrLev_min);
 
         % arrival times used below (fallback C50prof -> C50 -> contour -> lines when one is missing)
         tArrC = tArrContour_min;  if ~isfinite(tArrC), tArrC = tLines_min; end     % contour, else lines
-        tArrAll = struct('C50', t0C50_min, 'C50prof', t0C50prof_min, 'contour', tArrC, 'lines', tLines_min);
+        tArrAll = struct('levels', tArrLev_min, 'C50', t0C50_min, 'C50prof', t0C50prof_min, ...
+            'contour', tArrC, 'lines', tLines_min);
         tArrP = pickArrival(tArrAll, tArrProfRef, filedataExp.Key, dataSource);     % single-profile KL
         tArrF = pickArrival(tArrAll, tArrFitRef,  filedataExp.Key, dataSource);     % width-growth fits
         t_arrival_min = max(tArrF, 0);   % scalar, broadcasts in fitKL_frontWidth/fitKL_moments
@@ -363,10 +395,10 @@ for i = 1:height(inputFileConfig)
 
             % KL from the profile(s) with the front centre at zDtarget_mid
             plotFile_mid = fullfile(pathExportAll, filedataExp.Key + "_KLmidProfile_" + dataSource + "_" + variant);
-            % every arrival is evaluated (methods <m>_C50, <m>_C50prof, <m>_contour, <m>_lines); the selected one
-            % first, so the per-frame KL plot of KL_profileAt uses it
+            % every arrival is evaluated (methods <m>_levels, <m>_C50, <m>_C50prof, <m>_contour, <m>_lines);
+            % the selected one first, so the per-frame KL plot of KL_profileAt uses it
             tArr = struct();  tArr.(tArrProfRef) = tArrP;
-            for a = ["C50","C50prof","contour","lines"]
+            for a = ["levels","C50","C50prof","contour","lines"]
                 if ~isfield(tArr, a) && isfinite(tArrAll.(a)), tArr.(a) = tArrAll.(a); end
             end
             resultsOut.(variant).KL_midProfile = KL_profileAt(vars, variantSuffix, ...
@@ -493,6 +525,10 @@ for i = 1:height(inputFileConfig)
         resultsOut.t0_C50prof_min    = t0C50prof_min;
         resultsOut.vFrontProf_variant = string(vfProfVariant);
         resultsOut.vFrontProf_center  = string(vfProfCenter);
+        resultsOut.arrLevels          = arrLevels;            % .contour / .profile: .perLevel, .joint, .v50, ...
+        resultsOut.tArr_levels_min    = tArrLev_min;          % arrival from the levels (main_CTplots: tResRef = "levels")
+        resultsOut.tArr_levels_ref    = tArrLevRef;
+        resultsOut.tD_arr_levels      = tArrLev_min*filedataExp.Q/filedataExp.Vtotal;
         resultsOut.MFM_fitData       = fitDataMFM;
         resultsOut.KL_MFM_CT         = KL_MFM_CT;
         resultsOut.dKL_MFM_CT        = dKL_MFM_CT;
@@ -564,6 +600,15 @@ for i = 1:height(inputFileConfig)
             writetable(wTab, xlsxName, 'Sheet', "widths_vs_time_" + variant);
         end
 
+        % arrival from the levels: per-level and joint fits of every source
+        srcAL = string(fieldnames(arrLevels))';
+        if ~isempty(srcAL)
+            cP = cellfun(@(s_) arrLevels.(s_).perLevel, cellstr(srcAL), 'UniformOutput', false);
+            cJ = cellfun(@(s_) arrLevels.(s_).joint,    cellstr(srcAL), 'UniformOutput', false);
+            writetable(vertcat(cP{:}), xlsxName, 'Sheet', 'arrLevels_perLevel');
+            writetable(vertcat(cJ{:}), xlsxName, 'Sheet', 'arrLevels_joint');
+        end
+
         summaryT = table(string(fitDataMFM), ...
             KL_MFM_CT,  dKL_MFM_CT,  string(mfmResCT.model),  D_cm2min, ...
             KL_MFM_UHS, dKL_MFM_UHS, string(mfmResUHS.model), D_UHS_cm2min, ...
@@ -629,6 +674,15 @@ for i = 1:height(inputFileConfig)
             summaryT.("nFit_vFrontProf" + sfxP)   = vp.nValidPts;
         end
         summaryT.vFrontProf_center = string(vfProfCenter);
+        summaryT.tArr_levels_min   = tArrLev_min;
+        summaryT.tArr_levels_ref   = tArrLevRef;
+        summaryT.tD_arr_levels     = tArrLev_min*filedataExp.Q/filedataExp.Vtotal;
+        for s_ = srcAL                                      % joint fit of every source
+            summaryT.("t0s_joint2_" + s_ + "_min") = arrLevels.(s_).joint.t0s_joint2;
+            summaryT.("t0c_joint2_" + s_ + "_min") = arrLevels.(s_).joint.t0c_joint2;
+            summaryT.("KL_joint2_" + s_ + "_cm2min") = arrLevels.(s_).joint.KL_joint2;
+            summaryT.("v50_" + s_ + "_cmmin")       = arrLevels.(s_).v50;
+        end
         summaryT.tArr_profKL_ref   = string(tArrProfRef);
         summaryT.tArr_profKL_min   = tArrP;
         summaryT.tD_arr_profKL     = tArrD_P;
@@ -652,302 +706,23 @@ for i = 1:height(inputFileConfig)
 
 end
 
-%% Arrival time from the trajectories of every level (C = 0.01 ... 0.5), stored for main_CTplots
-% Run AFTER the main section above (it reads the <Key>_postproc.mat files that section writes; a re-run
-% of the main section rebuilds those files without these fields, so run this section again after it).
-% With arrStore = true the results are stored like the main section:
-%   resultsAll.(ds).arrLevels.(contour|profile) .perLevel / .joint / .KL_byOrigin (tables), .v50, .levels
-%   resultsAll.(ds).tArr_levels_min / tArr_levels_ref / tD_arr_levels   <- arrival for t_res in main_CTplots
-%                                                                          (tResRef = "levels")
-%   saved back into <Key>_postproc.mat; sheets arrLevels_perLevel / arrLevels_joint / arrLevels_KL and
-%   Summary columns tArr_levels_* added to <Key>_KLresultsAll_<ds>.xlsx
-% The stored arrival is chosen with arrRefSource / arrRefLevel / arrRefFit (default: profile, C = 0.01,
-% curved per-level ADE fit = the time the C = 0.01 level of the averaged profile is at z = 0).
-% Levels are estimated from the trajectories of every level C = 0.01 ... 0.5, run twice (arrSources):
-%   contour: mean z of the C contour (zDFront<CC><arrVar>_cm vs t)
-%   profile: crossing of level C on the averaged profile CVert<arrVar> (computed here, as profileWidth;
-%            low levels also before the C = 0.5 crossing exists, anchored at the inlet side)
-%
-% ADE front whose centre enters at t0c and that has been spreading since t0s:
-%       z_C(t) = v (t - t0c) + 2 erfcinv(2C) sqrt(KL (t - t0s))
-%   (C = 0.5: straight line through t0c; C < 0.5: ahead of it by a sqrt(t) term)
-% Fits (arrUseV50 = true: v of every fit = v of the C = 0.5 straight line, only origins / KL fitted):
-%   1) per level, straight line   z = v_C (t - t0_C)                       (as frontVel; exact only for C = 0.5)
-%   2) per level, curved           z = v_C (t - t0_C) + a_C sqrt(t - t0_C)  -> t0_C, KL_C = (a_C/(2 erfcinv(2C)))^2
-%                                  (a_C >= 0 for C < 0.5, else a_C = 0: each curve rises from z = 0 at its own t0_C)
-%   3) all levels together         a) one origin t0c = t0s (sharp step at the inlet)
-%                                  b) two origins: t0c (centre enters) and t0s (spreading starts = front, C > 0, enters)
-% Then KL of the profile width with tau = t - t0s (no W0):  KL = W^2/(4 k^2 (t - t0s)),
-% compared with tau = t - t0 of the C = 0.5 line (tArr_profKL_min of main_CTpostproc):
-%   every frame with the centre in klZD (weighted mean of KL_allProfileWidths style, median), and
-%   the frame at theta = klRot (centre closest to zD = 0.5 in klRotZD), as the KL-by-method bar.
-% Frames used per level: 0.03 < z_D < 0.97 (as frontVel). t in min since the start of injection.
-% Output: printed tables + arrival_levels_check.xlsx in exportPathChk, one figure per experiment.
-
-Root = CT_setupPaths;
-cfg  = readtable('inputCTExpConfig.xlsx');
-
-arrStore     = true;                                % store in resultsAll / _postproc.mat / Excel (false = check only)
-arrRefSource = "profile";                           % stored arrival from: "profile" | "contour"
-arrRefLevel  = 0.01;                                % ... level C (for arrRefFit "curve" / "line")
-arrRefFit    = "curve";                             % ... "curve" (per-level ADE form, t0 at z = 0) | "line" (straight
-                                                    %     line) | "t0s" (joint two-origin fit, spreading start)
-arrDS     = ["rhoNorm","conc"];                     % data source(s); both, as the main section                                 % data source(s), e.g. ["rhoNorm","conc"]
-arrVar    = "_xtrim";                               % "" = full image | "_xtrim" (as the profile KL)
-arrLevels = [0.01 0.05 0.1 0.16 0.2 0.3 0.4 0.5];   % levels not traced in main_CTpreproc are skipped
-arrSearch = 120;                                    % t0 searched up to this many min before the first point
-klPair    = [0.40 0.60];                            % profile width for the KL check
-klZD      = [0.1 0.9];                              % front-centre window of the all-frame KL
-klRot     = 226;  klRotTol = 1;  klRotZD = [0.2 0.8];
-arrPlot   = true;
-arrSources = ["contour","profile"];                % where the level positions come from (both are run):
-                                                    %   "contour": mean z of the C contour (zDFront<CC><arrVar>_cm, main_CTpreproc)
-                                                    %   "profile": crossing of level C on the averaged profile CVert<arrVar>,
-                                                    %              searched outward from its C = 0.5 crossing (as profileWidth)
-arrUseV50 = true;                                   % true: every fit uses the velocity of the C = 0.5 line (v50)
-arrPlots  = ["joint2","perLevel"];                  % figures: "joint2" (common v, two origins) | "perLevel" | "joint1"
-exportPathChk = 'results/';  if ~isfolder(exportPathChk), mkdir(exportPathChk); end
-
-rowsLvl = {};  rowsJ = {};  rowsKL = {};
-for i = 1:height(cfg)
-    fd   = import_inputCTExp(cfg.inputFileName{i});
-    pth  = cfg.exportPath{i};
-    fPost = fullfile(pth, fd.Key + "_postproc.mat");  fPre = fullfile(pth, fd.Key + ".mat");
-    if isfile(fPost), S = load(fPost); else, S = load(fPre); warning('%s: no _postproc.mat, preproc file used (no KL check)', fd.Key); end
-    E = S.expCTDataSave;
-    for ds = arrDS
-        if ~isfield(E.varsAll, ds), continue, end
-        vars = E.varsAll.(ds);  vn = string(vars.Properties.VariableNames);
-        rA   = struct();  if isfield(E,'resultsAll') && isfield(E.resultsAll, ds), rA = E.resultsAll.(ds); end
-        t    = vars.secondsElapsed/60;
-
-        % level positions on the averaged profile, every frame (computed here from C1Profile)
-        [Zprof, ZDprof] = profLevels(vars.C1Profile, "CVert" + arrVar, fd.C1init/100, fd.C1j/100, arrLevels);
-
-        AL = struct();                                     % results of this experiment / data source
-        for src = arrSources
-        nL0 = numel(rowsLvl);  nJ0 = numel(rowsJ);  nK0 = numel(rowsKL);
-        % ---- data of every level
-        T = [];  lv = [];
-        for qL = 1:numel(arrLevels)
-            C = arrLevels(qL);
-            if src == "contour"
-                cz = "zDFront" + sprintf('%02d', round(100*C)) + arrVar;
-                if ~all(ismember([cz, cz + "_cm"], vn)), continue, end
-                z  = vars.(cz + "_cm");  zD = vars.(cz);
-            else
-                z  = Zprof(:,qL);  zD = ZDprof(:,qL);
-            end
-            ok = isfinite(t) & isfinite(z) & zD > 0.03 & zD < 0.97;
-            if nnz(ok) < 5, continue, end
-            T  = [T; t(ok), z(ok), C*ones(nnz(ok),1)]; %#ok<AGROW>
-            lv(end+1) = C; %#ok<AGROW>
-        end
-        if isempty(lv), warning('%s (%s, %s): no level traced', fd.Key, ds, src); continue, end
-        miss = setdiff(arrLevels, lv);
-        if ~isempty(miss), fprintf('%s (%s, %s): levels not available: %s\n', fd.Key, ds, src, mat2str(miss)); end
-
-        % ---- velocity of the C = 0.5 line (v50): used by every fit when arrUseV50
-        v50 = NaN;
-        if any(abs(lv - 0.5) < 1e-9)
-            s50 = abs(T(:,3) - 0.5) < 1e-9;  p50 = polyfit(T(s50,1), T(s50,2), 1);  v50 = p50(1);
-        elseif arrUseV50
-            warning('%s (%s): no C = 0.5 level -> velocity fitted freely', fd.Key, ds);
-        end
-        vFix = NaN;  if arrUseV50, vFix = v50; end
-
-        % ---- 1) and 2) per level (C = 0.5: the ADE form is the straight line, a = 0)
-        lvT0 = nan(size(lv));  lvV = lvT0;  lvA = lvT0;
-        for q = 1:numel(lv)
-            C  = lv(q);
-            s  = T(:,3) == C;  tt = T(s,1);  zz = T(s,2);
-            p  = polyfit(tt, zz, 1);
-            if abs(C - 0.5) < 1e-9
-                t0q = -p(2)/p(1);  vq = p(1);  aq = 0;
-            else
-                [t0q, vq, aq] = fitLevelCurve(tt, zz, min(tt) - arrSearch, min(tt) - 1e-3, sign(0.5 - C), vFix);
-            end
-            lvT0(q) = t0q;  lvV(q) = vq;  lvA(q) = aq;
-            eC = 2*erfcinv(2*C);  KLq = NaN;
-            if abs(eC) > 1e-6, KLq = (aq/eC)^2; end   % 0 when the constraint a = 0 is active
-            rowsLvl{end+1,1} = table(string(fd.Key), ds, src, C, nnz(s), -p(2)/p(1), p(1), t0q, vq, aq, KLq, ...
-                'VariableNames', {'experiment','ds','source','C','n','t0_line_min','v_line_cmmin', ...
-                't0_curve_min','v_curve_cmmin','a_curve','KL_curve_cm2min'}); %#ok<SAGROW>
-        end
-
-        % ---- 3) all levels together
-        e   = 2*erfcinv(2*T(:,3));                                 % 0 for C = 0.5
-        tHi = min(T(:,1)) - 1e-3;  tLo = tHi - arrSearch;
-        t0a = gridFminbnd(@(x) jointSSE(T(:,1), T(:,2), e, x, x, vFix), tLo, tHi);         % a) one origin
-        [~, va, ~, KLa] = jointSSE(T(:,1), T(:,2), e, t0a, t0a, vFix);
-        t0s = gridFminbnd(@(x) jointSSE(T(:,1), T(:,2), e, NaN, x, vFix), tLo, tHi);       % b) two origins
-        [sseB, vb, t0c, KLb] = jointSSE(T(:,1), T(:,2), e, NaN, t0s, vFix);
-
-        tLines = fd.Vlinesbefore/fd.Q;
-        tArrC  = NaN;  if isfield(rA,'tD_arrival_contour'), tArrC = rA.tD_arrival_contour*fd.Vtotal/fd.Q; end
-        t0C50  = NaN;  if isfield(rA,'vFront'), t0C50 = -rA.vFront.intercept_cm/rA.vFront.v_front_cmmin; end
-        rowsJ{end+1,1} = table(string(fd.Key), ds, src, numel(lv), size(T,1), tLines, tArrC, t0C50, ...
-            t0a, va, KLa, t0c, t0s, t0c - t0s, vb, KLb, sqrt(sseB/size(T,1)), t0s*fd.Q/fd.Vtotal, ...
-            'VariableNames', {'experiment','ds','source','nLevels','nPts','tArr_lines','tArr_contour01','t0_C50line', ...
-            't0_joint1','v_joint1','KL_joint1','t0c_joint2','t0s_joint2','t0c_minus_t0s','v_joint2','KL_joint2', ...
-            'rmse_joint2_cm','tD_arr_t0s'}); %#ok<SAGROW>
-
-        % ---- KL of the profile width with tau = t - t0s vs tau = t - t0 (C = 0.5 line)
-        tag = sprintf('%02d_%02d', round(100*klPair));  cW = "zDWidthProf_" + tag + arrVar + "_cm";
-        cZ  = "zDFrontProfC50" + arrVar;  if ~ismember(cZ, vn), cZ = "zDFront50" + arrVar; end
-        if ismember(cW, vn) && ismember(cZ, vn)
-            k  = erfcinv(2*klPair(1)) - erfcinv(2*klPair(2));
-            W  = abs(vars.(cW));  zc = vars.(cZ);
-            tRefs = [t0s, t0C50];  nmRef = ["t0s","t0C50"];
-            if isfield(rA,'tArr_profKL_min'), tRefs(end+1) = rA.tArr_profKL_min; nmRef(end+1) = "postproc_" + string(rA.tArr_profKL_ref); end
-            rot = nan(height(vars),1);  if ismember("rotPos", vn), rot = vars.rotPos; end
-            dR  = abs(mod(rot - klRot + 180, 360) - 180);
-            selR = find(dR <= klRotTol & zc >= klRotZD(1) & zc <= klRotZD(2));
-            if ~isempty(selR), [~, b] = min(abs(zc(selR) - 0.5)); selR = selR(b); end
-            for r = 1:numel(tRefs)
-                tau = t - tRefs(r);  KL = W.^2 ./ (4*k^2*tau);  KL(~(tau > 0)) = NaN;
-                inS = isfinite(KL) & KL > 0 & zc >= klZD(1) & zc <= klZD(2);
-                KLrot = NaN;  tauRot = NaN;  if ~isempty(selR), KLrot = KL(selR); tauRot = tau(selR); end
-                rowsKL{end+1,1} = table(string(fd.Key), ds, src, nmRef(r), tRefs(r), nnz(inS), median(KL(inS)), ...
-                    mean(KL(inS)), std(KL(inS)), KLrot, tauRot, ...
-                    'VariableNames', {'experiment','ds','source','origin','t_arr_min','n','KL_median','KL_mean','KL_std', ...
-                    sprintf('KL_rot%d', klRot), sprintf('tau_rot%d_min', klRot)}); %#ok<SAGROW>
-            end
-        end
-
-        % ---- figures
-        %   "joint1"  : one ADE for all levels, all curves start at z = 0 at the same t_arr (= t0_joint1)
-        %   "perLevel": every level its own ADE form, z = v_C (t - t0_C) + a_C sqrt(t - t0_C), each curve
-        %               starts at z = 0 at its own t0_C (C = 0.5: straight line)
-        %   "joint2"  : two origins (t0c centre, t0s spreading start), curves meet below z = 0
-        if arrPlot
-            cm = parula(numel(lv) + 1);  tEnd = max(T(:,1));
-            for pk = arrPlots
-                fig = figure('Position',[100 100 1000 650], 'NumberTitle','off', 'Name', ...
-                    sprintf('%s: front trajectories from the %s, %s (%s%s)', fd.Key, src, pk, ds, arrVar));
-                ax = axes(fig);  hold(ax,'on');  hh = gobjects(0);
-                for q = 1:numel(lv)
-                    s = T(:,3) == lv(q);
-                    switch pk
-                        case "joint1"
-                            tf = linspace(t0a, tEnd, 400)';
-                            zf = va*(tf - t0a) + 2*erfcinv(2*lv(q))*sqrt(max(KLa,0)*(tf - t0a));
-                            nm = sprintf('C = %.2f', lv(q));
-                        case "perLevel"
-                            tf = linspace(lvT0(q), tEnd, 400)';
-                            zf = lvV(q)*(tf - lvT0(q)) + lvA(q)*sqrt(tf - lvT0(q));
-                            nm = sprintf('C = %.2f, t_0 = %.1f', lv(q), lvT0(q));
-                            plot(ax, lvT0(q), 0, 'o', 'MarkerSize',8, 'MarkerFaceColor',cm(q,:), ...
-                                'MarkerEdgeColor','k', 'HandleVisibility','off')
-                        case "joint2"
-                            tf = linspace(t0s, tEnd, 400)';
-                            zf = vb*(tf - t0c) + 2*erfcinv(2*lv(q))*sqrt(max(KLb,0)*(tf - t0s));
-                            nm = sprintf('C = %.2f', lv(q));
-                    end
-                    hh(end+1) = scatter(ax, T(s,1), T(s,2), 8, cm(q,:), 'filled', 'DisplayName', nm); %#ok<SAGROW>
-                    plot(ax, tf, zf, '-', 'Color',0.7*cm(q,:), 'LineWidth',1.5, 'HandleVisibility','off')
-                end
-                switch pk
-                    case "joint1"
-                        xline(ax, t0a, 'k--', 't_{arr}', 'LineWidth',1.5, 'HandleVisibility','off');
-                        ttl = sprintf('one ADE, common origin: t_{arr} = %.1f min, v = %.3g cm/min, K_L = %.3g cm^2/min', t0a, va, KLa);
-                    case "perLevel"
-                        ttl = sprintf('one ADE form per level: t_0 from %.1f (C = %.2f) to %.1f min (C = %.2f)', ...
-                            lvT0(1), lv(1), lvT0(end), lv(end));
-                    case "joint2"
-                        xline(ax, t0s, 'k--', 't_{0s}', 'LineWidth',1.5, 'HandleVisibility','off');
-                        xline(ax, t0c, 'k-',  't_{0c}', 'LineWidth',1.5, 'HandleVisibility','off');
-                        ttl = sprintf('two origins: t_{0s} = %.1f, t_{0c} = %.1f min, v = %.3g cm/min, K_L = %.3g cm^2/min', t0s, t0c, vb, KLb);
-                end
-                if isfinite(tArrC), xline(ax, tArrC, 'r:', 't_{arr,C=0.01}', 'LineWidth',1.5, 'HandleVisibility','off'); end
-                yline(ax, 0, 'k-', 'HandleVisibility','off');
-                set(ax, 'FontSize',16);  grid(ax,'on');  box(ax,'on')
-                xlabel(ax, 't [min]');  ylabel(ax, "z of the level [cm] (" + src + ")")
-                title(ax, {strrep(fd.Key,'_','\_') + " (" + src + " levels)", ttl}, 'FontSize',12)
-                legend(ax, hh, 'Location','northwest', 'FontSize',12)
-                saveas(fig, fullfile(exportPathChk, sprintf('arrival_levels_%s_%s_%s_%s%s.png', src, pk, fd.Key, ds, arrVar)));
-            end
-        end
-        % this source: store its tables
-        KLt = table();  if numel(rowsKL) > nK0, KLt = vertcat(rowsKL{nK0+1:end}); end
-        AL.(src) = struct('perLevel', vertcat(rowsLvl{nL0+1:end}), 'joint', vertcat(rowsJ{nJ0+1:end}), ...
-            'KL_byOrigin', KLt, 'v50', v50, 'levels', lv, 'variant', arrVar, 'useV50', arrUseV50);
-        end   % src
-
-        % ---- arrival stored for main_CTplots (arrRefSource / arrRefLevel / arrRefFit)
-        tArrLev = NaN;  refTag = arrRefSource + "_" + arrRefFit;
-        if arrRefFit ~= "t0s", refTag = refTag + sprintf("_C%02d", round(100*arrRefLevel)); end
-        if isfield(AL, arrRefSource)
-            A = AL.(arrRefSource);
-            rL = A.perLevel(abs(A.perLevel.C - arrRefLevel) < 1e-9, :);
-            switch arrRefFit
-                case "curve", if height(rL) > 0, tArrLev = rL.t0_curve_min(1); end
-                case "line",  if height(rL) > 0, tArrLev = rL.t0_line_min(1);  end
-                case "t0s",   tArrLev = A.joint.t0s_joint2(1);
-                otherwise,    error('arrRefFit must be "curve", "line" or "t0s"');
-            end
-        end
-        if ~isfinite(tArrLev)
-            warning('%s (%s): no arrival from %s -- tArr_levels_min = NaN', fd.Key, ds, refTag);
-        end
-        E.resultsAll.(ds).arrLevels       = AL;
-        E.resultsAll.(ds).tArr_levels_min = tArrLev;
-        E.resultsAll.(ds).tArr_levels_ref = refTag;
-        E.resultsAll.(ds).tD_arr_levels   = tArrLev*fd.Q/fd.Vtotal;
-        fprintf('%s (%s): stored arrival tArr_levels = %.3g min (tD = %.3f), %s\n', ...
-            fd.Key, ds, tArrLev, tArrLev*fd.Q/fd.Vtotal, refTag);
-
-        % ---- Excel of the main section: tables + Summary columns
-        xl = fullfile(pth, fd.Key + "_KLresultsAll_" + ds + ".xlsx");
-        if arrStore && isfile(fPost) && isfile(xl)
-            srcs = string(fieldnames(AL))';
-            writetable(vertcat2(AL, srcs, 'perLevel'),    xl, 'Sheet','arrLevels_perLevel', 'WriteMode','overwritesheet');
-            writetable(vertcat2(AL, srcs, 'joint'),       xl, 'Sheet','arrLevels_joint',    'WriteMode','overwritesheet');
-            KLall = vertcat2(AL, srcs, 'KL_byOrigin');
-            if ~isempty(KLall), writetable(KLall, xl, 'Sheet','arrLevels_KL', 'WriteMode','overwritesheet'); end
-            Sm = readtable(xl, 'Sheet','Summary', 'TextType','string');
-            Sm.tArr_levels_min = tArrLev;  Sm.tArr_levels_ref = refTag;  Sm.tD_arr_levels = tArrLev*fd.Q/fd.Vtotal;
-            writetable(Sm, xl, 'Sheet','Summary', 'WriteMode','overwritesheet');
-        end
-    end
-
-    % ---- save back into <Key>_postproc.mat (same file and variable as the main section)
-    if arrStore
-        if isfile(fPost)
-            expCTDataSave = E;
-            save(fPost, 'expCTDataSave', '-v7.3')
-            fprintf('%s: arrival levels saved in %s\n', fd.Key, fPost);
-        else
-            warning('%s: no _postproc.mat -- run the main section first, nothing saved', fd.Key);
-        end
-    end
-end
-
-TL = vertcat(rowsLvl{:});  TJ = vertcat(rowsJ{:});
-fprintf('\nPer level (%s): straight-line and curved t0 [min since start]:\n', arrVar);  disp(TL)
-fprintf('\nAll levels together: one origin (joint1), two origins (joint2: t0c centre, t0s spreading start):\n');  disp(TJ)
-fx = fullfile(exportPathChk, 'arrival_levels_check.xlsx');
-writetable(TL, fx, 'Sheet','perLevel');  writetable(TJ, fx, 'Sheet','joint');
-if ~isempty(rowsKL)
-    TK = vertcat(rowsKL{:});
-    fprintf('\nKL from the profile width W%02d-%02d%s with each origin (centre zD %.1f-%.1f; frame at theta = %d deg):\n', ...
-        round(100*klPair), arrVar, klZD, klRot);  disp(TK)
-    writetable(TK, fx, 'Sheet','KL_byOrigin');
-end
-
-
 %% local helpers
 function out = ternary_str(cond, a, b)
 if cond, out = a; else, out = b; end
 end
 
 function t = pickArrival(tArrAll, ref, key, ds)
-% arrival time [min] of reference ref ("C50" | "C50prof" | "contour" | "lines"); a missing profile
-% centre line falls back to the contour centre line, a missing C50 line to the contour arrival, a
-% missing contour arrival is already the line-volume time
+% arrival time [min] of reference ref ("levels" | "C50" | "C50prof" | "contour" | "lines"); a missing
+% level arrival falls back to the profile centre line, a missing profile centre line to the contour
+% centre line, a missing C50 line to the contour arrival, a missing contour arrival is already the
+% line-volume time
 ref = string(ref);
-if ~isfield(tArrAll, ref), error('unknown arrival reference "%s" (C50 | C50prof | contour | lines)', ref); end
+if ~isfield(tArrAll, ref), error('unknown arrival reference "%s" (levels | C50 | C50prof | contour | lines)', ref); end
 t = tArrAll.(ref);
+if ~isfinite(t) && ref == "levels"
+    warning('%s (%s): no level arrival -> profile C = 0.5 line used', key, ds);
+    t = tArrAll.C50prof;  ref = "C50prof";
+end
 if ~isfinite(t) && ref == "C50prof"
     warning('%s (%s): no profile C = 0.5 front line (t0_C50prof) -> contour C = 0.5 line used', key, ds);
     t = tArrAll.C50;  ref = "C50";
@@ -973,13 +748,146 @@ end
 end
 
 
-function T = vertcat2(AL, srcs, fld)
-% stack table AL.(src).(fld) over the sources (empty tables skipped)
-c = {};
-for s_ = srcs
-    if isfield(AL.(s_), fld) && ~isempty(AL.(s_).(fld)), c{end+1,1} = AL.(s_).(fld); end %#ok<AGROW>
+function [AL, tArrLev, refTag] = arrivalLevels(vars, fd, rA, o, plotBase)
+% ARRIVALLEVELS  Arrival time from the trajectories z_C(t) of every level C = o.levels (0.01 ... 0.5),
+% for every level source in o.sources:
+%   "contour": mean z of the C contour (zDFront<CC><o.variant>_cm, main_CTpreproc)
+%   "profile": crossing of level C on the averaged profile CVert<o.variant> (profLevels: as profileWidth,
+%              low levels also before the C = 0.5 crossing exists, anchored at the inlet side)
+% Frames used per level: 0.03 < z_D < 0.97 (as frontVel); t in min since the start of injection.
+% ADE form of each level: z_C = v (t - t0_C) + a_C sqrt(t - t0_C), a_C = 2 erfcinv(2C) sqrt(KL) >= 0 for
+% C < 0.5 (else a_C = 0: straight line), v = v50 of that source's C = 0.5 line when o.useV50.
+% Fits:  perLevel  : t0_C (curve) and the straight-line t0 of every level
+%        joint1    : all levels, one origin  z = v (t - t0) + 2 erfcinv(2C) sqrt(KL (t - t0))
+%        joint2    : all levels, two origins z = v (t - t0c) + 2 erfcinv(2C) sqrt(KL (t - t0s))
+% Returns AL.(source).perLevel / .joint (tables), .v50, .levels; the stored arrival tArrLev [min] =
+% o.refFit of level o.refLevel of o.refSource ("curve" t0_C | "line" t0 | "t0s" joint2), refTag its name.
+t  = vars.secondsElapsed/60;  vn = string(vars.Properties.VariableNames);
+[Zprof, ZDprof] = profLevels(vars.C1Profile, "CVert" + o.variant, fd.C1init/100, fd.C1j/100, o.levels);
+tArrC = NaN;  if isfield(rA, 'tD_arrival_contour'), tArrC = rA.tD_arrival_contour*fd.Vtotal/fd.Q; end
+AL = struct();
+for src = o.sources
+    % ---- level positions
+    T = [];  lv = [];
+    for qL = 1:numel(o.levels)
+        C = o.levels(qL);
+        if src == "contour"
+            cz = "zDFront" + sprintf('%02d', round(100*C)) + o.variant;
+            if ~all(ismember([cz, cz + "_cm"], vn)), continue, end
+            z = vars.(cz + "_cm");  zD = vars.(cz);
+        else
+            z = Zprof(:,qL);  zD = ZDprof(:,qL);
+        end
+        ok = isfinite(t) & isfinite(z) & zD > 0.03 & zD < 0.97;
+        if nnz(ok) < 5, continue, end
+        T = [T; t(ok), z(ok), C*ones(nnz(ok),1)]; %#ok<AGROW>
+        lv(end+1) = C; %#ok<AGROW>
+    end
+    if isempty(lv), warning('%s: no %s level traced', fd.Key, src); continue, end
+    % ---- velocity of the C = 0.5 line
+    v50 = NaN;
+    if any(abs(lv - 0.5) < 1e-9)
+        s50 = abs(T(:,3) - 0.5) < 1e-9;  p50 = polyfit(T(s50,1), T(s50,2), 1);  v50 = p50(1);
+    elseif o.useV50
+        warning('%s (%s): no C = 0.5 level -> velocity fitted freely', fd.Key, src);
+    end
+    vFix = NaN;  if o.useV50, vFix = v50; end
+    % ---- per level
+    rowsL = cell(numel(lv),1);  lvT0 = nan(size(lv));  lvV = lvT0;  lvA = lvT0;
+    for q = 1:numel(lv)
+        C = lv(q);  s = T(:,3) == C;  tt = T(s,1);  zz = T(s,2);
+        p = polyfit(tt, zz, 1);
+        if abs(C - 0.5) < 1e-9
+            t0q = -p(2)/p(1);  vq = p(1);  aq = 0;
+        else
+            [t0q, vq, aq] = fitLevelCurve(tt, zz, min(tt) - o.search, min(tt) - 1e-3, sign(0.5 - C), vFix);
+        end
+        lvT0(q) = t0q;  lvV(q) = vq;  lvA(q) = aq;
+        eC = 2*erfcinv(2*C);  KLq = NaN;  if abs(eC) > 1e-6, KLq = (aq/eC)^2; end
+        rowsL{q} = table(src, C, nnz(s), -p(2)/p(1), p(1), t0q, vq, aq, KLq, ...
+            'VariableNames', {'source','C','n','t0_line_min','v_line_cmmin', ...
+            't0_curve_min','v_curve_cmmin','a_curve','KL_curve_cm2min'});
+    end
+    % ---- all levels together
+    e   = 2*erfcinv(2*T(:,3));
+    tHi = min(T(:,1)) - 1e-3;  tLo = tHi - o.search;
+    t0a = gridFminbnd(@(x) jointSSE(T(:,1), T(:,2), e, x, x, vFix), tLo, tHi);
+    [~, va, ~, KLa] = jointSSE(T(:,1), T(:,2), e, t0a, t0a, vFix);
+    t0s = gridFminbnd(@(x) jointSSE(T(:,1), T(:,2), e, NaN, x, vFix), tLo, tHi);
+    [sseB, vb, t0c, KLb] = jointSSE(T(:,1), T(:,2), e, NaN, t0s, vFix);
+    J = table(src, numel(lv), size(T,1), v50, t0a, va, KLa, t0c, t0s, t0c - t0s, vb, KLb, sqrt(sseB/size(T,1)), ...
+        'VariableNames', {'source','nLevels','nPts','v50_cmmin','t0_joint1','v_joint1','KL_joint1', ...
+        't0c_joint2','t0s_joint2','t0c_minus_t0s','v_joint2','KL_joint2','rmse_joint2_cm'});
+    PL = vertcat(rowsL{:});
+    AL.(src) = struct('perLevel', PL, 'joint', J, 'v50', v50, 'levels', lv, 'variant', o.variant, 'useV50', o.useV50);
+    % ---- print
+    fprintf('  arrival levels (%s%s, v = %s): t0 per level [min]:', src, o.variant, ternary_str(o.useV50, "v50", "free"));
+    fprintf('  C%02d %.1f', [round(100*lv); lvT0]);
+    fprintf('\n    joint2: t0s = %.1f, t0c = %.1f min, v = %.3g cm/min, KL = %.3g cm2/min\n', t0s, t0c, vb, KLb);
+    % ---- figures
+    if o.doPlot
+        cm = parula(numel(lv) + 1);  tEnd = max(T(:,1));
+        for pk = o.plots
+            fig = figure('Position',[100 100 1000 650], 'Visible', ternary_str(o.closeFig, 'off', 'on'));
+            ax = axes(fig);  hold(ax,'on');  hh = gobjects(0);
+            for q = 1:numel(lv)
+                s = T(:,3) == lv(q);
+                switch pk
+                    case "joint1"
+                        tf = linspace(t0a, tEnd, 400)';
+                        zf = va*(tf - t0a) + 2*erfcinv(2*lv(q))*sqrt(max(KLa,0)*(tf - t0a));
+                        nm = sprintf('C = %.2f', lv(q));
+                    case "perLevel"
+                        tf = linspace(lvT0(q), tEnd, 400)';
+                        zf = lvV(q)*(tf - lvT0(q)) + lvA(q)*sqrt(tf - lvT0(q));
+                        nm = sprintf('C = %.2f, t_0 = %.1f', lv(q), lvT0(q));
+                        plot(ax, lvT0(q), 0, 'o', 'MarkerSize',8, 'MarkerFaceColor',cm(q,:), ...
+                            'MarkerEdgeColor','k', 'HandleVisibility','off')
+                    case "joint2"
+                        tf = linspace(t0s, tEnd, 400)';
+                        zf = vb*(tf - t0c) + 2*erfcinv(2*lv(q))*sqrt(max(KLb,0)*(tf - t0s));
+                        nm = sprintf('C = %.2f', lv(q));
+                end
+                hh(end+1) = scatter(ax, T(s,1), T(s,2), 8, cm(q,:), 'filled', 'DisplayName', nm); %#ok<AGROW>
+                plot(ax, tf, zf, '-', 'Color',0.7*cm(q,:), 'LineWidth',1.5, 'HandleVisibility','off')
+            end
+            switch pk
+                case "joint1"
+                    xline(ax, t0a, 'k--', 't_{arr}', 'LineWidth',1.5, 'HandleVisibility','off');
+                    ttl = sprintf('one ADE, common origin: t_{arr} = %.1f min, v = %.3g cm/min, K_L = %.3g cm^2/min', t0a, va, KLa);
+                case "perLevel"
+                    ttl = sprintf('one ADE form per level: t_0 from %.1f (C = %.2f) to %.1f min (C = %.2f)', ...
+                        lvT0(1), lv(1), lvT0(end), lv(end));
+                case "joint2"
+                    xline(ax, t0s, 'k--', 't_{0s}', 'LineWidth',1.5, 'HandleVisibility','off');
+                    xline(ax, t0c, 'k-',  't_{0c}', 'LineWidth',1.5, 'HandleVisibility','off');
+                    ttl = sprintf('two origins: t_{0s} = %.1f, t_{0c} = %.1f min, v = %.3g cm/min, K_L = %.3g cm^2/min', t0s, t0c, vb, KLb);
+            end
+            if isfinite(tArrC), xline(ax, tArrC, 'r:', 't_{arr,C=0.01}', 'LineWidth',1.5, 'HandleVisibility','off'); end
+            yline(ax, 0, 'k-', 'HandleVisibility','off');
+            set(ax, 'FontSize',16);  grid(ax,'on');  box(ax,'on')
+            xlabel(ax, 't [min]');  ylabel(ax, "z of the level [cm] (" + src + ")")
+            title(ax, {strrep(fd.Key,'_','\_') + " (" + src + " levels)", ttl}, 'FontSize',12)
+            legend(ax, hh, 'Location','northwest', 'FontSize',12)
+            saveas(fig, plotBase + "_" + src + "_" + pk + ".png");
+            if o.closeFig, close(fig); end
+        end
+    end
 end
-T = table();  if ~isempty(c), T = vertcat(c{:}); end
+% ---- stored arrival
+tArrLev = NaN;  refTag = o.refSource + "_" + o.refFit;
+if o.refFit ~= "t0s", refTag = refTag + sprintf("_C%02d", round(100*o.refLevel)); end
+if isfield(AL, o.refSource)
+    A  = AL.(o.refSource);
+    rL = A.perLevel(abs(A.perLevel.C - o.refLevel) < 1e-9, :);
+    switch o.refFit
+        case "curve", if height(rL) > 0, tArrLev = rL.t0_curve_min(1); end
+        case "line",  if height(rL) > 0, tArrLev = rL.t0_line_min(1);  end
+        case "t0s",   tArrLev = A.joint.t0s_joint2(1);
+        otherwise,    error('arrOpt.refFit must be "curve", "line" or "t0s"');
+    end
+end
+if ~isfinite(tArrLev), warning('%s: no level arrival from %s', fd.Key, refTag); end
 end
 
 function [t0, v, a] = fitLevelCurve(t, z, tLo, tHi, sgn, vFix)
