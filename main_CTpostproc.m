@@ -44,6 +44,9 @@
 %       contour : first frame with a C = 0.01 contour (leading edge)
 %       lines   : line volume before the core / Q
 %     stored in resultsAll.(ds).tArr_profKL_min / tArr_profKL_ref (read by klAllFrames in main_CTplots)
+%   - KL_byArrival: the every-frame KL (W klAllPair, profile and contours) and the theta = klRot frame
+%     for EVERY candidate arrival (levels, C50, C50prof, contour, lines, every level t0 of the contours
+%     and the profile, joint2 t0s / t0c): resultsAll.(ds).<variant>.KL_byArrival, sheet KL_byArrival_<variant>
 %   - level arrivals stored in resultsAll.(ds).arrLevels (.contour / .profile: .perLevel, .joint tables,
 %     .v50), resultsAll.(ds).tArr_levels_min / tArr_levels_ref / tD_arr_levels (main_CTplots: tResRef
 %     = "levels"); Excel sheets arrLevels_perLevel / arrLevels_joint, Summary columns tArr_levels_*;
@@ -417,6 +420,7 @@ for i = 1:height(inputFileConfig)
 
             % KL from the width of every frame (profile and 2D contours, level pair klAllPair)
             resultsOut.(variant).KL_allProf = table();  resultsOut.(variant).KL_allProfSum = struct();
+            resultsOut.(variant).KL_byArrival = table();
             if ismember(variant, klAllVariants)
                 [Tall_, Sall_] = KL_allProfileWidths(vars, variantSuffix, klAllPair, tArrP, tArrD_P, ...
                     klAllDtArr, klAllZDrange);
@@ -433,6 +437,17 @@ for i = 1:height(inputFileConfig)
                 disp(Tall_(:, ["run","rotPos_deg","tDtotal","tD_arrival","tauD","zD_center_C50", ...
                     string(Tall_.Properties.VariableNames(contains(Tall_.Properties.VariableNames, ...
                     ["W_prof_","KL_prof_","dKL_prof_","KL_cont_","dKL_cont_"])))]))
+
+                % sensitivity of KL to the arrival: the same every-frame KL (W klAllPair) and the
+                % theta = klRot frame for every candidate arrival (tArrAll, every level t0 of
+                % arrLevels, joint2 t0s / t0c)
+                resultsOut.(variant).KL_byArrival = KL_byArrival(vars, variantSuffix, klAllPair, ...
+                    candidateArrivals(tArrAll, arrLevels), filedataExp, klAllDtArr, klAllZDrange, ...
+                    klRot, klRotTol, klRotZD);
+                fprintf(['  %s (%s) KL from every frame, W %02d-%02d, for every candidate arrival ' ...
+                         '(centre zD in [%.2f %.2f]; theta = %d deg frame):\n'], dataSource, variant, ...
+                    round(100*klAllPair), klAllZDrange, klRot);
+                disp(resultsOut.(variant).KL_byArrival)
             end
 
             % KL with an initial width (spreading before the core):
@@ -583,6 +598,9 @@ for i = 1:height(inputFileConfig)
             end
             if isfield(d, 'KL_W0fit') && ~isempty(d.KL_W0fit)
                 writetable(d.KL_W0fit, xlsxName, 'Sheet', "KL_W0fit_" + variant);
+            end
+            if isfield(d, 'KL_byArrival') && ~isempty(d.KL_byArrival)
+                writetable(d.KL_byArrival, xlsxName, 'Sheet', "KL_byArrival_" + variant);
             end
             if isfield(d, 'KL_allProf') && ~isempty(d.KL_allProf)
                 writetable(d.KL_allProf, xlsxName, 'Sheet', ...
@@ -747,6 +765,45 @@ if isfinite(z0) && nnz(sel) > 1
 end
 end
 
+
+function A = candidateArrivals(tArrAll, AL)
+% every candidate arrival [min]: name/value of tArrAll (levels, C50, C50prof, contour, lines), every
+% level of every source of arrLevels (curved per-level t0, "<src>_C<CC>"), and their joint2 t0s / t0c
+nm = string(fieldnames(tArrAll));  val = cellfun(@(f) tArrAll.(f), cellstr(nm));
+for s_ = string(fieldnames(AL))'
+    P  = AL.(s_).perLevel;
+    nm  = [nm; s_ + "_C" + compose("%02d", round(100*P.C))];      %#ok<AGROW>
+    val = [val; P.t0_curve_min];                                   %#ok<AGROW>
+    nm  = [nm; s_ + "_joint2_t0s"; s_ + "_joint2_t0c"];            %#ok<AGROW>
+    val = [val; AL.(s_).joint.t0s_joint2; AL.(s_).joint.t0c_joint2]; %#ok<AGROW>
+end
+A = table(nm, val, 'VariableNames', {'arrival','t_arr_min'});
+A = A(isfinite(A.t_arr_min), :);
+end
+
+function T = KL_byArrival(vars, sfx, pair, A, fd, dtArr, zDr, rot, rotTol, rotZD)
+% KL_allProfileWidths for every arrival of A: inverse-variance weighted mean, median and n over the
+% frames with the centre in zDr (profile and 2D contours), and the KL of the frame at theta = rot
+% (rotZDsel: centre closest to zD = 0.5 within rotZD) with its tau
+tag = sprintf('%02d_%02d', round(100*pair));  rows = cell(height(A),1);
+for q = 1:height(A)
+    tA = A.t_arr_min(q);
+    [Tq, Sq] = KL_allProfileWidths(vars, sfx, pair, tA, tA*fd.Q/fd.Vtotal, dtArr, zDr);
+    KLr = NaN;  dKLr = NaN;  tauR = NaN;
+    sel = rotZDsel(Tq, rot, rotTol, rotZD);
+    if any(sel)
+        KLr  = Tq.("KL_prof_" + tag + "_cm2min")(find(sel,1));
+        dKLr = Tq.("dKL_prof_" + tag + "_cm2min")(find(sel,1));
+        tauR = Tq.tau_min(find(sel,1));
+    end
+    rows{q} = table(A.arrival(q), tA, tA*fd.Q/fd.Vtotal, Sq.prof.n, Sq.prof.KL_wmean, Sq.prof.dKL_wmean, ...
+        Sq.prof.KL_median, Sq.cont.KL_wmean, Sq.cont.KL_median, KLr, dKLr, tauR, ...
+        'VariableNames', {'arrival','t_arr_min','tD_arr','n_prof','KL_prof_wmean','dKL_prof_wmean', ...
+        'KL_prof_median','KL_cont_wmean','KL_cont_median', ...
+        sprintf('KL_rot%d_prof', rot), sprintf('dKL_rot%d_prof', rot), sprintf('tau_rot%d_min', rot)});
+end
+T = vertcat(rows{:});
+end
 
 function [AL, tArrLev, refTag] = arrivalLevels(vars, fd, rA, o, plotBase)
 % ARRIVALLEVELS  Arrival time from the trajectories z_C(t) of every level C = o.levels (0.01 ... 0.5),
