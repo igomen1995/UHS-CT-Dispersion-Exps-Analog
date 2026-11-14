@@ -129,8 +129,9 @@ for i = 1:height(inputFileConfig)
                                 % | "erfc" (erfc-fit z50, zDFrontProf50)
     sigmaTau_mid = tArrProfRef; % arrival used by the sigma alias of the mid-profile KL
     % arrival time of the width-growth / moment fits vs time (fitKL_frontWidth, fitKL_moments,
-    % widthVsTime plot): "lines" keeps the previous results; "C50" / "contour" also possible
-    tArrFitRef   = "lines";   % "lines" | "levels" | "C50" | "C50prof" | "contour"
+    % widthVsTime plot, widths_vs_time sheet): same as the single-profile KL by default, so every KL
+    % uses the same t_res origin ("lines" = the previous results)
+    tArrFitRef   = "levels";   % "levels" | "lines" | "C50" | "C50prof" | "contour"
 
     % arrival from the trajectories of every level (arrivalLevels): "levels" arrival above
     arrOpt = struct( ...
