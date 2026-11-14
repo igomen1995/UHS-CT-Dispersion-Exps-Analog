@@ -85,23 +85,36 @@ mfmTimeVar  = 'tD';           % MFM BT time axis ('tD' core-based, or 'tDtotal')
 closeAfterSave = false;       % true: close each figure once saved
 
 % time axis of every plot vs time (and colour scale by time):
-%   "tDres" = t_D,res = t_D - t_D,arr = (t - t_arr) Q / V_total  (column tD_res, added to varsAll at
-%             load; tauD of the per-frame KL tables uses the same t_arr -> same origin as the KL)
+%   "tDres" = t_D,res = t_D - t_D,arr = (t - t_arr) Q / V_total
 %   "tD"    = t_D,total = Q t / V_total
-% t_arr (tResRef):
-%   "C50"     t0 of the straight line z = v t + b through the C = 0.5 front centres, t0 = -b/v
-%             (frontVel, main_CTpreproc) -> time the front centre enters the rock   [default]
-%   "contour" first frame with a C = 0.01 contour (leading edge)
-%   "lines"   line volume before the core / Q
-% The tag (tD / tDres, tDres_contour, tDres_lines) is added to the file name of every figure that uses it.
-tAxis   = "tDres";
-tResRef = "C50";              % "C50" | "contour" | "lines"
+% PROFILE and CONTOUR quantities are kept apart: each uses its own arrival, velocity and KL
+%   profile  (averaged-profile widths / centre / BTCs, profile KL): column tD_res_prof, tauD (klAllFrames),
+%            arrival of the averaged-profile levels, centre line of the profile C = 0.5 crossing
+%   contours (2D-contour widths / centre / tilt / efficiencies, contour KL): column tD_res_cont,
+%            tauD_cont, arrival of the contour levels, centre line of the C = 0.5 contour
+%   (tD_res = tD_res_prof is kept as an alias)
+% t_arr (tResRef), per source:
+%   "levels"  t0 of level tResLevel (fit tResFit) of that source's level trajectories
+%             (resultsAll.(ds).arrLevels of main_CTpostproc; default C = 0.01, curved ADE fit = the time
+%             the front, C > 0, enters the rock)   [default]
+%   "C50"     t0 = -b/v of that source's C = 0.5 centre line (contour: frontVel of main_CTpreproc;
+%             profile: vFrontProf of main_CTpostproc)
+%   "contour" first frame with a C = 0.01 contour (leading edge), both sources
+%   "lines"   line volume before the core / Q, both sources
+% The tag (tD / tDres_<tResRef>) is added to the file name of every figure that uses it.
+tAxis     = "tDres";
+tResRef   = "levels";         % "levels" | "C50" | "contour" | "lines"
+tResLevel = 0.01;             % level of the "levels" arrival (as arrOpt.refLevel of main_CTpostproc)
+tResFit   = "curve";          % "curve" (per-level ADE form) | "line" | "t0s" (joint two-origin fit)
 if tAxis == "tDres"
-    tXcol = "tD_res";   tXkl = "tauD";     tXlbl = 't_{D,res} [-]';  tXtag = "tDres";  tXlim = [0 1];
+    tXcolP = "tD_res_prof";  tXcolC = "tD_res_cont";  tXklP = "tauD";     tXklC = "tauD_cont";
+    tXlbl  = 't_{D,res} [-]';  tXtag = "tDres";  tXlim = [0 1];
     if tResRef ~= "C50", tXtag = "tDres_" + tResRef; end
 else
-    tXcol = "tDtotal";  tXkl = "tDtotal";  tXlbl = 't_D [-]';        tXtag = "tD";     tXlim = [0 1.2];
+    tXcolP = "tDtotal";      tXcolC = "tDtotal";      tXklP = "tDtotal";  tXklC = "tDtotal";
+    tXlbl  = 't_D [-]';        tXtag = "tD";     tXlim = [0 1.2];
 end
+tXcol = tXcolP;  tXkl = tXklP;    % default axis = profile (profiles, BTCs, profile KL)
 
 %% Load data
 
@@ -142,25 +155,37 @@ for i = 1:nExp
     MFM_UHS_DataAll{i} = loadMFMbyDataSource(MFM_UHS_file, inputFileConfig.MFM_BTC_UHS_Key{i}, fitDataOf);
 end
 
-% arrival time t_arr (tResRef) per experiment and data source -> column tD_res = tD_total - t_arr Q/V_total
-% in varsAll, and resultsAll.(ds).tArr_plot_min / tD_arr_plot (also used by klAllFrames for tau, so
-% the per-frame KL and the t_D,res axis share the same origin)
+% arrival time t_arr (tResRef) and centre line (velocity) per experiment, data source and SOURCE
+% (profile / contours), never mixed:
+%   varsAll.(ds).tD_res_prof / tD_res_cont = tD_total - t_arr Q/V_total   (tD_res = tD_res_prof)
+%   resultsAll.(ds).tArr_plot_prof_min / _cont_min, tD_arr_plot_prof / _cont, tArr_plot_prof_ref / _cont_ref
+%   resultsAll.(ds).cLine_prof / cLine_cont = struct(v [cm/min], t0 [min], src) of the C = 0.5 centre line
+%   (tArr_plot_min / tD_arr_plot / tArr_plot_ref = profile values, kept for the older sections)
+% klAllFrames uses the profile arrival for the profile KL and the contour arrival for the contour KL.
 arrRows = {};
 for i = 1:nExp
     fd = filedataExpAll{i};
     for ds = dataSources
         if ~isfield(expCTDataAll{i}.varsAll, ds), continue, end
-        [tArr_, src_] = arrivalTime(expCTDataAll{i}, fd, ds, tResRef);
-        tDarr_ = tArr_*fd.Q/fd.Vtotal;
-        expCTDataAll{i}.varsAll.(ds).tD_res = expCTDataAll{i}.varsAll.(ds).tDtotal - tDarr_;
-        expCTDataAll{i}.resultsAll.(ds).tArr_plot_min = tArr_;
-        expCTDataAll{i}.resultsAll.(ds).tD_arr_plot   = tDarr_;
-        expCTDataAll{i}.resultsAll.(ds).tArr_plot_ref = src_;
-        arrRows{end+1,1} = table(expKeys(i), ds, src_, tArr_, tDarr_, ...
-            'VariableNames', {'experiment','dataSource','t_arr_ref','t_arr_min','tD_arr'}); %#ok<SAGROW>
+        [tP_, sP_] = arrivalTime(expCTDataAll{i}, fd, ds, tResRef, "profile", tResLevel, tResFit);
+        [tC_, sC_] = arrivalTime(expCTDataAll{i}, fd, ds, tResRef, "contour", tResLevel, tResFit);
+        tDP_ = tP_*fd.Q/fd.Vtotal;  tDC_ = tC_*fd.Q/fd.Vtotal;
+        expCTDataAll{i}.varsAll.(ds).tD_res_prof = expCTDataAll{i}.varsAll.(ds).tDtotal - tDP_;
+        expCTDataAll{i}.varsAll.(ds).tD_res_cont = expCTDataAll{i}.varsAll.(ds).tDtotal - tDC_;
+        expCTDataAll{i}.varsAll.(ds).tD_res      = expCTDataAll{i}.varsAll.(ds).tD_res_prof;
+        rq = struct();  if isfield(expCTDataAll{i}, 'resultsAll') && isfield(expCTDataAll{i}.resultsAll, ds), rq = expCTDataAll{i}.resultsAll.(ds); end
+        rq.tArr_plot_prof_min = tP_;  rq.tD_arr_plot_prof = tDP_;  rq.tArr_plot_prof_ref = sP_;
+        rq.tArr_plot_cont_min = tC_;  rq.tD_arr_plot_cont = tDC_;  rq.tArr_plot_cont_ref = sC_;
+        rq.tArr_plot_min      = tP_;  rq.tD_arr_plot      = tDP_;  rq.tArr_plot_ref      = sP_;
+        rq.cLine_prof = centreLine(rq, "profile");
+        rq.cLine_cont = centreLine(rq, "contour");
+        expCTDataAll{i}.resultsAll.(ds) = rq;
+        arrRows{end+1,1} = table(expKeys(i), ds, sP_, tP_, tDP_, rq.cLine_prof.v, sC_, tC_, tDC_, rq.cLine_cont.v, ...
+            'VariableNames', {'experiment','dataSource','t_arr_prof_ref','t_arr_prof_min','tD_arr_prof','v_prof_cmmin', ...
+            't_arr_cont_ref','t_arr_cont_min','tD_arr_cont','v_cont_cmmin'}); %#ok<SAGROW>
     end
 end
-fprintf('\nArrival time of t_D,res (tResRef = %s):\n', tResRef);
+fprintf('\nArrival time of t_D,res (tResRef = %s): profile and contours separately:\n', tResRef);
 disp(vertcat(arrRows{:}))
 
 % one colour per experiment (first four = original palette)
@@ -1040,7 +1065,7 @@ for ds = dataSources
         for i = 1:nExp
             vars = expCTDataAll{i}.varsAll.(ds);
             if ~ismember(measField, vars.Properties.VariableNames), continue, end
-            scatter(vars.(tXcol), vars.(measField), 8, 'filled', ...
+            scatter(vars.(tXcolC), vars.(measField), 8, 'filled', ...          % 2D contours -> contour t_arr
                 'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor','none', 'DisplayName', expKeys(i))
             nPlotted = nPlotted + 1;
         end
@@ -1073,13 +1098,13 @@ for ds = dataSources
             vars = expCTDataAll{i}.varsAll.(ds);
             vn   = string(vars.Properties.VariableNames);
             if ismember(cField, vn)
-                scatter(vars.(tXcol), abs(vars.(cField)), 10, 'filled', 'o', ...
+                scatter(vars.(tXcolC), abs(vars.(cField)), 10, 'filled', 'o', ...   % contours: contour t_arr
                     'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor','none', ...
                     'DisplayName', expName(i) + " contours")
                 nPlotted = nPlotted + 1;
             end
             if ismember(pField, vn)
-                scatter(vars.(tXcol), abs(vars.(pField)), 26, 's', ...
+                scatter(vars.(tXcolP), abs(vars.(pField)), 26, 's', ...   % profile: profile t_arr
                     'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor',colsDark(i,:), 'LineWidth',0.8, ...
                     'DisplayName', expName(i) + " profile")
                 nPlotted = nPlotted + 1;
@@ -1243,14 +1268,16 @@ envVar8       = "";            % "" = full image | "_xtrim" = x-trimmed (width a
 for ds = dataSources
     for p = 1:numel(widthPairsEnv)
         measField = envSrc8 + widthPairsEnv{p} + envVar8;
-        cenField  = "zDFront50" + envVar8;
+        isCont8   = envSrc8 == "zDWidth_";                    % contours: contour centre and t_arr
+        cenField  = ternaryStr(isCont8, "zDFront50", "zDFrontProfC50") + envVar8;
+        tX8       = ternaryStr(isCont8, tXcolC, tXcolP);
         fig = figure('Position',[100 100 1000 650]);  hold on
 
         for i = 1:nExp
             vars = expCTDataAll{i}.varsAll.(ds);
             if ~all(ismember([measField cenField], string(vars.Properties.VariableNames))), continue, end
 
-            tD = vars.(tXcol);
+            tD = vars.(tX8);
             centerMeas = vars.(cenField);
             halfMeas   = abs(vars.(measField))/2;
             validMeas  = isfinite(centerMeas) & isfinite(halfMeas);
@@ -1275,9 +1302,10 @@ for ds = dataSources
 end
 
 %% 8a) Front envelope from the AVERAGED PROFILE, all experiments together
-% Centre = front centre of the averaged profile (zDFrontProf50: erfc-fit z50, addProfileWidths),
+% Centre = front centre of the averaged profile (zDFrontProfC50: C = 0.5 crossing, no fit, addProfileWidths;
+% fallback: erfc-fit z50 zDFrontProf50 -- profile only, never the contour centre),
 % bar = centre +/- W/2 with W = averaged-profile width zDWidthProf_<lo>_<hi> (the width used for
-% the profile KL). If the erfc centre is missing for a scan, the C = 0.5 contour centre is used.
+% the profile KL); x = t_D with the profile arrival (tXcolP).
 % Legend XCT-loM-hiPe etc. (expName, expCol).
 
 widthPairsEnvP = {'10_90','20_80','30_70','40_60'};
@@ -1287,8 +1315,8 @@ fsEnvP         = 16;
 for ds = dataSources
     for p = 1:numel(widthPairsEnvP)
         wField = "zDWidthProf_" + widthPairsEnvP{p} + envVarP;
-        cField = "zDFrontProf50" + envVarP;          % profile centre
-        cFall  = "zDFront50" + envVarP;              % fallback: C = 0.5 contour centre
+        cField = "zDFrontProfC50" + envVarP;         % profile centre: C = 0.5 crossing
+        cFall  = "zDFrontProf50" + envVarP;          % fallback: erfc-fit centre of the same profile
         figName = sprintf('Averaged-profile front envelope %s (%s%s)', ...
             strrep(widthPairsEnvP{p},'_','-'), ds, envVarP);
         fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
@@ -1300,7 +1328,7 @@ for ds = dataSources
             vn   = string(vars.Properties.VariableNames);
             if ~ismember(wField, vn), continue, end
 
-            tD   = vars.(tXcol);
+            tD   = vars.(tXcolP);
             half = abs(vars.(wField))/2;
             cen  = nan(size(tD));
             if ismember(cField, vn), cen = vars.(cField); end
@@ -1329,9 +1357,11 @@ for ds = dataSources
 end
 
 %% 8a2) Front centre of the AVERAGED PROFILE vs tD, with the front-velocity line (no width bars)
-% Dots = front centre of the averaged profile (zDFrontProf50: erfc-fit z50, addProfileWidths; where
-% missing, the C = 0.5 contour centre zDFront50), as 8a but without the +/- W/2 bars.
+% Dots = front centre of the averaged profile (zDFrontProfC50: C = 0.5 crossing; fallback erfc z50),
+% as 8a but without the +/- W/2 bars; x = t_D with the profile arrival.
 % Line (dashed, same colour) = constant front velocity of each experiment, straight line in t_D:
+%   vfSrc = "profile": centre line of the profile C = 0.5 crossing (resultsAll.(ds).cLine_prof: v and t0
+%                     of the C = 0.5 row of arrLevels.profile, else vFrontProf) -> profile only [default]
 %   vfSrc = "C50"   : through the C = 0.5 centre, column tD_corr_vFrontC50 (v_front and t0 of the
 %                     C = 0.5 line from main_CTpreproc) -> lies on the dots
 %   vfSrc = "column": through the leading edge, column tD_corr_contour_scaled (v_front with the
@@ -1342,14 +1372,14 @@ end
 % fallback: slope [z_D per t_D] * L[in]*2.54 * Q / V_total (filedataExp.L is in inches).
 
 envVarP2  = "_xtrim";           % "" = full image | "_xtrim" = x-trimmed (as the mid-profile KL)
-vfSrc     = "C50";              % "C50" | "column" | "fit"
+vfSrc     = "profile";          % "profile" | "C50" | "column" | "fit"
 vfZDfit   = [0.1 0.9];          % zD range of the centres used when vfSrc = "fit"
 fsEnvP2   = 16;
 mkEnvP2   = 18;
 
 for ds = dataSources
-    cField = "zDFrontProf50" + envVarP2;          % profile centre
-    cFall  = "zDFront50" + envVarP2;              % fallback: C = 0.5 contour centre
+    cField = "zDFrontProfC50" + envVarP2;         % profile centre: C = 0.5 crossing
+    cFall  = "zDFrontProf50" + envVarP2;          % fallback: erfc-fit centre of the same profile
     figName = sprintf('Averaged-profile front centre with the u_front line (%s%s, %s)', ds, envVarP2, vfSrc);
     fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
     ax  = axes(fig);  hold(ax,'on')
@@ -1359,7 +1389,7 @@ for ds = dataSources
         vars = expCTDataAll{i}.varsAll.(ds);
         vn   = string(vars.Properties.VariableNames);
         fd   = filedataExpAll{i};
-        tD   = vars.(tXcol);
+        tD   = vars.(tXcolP);
         cen  = nan(size(tD));
         if ismember(cField, vn), cen = vars.(cField); end
         if ismember(cFall, vn)
@@ -1373,7 +1403,15 @@ for ds = dataSources
         % front-velocity line z_D = p(2) + p(1) t_D
         p = [NaN NaN];  srcUsed = vfSrc;
         colC50 = "tD_corr_vFrontC50" + envVarP2;
-        if vfSrc == "C50" && ismember(colC50, vn)
+        rP = expCTDataAll{i}.resultsAll.(ds);
+        if vfSrc == "profile" && isfield(rP, 'cLine_prof') && isfinite(rP.cLine_prof.v)
+            % z = v (t - t0) with t = t_arr,x + x V/Q (x = t_D axis) and z_D = z / L_img
+            okL = isfinite(cen) & cen > 0.05 & ismember(cField + "_cm", vn);
+            Limg = NaN;  if any(okL), Limg = median(vars.(cField + "_cm")(okL) ./ cen(okL), 'omitnan'); end
+            if ~isfinite(Limg), Limg = fd.L*2.54; end
+            tA0 = 0;  if tAxis == "tDres", tA0 = rP.tArr_plot_prof_min; end
+            p = [rP.cLine_prof.v*fd.Vtotal/(fd.Q*Limg), rP.cLine_prof.v*(tA0 - rP.cLine_prof.t0)/Limg];
+        elseif vfSrc == "C50" && ismember(colC50, vn)
             okc = isfinite(tD) & isfinite(vars.(colC50));
             if nnz(okc) >= 2, p = polyfit(tD(okc), vars.(colC50)(okc), 1); end
         elseif vfSrc == "column" && ismember("tD_corr_contour_scaled", vn)
@@ -1394,9 +1432,10 @@ for ds = dataSources
 
         % u_front (v_front) as printed by main_CTpostproc; fallback: slope with L converted from inches to cm
         vfPost = NaN;
-        if hasPost(i) && isfield(expCTDataAll{i}, 'resultsAll') && isfield(expCTDataAll{i}.resultsAll, ds) ...
-                && isfield(expCTDataAll{i}.resultsAll.(ds), 'vFront_cmmin')
-            vfPost = expCTDataAll{i}.resultsAll.(ds).vFront_cmmin;
+        if vfSrc == "profile" && isfield(rP, 'cLine_prof')
+            vfPost = rP.cLine_prof.v;                          % profile centre line
+        elseif hasPost(i) && isfield(rP, 'vFront_cmmin')
+            vfPost = rP.vFront_cmmin;                          % contour centre line (preproc)
         end
         vfSlope = p(1) * fd.L*2.54 * fd.Q / fd.Vtotal;      % [cm/min] (L in inches, Q in ml/min, V in ml)
         vf = vfPost;  if ~isfinite(vf), vf = vfSlope; end
@@ -1437,6 +1476,8 @@ end
 % Printed: v_front, u_int = Q/(A phi) and v_front/u_int (> 1: center faster than piston flow).
 
 ufLineA   = false;              % true: also the piston-flow line z = u_int t_res (dotted)
+var8a2a   = "_xtrim";           % contour centre "" (full image) | "_xtrim" (as the contour levels of
+                                % main_CTpostproc); t_arr and line from the CONTOUR levels (cLine_cont)
 fsA       = 16;
 mkA       = 18;
 
@@ -1450,22 +1491,23 @@ for ds = dataSources
         vars = expCTDataAll{i}.varsAll.(ds);
         vn   = string(vars.Properties.VariableNames);
         fd   = filedataExpAll{i};
-        if ~all(ismember(["zDFront50_cm","zDFront50"], vn))
-            warning('8a2a: %s (%s): zDFront50_cm / zDFront50 missing', expKeys(i), ds);  continue
+        cz8 = "zDFront50" + var8a2a;
+        if ~all(ismember([cz8 + "_cm", cz8], vn))
+            warning('8a2a: %s (%s): %s_cm / %s missing', expKeys(i), ds, cz8, cz8);  continue
         end
         rA   = struct();
         if isfield(expCTDataAll{i}, 'resultsAll') && isfield(expCTDataAll{i}.resultsAll, ds)
             rA = expCTDataAll{i}.resultsAll.(ds);
         end
-        if ~isfield(rA, 'tArr_plot_min') || ~isfinite(rA.tArr_plot_min)
-            warning('8a2a: %s (%s): no t_arr (run the load block)', expKeys(i), ds);  continue
+        if ~isfield(rA, 'tArr_plot_cont_min') || ~isfinite(rA.tArr_plot_cont_min)
+            warning('8a2a: %s (%s): no contour t_arr (run the load block)', expKeys(i), ds);  continue
         end
-        tArr = rA.tArr_plot_min;
+        tArr = rA.tArr_plot_cont_min;                            % contour arrival
 
         t    = vars.secondsElapsed/60;                           % [min since start]
         tRes = t - tArr;                                         % t_res [min]
-        z    = vars.zDFront50_cm;                                % contour center [cm]
-        zD   = vars.zDFront50;
+        z    = vars.(cz8 + "_cm");                               % contour center [cm]
+        zD   = vars.(cz8);
         ok   = isfinite(tRes) & isfinite(z);
         if ~any(ok), continue, end
         inFit = ok & zD > 0.03 & zD < 0.97;                     % frames of the frontVel fit
@@ -1479,9 +1521,11 @@ for ds = dataSources
         zMax = max(zMax, Limg);
 
         % front-velocity line z = v t + b (t in min since the start), shifted to t_res = t - t_arr
-        v = NaN;  b = NaN;  srcUsed = "preproc vFront";
-        if isfield(rA, 'vFront') && isstruct(rA.vFront) && isfinite(rA.vFront.v_front_cmmin) && rA.vFront.v_front_cmmin > 0
-            v = rA.vFront.v_front_cmmin;  b = rA.vFront.intercept_cm;
+        v = NaN;  b = NaN;  srcUsed = "contour centre line";
+        if var8a2a == "_xtrim" && isfield(rA, 'cLine_cont') && isfinite(rA.cLine_cont.v)
+            v = rA.cLine_cont.v;  b = -v*rA.cLine_cont.t0;  srcUsed = rA.cLine_cont.src;
+        elseif var8a2a == "" && isfield(rA, 'vFront') && isstruct(rA.vFront) && isfinite(rA.vFront.v_front_cmmin) && rA.vFront.v_front_cmmin > 0
+            v = rA.vFront.v_front_cmmin;  b = rA.vFront.intercept_cm;  srcUsed = "preproc vFront";
         elseif nnz(inFit) >= 5
             srcUsed = "fit here";
             p = polyfit(t(inFit), z(inFit), 1);  v = p(1);  b = p(2);
@@ -1516,13 +1560,14 @@ for ds = dataSources
         fprintf('\n8a2a) Contour front center in dimensions (%s, t_arr %s): v_front vs u_int = Q/(A phi):\n', ds, tResRef);
         disp(vertcat(rowsA{:}))
     end
-    saveFigBoth(fig, exportPath, sprintf('frontCenter_contour_ufront_dim_allExp_%s_%s', ds, tXtagRes(tResRef)), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('frontCenter_contour_ufront_dim_allExp_%s%s_%s', ds, var8a2a, tXtagRes(tResRef)), closeAfterSave)
 end
 %% 8b) Front envelope per experiment: 2D-contour width (colour) vs averaged-profile width (grey)
 % Contour widths zDWidth_<lo>_<hi> (populate_CTframeVars) and averaged-profile widths
 % zDWidthProf_<lo>_<hi> (addProfileWidths, written by main_CTpostproc into <Key>_postproc.mat).
-% Both envelopes are centred on the same front centre (C = 0.5 contour, zDFront50), so the
-% panels compare the WIDTHS only. One figure per experiment, one panel per level pair.
+% Each envelope with its own source: contours on the C = 0.5 contour centre (zDFront50) vs t_D with the
+% contour arrival; profile on the profile C = 0.5 crossing (zDFrontProfC50) vs t_D with the profile arrival.
+% One figure per experiment, one panel per level pair.
 
 envPairs   = {'10_90','20_80','30_70','40_60'};
 envVariant = "_xtrim";              % "" = full image, "_xtrim" = x-trimmed
@@ -1542,8 +1587,9 @@ for ds = dataSources
 
         fig = figure('Position',[60 60 1400 950]);
         tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
-        tD  = vars.(tXcol);
-        zc  = vars.("zDFront50" + envVariant);
+        tDc = vars.(tXcolC);  zc  = vars.("zDFront50" + envVariant);          % contours
+        tDp = vars.(tXcolP);  zcP = nan(height(vars),1);                       % profile
+        if ismember("zDFrontProfC50" + envVariant, cols_i), zcP = vars.("zDFrontProfC50" + envVariant); end
 
         for p = 1:numel(envPairs)
             ax = nexttile(tl);  hold(ax,'on')
@@ -1554,10 +1600,10 @@ for ds = dataSources
                     'HorizontalAlignment','center', 'Interpreter','none');  continue
             end
             % averaged profile (grey, wide, behind) and 2D contours (colour, on top)
-            envSegments(ax, tD, zc, abs(vars.(cCol))/2, expCol(i,:), 1.8, 0.9, "2D contours")
-            envSegments(ax, tD, zc, abs(vars.(pCol))/2, greyProf, 5, 0.5, "averaged profile")
-            ok = isfinite(tD) & isfinite(zc);
-            scatter(ax, tD(ok), zc(ok), 10, 0.6*expCol(i,:), 'filled', 'DisplayName','front centre (C = 0.5)')
+            envSegments(ax, tDp, zcP, abs(vars.(pCol))/2, greyProf, 5, 0.5, "averaged profile")
+            envSegments(ax, tDc, zc, abs(vars.(cCol))/2, expCol(i,:), 1.8, 0.9, "2D contours")
+            ok = isfinite(tDc) & isfinite(zc);
+            scatter(ax, tDc(ok), zc(ok), 10, 0.6*expCol(i,:), 'filled', 'DisplayName','contour centre (C = 0.5)')
 
             xlabel(ax, tXlbl, 'FontSize',13);  ylabel(ax, 'z_D [-]', 'FontSize',13)
             ylim(ax, [-0.02 1.02]);  xlim(ax, tXlim);  set(ax, 'FontSize',12);  grid(ax,'on')
@@ -1697,9 +1743,10 @@ end
 % Needs section 5b to have run before (uhsData, uhsKey); otherwise the configured UHS key is used.
 
 klMidVariant = "xtrim";         % mid-profile variant: "xtrim" | "full"
-klMidMethod  = "C40_60_contour";    % averaged profile, W_40-60
+klMidMethod  = "C40_60_levels";     % averaged profile, W_40-60, t_arr = profile level arrival (main_CTpostproc)
 klMidStat    = "mean";              % same statistic as the contour bar
-klMidContMethod = "contC40_60_contour";  % 2D-contour width at the same frames; "" = no bar
+klMidContMethod = "contC40_60_contour";  % 2D-contour width at the same frames, t_arr = first C = 0.01
+                                         % contour (a contour arrival); "" = no bar
 klMidContStat   = "mean";       % level pairs have no fit SE -> mean +/- std of the window frames
 klBTCVariant = "xtrim";         % CT BTC variant: "xtrim" | "full"
 %klBTCtags    = ["zD0p5","zD0p8","zD1p0"];   % CT BTC levels (one bar each, light -> dark along the core)
@@ -1876,7 +1923,8 @@ for ds = "conc"
             else
                 tDr(c) = sprintf('%.2f-%.2f', min(Ts.tDtotal), max(Ts.tDtotal));
                 [KL(c,1), dKL(c,1)] = aggKL(Ts.("KL_prof_" + tagW17 + "_cm2min"), Ts.("dKL_prof_" + tagW17 + "_cm2min"), rsStat);
-                [KL(c,2), dKL(c,2)] = aggKL(Ts.("KL_cont_" + tagW17 + "_cm2min"), Ts.("dKL_cont_" + tagW17 + "_cm2min"), rsStat);
+                TsC = Tk(rotZDselSrc(Tk, "cont", rsRot, rsTol, rsZD), :);    % contour frame: contour centre
+                [KL(c,2), dKL(c,2)] = aggKL(TsC.("KL_cont_" + tagW17 + "_cm2min"), TsC.("dKL_cont_" + tagW17 + "_cm2min"), rsStat);
                 Ts = addvars(Ts, repmat(rsCases{c,1}, height(Ts), 1), 'Before',1, 'NewVariableNames','case');
                 frRows{end+1,1} = Ts; %#ok<SAGROW>
             end
@@ -2111,9 +2159,9 @@ end
 
 for ds = dataSources
     fig = figure('Position',[100 100 650 2200]);
-    panels = {char(tXcol),'frontTiltSlope',    tXlbl,                        'front tilt slope [z_D/x_D]', 'Front tilt vs t_D', false; ...
+    panels = {char(tXcolC),'frontTiltSlope',   tXlbl,                        'front tilt slope [z_D/x_D]', 'Front tilt vs t_D', false; ...
               'rotPos', 'frontTiltSlope',      'rotation position [\circ]', 'front tilt slope [z_D/x_D]', 'Front tilt vs rotation position', false; ...
-              char(tXcol),'frontArcLengthRatio', tXlbl,                      'arc length ratio [-]',       'Front non-planarity vs t_D', true; ...
+              char(tXcolC),'frontArcLengthRatio', tXlbl,                      'arc length ratio [-]',       'Front non-planarity vs t_D', true; ...
               'rotPos', 'frontArcLengthRatio', 'rotation position [\circ]', 'arc length ratio [-]',       'Front non-planarity vs rotation position', true};
 
     for s = 1:size(panels,1)
@@ -2143,7 +2191,7 @@ for ds = dataSources
     for i = 1:nExp
         vars = expCTDataAll{i}.varsAll.(ds);
         ax = nexttile(tl);
-        scatter(ax, vars.rotPos, vars.frontTiltSlope, 25, vars.(tXcol), 'filled')
+        scatter(ax, vars.rotPos, vars.frontTiltSlope, 25, vars.(tXcolC), 'filled')   % contour tilt
         colormap(ax, parula);  clim(ax, tXlim)
         cb = colorbar(ax);  cb.Label.String = tXlbl;
         xlabel(ax,'rotation position [\circ]','FontSize',11)
@@ -2180,8 +2228,10 @@ for ds = dataSources
                 Sm = fr.(nm);
                 if isempty(Sm.KL_pts) || all(~isfinite(Sm.KL_pts)), continue, end
                 tD_pts = (Sm.t_fit*fd.Q + fd.Vlinesbefore) / fd.Vtotal;   % back to tD_total
-                if tAxis == "tDres" && isfield(rs, 'tD_arr_plot')
-                    tD_pts = tD_pts - rs.tD_arr_plot;                     % t_D,res (tResRef arrival)
+                if tAxis == "tDres"                                       % t_D,res, arrival of the source
+                    if startsWith(nm, "width_"), tD_pts = tD_pts - rs.tD_arr_plot_cont;   % 2D contours
+                    else,                        tD_pts = tD_pts - rs.tD_arr_plot_prof;   % profile (sigma, profW)
+                    end
                 end
                 scatter(tD_pts, Sm.KL_pts, 14, cols(i,:), markers{mod(mI-1,numel(markers))+1}, ...
                     'DisplayName', expKeys(i) + " (" + strrep(nm,"_"," ") + ")")
@@ -2282,7 +2332,7 @@ end
 
 CeffLevels = 0.1:0.1:0.9;     % thresholds C* (all traced in main_CTpreproc)   % thresholds C* (must be among Clevels in main_CTpreproc)
 effVariant = "";              % "" = full image, "_xtrim" = x-trimmed image
-effXVar    = char(tXcol);     % x-axis (tAxis); or 'tD_corr_lines', 'tD_corr_contour_scaled'
+effXVar    = char(tXcolC);    % x-axis (tAxis, contour arrival: thresholds of the image = contours)
 effXLabel  = tXlbl;
 effXLim    = [0 1.5];
 
@@ -2558,7 +2608,8 @@ writetable(fpSummary, fullfile(exportPath, 'FPhi_summary.xlsx'));
  
 klfPair  = [0.40 0.60];        % level pair of the width
 klfVar   = "_xtrim";           % "_xtrim" or "" (full image)
-klfXVar  = tXkl;               % from tAxis: "tauD" (t_D,res) or "tDtotal" (t_D,total)
+klfXVar  = tXkl;               % profile KL: "tauD" (t_D,res, profile arrival) or "tDtotal"
+klfXVarC = tXklC;              % contour KL: "tauD_cont" (t_D,res, contour arrival) or "tDtotal"
 klfLogY  = false;               % log K_L axis
 klfYLim  = [];                 % [] = auto, e.g. [0.1 100]
 klfErr   = true;               % error bars
@@ -2572,16 +2623,16 @@ for ds = "conc"
     for i = 1:nExp
         Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, klfVar, klfPair);
         if isempty(Tk), continue, end
-        x  = Tk.(klfXVar);
+        x  = Tk.(klfXVar);  xC = Tk.(klfXVarC);             % each source on its own t_D,res
         yP = Tk.("KL_prof_" + tagW15 + "_cm2min");  dP = Tk.("dKL_prof_" + tagW15 + "_cm2min");
         yC = Tk.("KL_cont_" + tagW15 + "_cm2min");  dC = Tk.("dKL_cont_" + tagW15 + "_cm2min");
-        okP = isfinite(x) & isfinite(yP) & yP > 0;
-        okC = isfinite(x) & isfinite(yC) & yC > 0;
+        okP = isfinite(x)  & isfinite(yP) & yP > 0;
+        okC = isfinite(xC) & isfinite(yC) & yC > 0;
         cLt = 0.5*expCol(i,:) + 0.5;                        % lighter colour for the error bars
         % if klfErr
         %     errorbar(ax, x(okP), yP(okP), min(dP(okP), 0.99*yP(okP)), dP(okP), 'LineStyle','none', ...
         %         'Color',cLt, 'HandleVisibility','off')
-        %     errorbar(ax, x(okC), yC(okC), min(dC(okC), 0.99*yC(okC)), dC(okC), 'LineStyle','none', ...
+        %     errorbar(ax, xC(okC), yC(okC), min(dC(okC), 0.99*yC(okC)), dC(okC), 'LineStyle','none', ...
         %         'Color',cLt, 'HandleVisibility','off')
         % end
         if any(okP)
@@ -2589,7 +2640,7 @@ for ds = "conc"
                 'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName', expName(i)); %#ok<SAGROW>
         end
         % if any(okC)
-        %     h(end+1) = scatter(ax, x(okC), yC(okC), mk15, expCol(i,:), 's', 'LineWidth',1.5, ...
+        %     h(end+1) = scatter(ax, xC(okC), yC(okC), mk15, expCol(i,:), 's', 'LineWidth',1.5, ...
         %         'DisplayName', expName(i) + ", contours"); %#ok<SAGROW>
         % end
     end
@@ -2784,11 +2835,11 @@ for ds = dataSources
     for i = 1:nExp
         Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, mlVar, mlPair);
         if isempty(Tk), continue, end
-        tau = Tk.tau_min;
-        src = {"profile", Tk.("W_prof_" + tagW16 + "_cm"), 'o', true; ...
-               "contours", Tk.("W_cont_" + tagW16 + "_cm"), 's', false};
+        % each source with its own arrival (tau) and front centre (frame window)
+        src = {"profile",  Tk.("W_prof_" + tagW16 + "_cm"), 'o', true,  Tk.tau_min,      Tk.zD_center_C50; ...
+               "contours", Tk.("W_cont_" + tagW16 + "_cm"), 's', false, Tk.tau_cont_min, Tk.zD_center_cont};
         for s = 1:size(src,1)
-            W  = src{s,2};
+            W  = src{s,2};  tau = src{s,5};  zcS = src{s,6};
             ok = isfinite(tau) & tau > 0 & isfinite(W) & W > 0;
             if ~any(ok), continue, end
             if mlMode == "W2_vs_t", x = tau;  y = W.^2;  else, x = sqrt(tau);  y = W; end
@@ -2800,7 +2851,7 @@ for ds = dataSources
                     'DisplayName', expName(i) + ", " + src{s,1}); %#ok<SAGROW>
             end
             % straight line through the origin on the frames with the centre inside mlZDr
-            okF = ok & Tk.zD_center_C50 >= mlZDr(1) & Tk.zD_center_C50 <= mlZDr(2);
+            okF = ok & zcS >= mlZDr(1) & zcS <= mlZDr(2);
             KLs = NaN;  a = NaN;
             if mlFit && nnz(okF) >= 2
                 a = sum(x(okF).*y(okF))/sum(x(okF).^2);              % least squares, y = a x
@@ -2992,46 +3043,88 @@ function tag = tTagOf(col)
 % short time-axis tag for file names: tDtotal -> "tD", tD_res / tauD -> "tDres"
 switch string(col)
     case "tDtotal",                             tag = "tD";
-    case {"tD_res","tauD"},                     tag = "tDres";
+    case {"tD_res","tD_res_prof","tD_res_cont","tauD","tauD_cont"}, tag = "tDres";
     case "tD_corr_contour",                     tag = "tDres_contour";
     otherwise,                                  tag = string(col);
 end
 end
 
-function [tArr, src] = arrivalTime(ctData, fd, ds, ref)
-% arrival time [min] of one experiment / data source:
-%   "C50"     t0 = -b/v of the C = 0.5 front-centre line (resultsAll.(ds).vFront of main_CTpreproc;
-%             fallback: t0_C50line_min stored by main_CTpostproc)
-%   "contour" first C = 0.01 contour (resultsAll.(ds).tD_arrival_contour, tD = Q t / V_total)
-%   "lines"   line volume before the core / Q
-% a missing C50 falls back to contour, a missing contour to lines; src = arrival actually used
-ref  = string(ref);
-tL   = fd.Vlinesbefore/fd.Q;
-tC   = NaN;  t50 = NaN;
-if isfield(ctData, 'resultsAll') && isfield(ctData.resultsAll, ds)
-    rA = ctData.resultsAll.(ds);
-    if isfield(rA, 'tD_arrival_contour') && isfinite(rA.tD_arrival_contour)
-        tC = rA.tD_arrival_contour*fd.Vtotal/fd.Q;
-    end
+function [tArr, src] = arrivalTime(ctData, fd, ds, ref, lvlSrc, lvl, fitKind)
+% arrival time [min] of one experiment / data source / SOURCE (lvlSrc = "profile" | "contour"):
+%   "levels"  t0 of level lvl of that source's level trajectories (resultsAll.(ds).arrLevels.(lvlSrc) of
+%             main_CTpostproc): fitKind "curve" (per-level ADE form) | "line" | "t0s" (joint two-origin)
+%   "C50"     t0 = -b/v of that source's C = 0.5 centre line: contour = vFront (main_CTpreproc),
+%             profile = vFrontProf.xtrim (main_CTpostproc, fallback t0_C50prof_min)
+%   "contour" first C = 0.01 contour (resultsAll.(ds).tD_arrival_contour), both sources
+%   "lines"   line volume before the core / Q, both sources
+% fallback: levels -> C50 -> contour -> lines (with a warning); src = arrival actually used
+if nargin < 5 || isempty(lvlSrc),  lvlSrc  = "profile"; end
+if nargin < 6 || isempty(lvl),     lvl     = 0.01; end
+if nargin < 7 || isempty(fitKind), fitKind = "curve"; end
+ref = string(ref);  lvlSrc = string(lvlSrc);
+tL  = fd.Vlinesbefore/fd.Q;  tC = NaN;  t50 = NaN;  tLv = NaN;
+rA  = struct();
+if isfield(ctData, 'resultsAll') && isfield(ctData.resultsAll, ds), rA = ctData.resultsAll.(ds); end
+if isfield(rA, 'tD_arrival_contour') && isfinite(rA.tD_arrival_contour)
+    tC = rA.tD_arrival_contour*fd.Vtotal/fd.Q;
+end
+if lvlSrc == "contour"
     if isfield(rA, 'vFront') && isstruct(rA.vFront) && isfinite(rA.vFront.v_front_cmmin) && rA.vFront.v_front_cmmin > 0
         t50 = -rA.vFront.intercept_cm/rA.vFront.v_front_cmmin;
-    elseif isfield(rA, 't0_C50line_min') && isfinite(rA.t0_C50line_min)
-        t50 = rA.t0_C50line_min;
+    elseif isfield(rA, 't0_C50line_min'), t50 = rA.t0_C50line_min;
+    end
+else
+    if isfield(rA, 'vFrontProf') && isfield(rA.vFrontProf, 'xtrim'), t50 = rA.vFrontProf.xtrim.t0_min;
+    elseif isfield(rA, 't0_C50prof_min'), t50 = rA.t0_C50prof_min;
     end
 end
+if isfield(rA, 'arrLevels') && isfield(rA.arrLevels, lvlSrc)
+    A  = rA.arrLevels.(lvlSrc);
+    rL = A.perLevel(abs(A.perLevel.C - lvl) < 1e-9, :);
+    switch string(fitKind)
+        case "curve", if height(rL) > 0, tLv = rL.t0_curve_min(1); end
+        case "line",  if height(rL) > 0, tLv = rL.t0_line_min(1);  end
+        case "t0s",   tLv = A.joint.t0s_joint2(1);
+    end
+end
+lvTag = "levels_" + lvlSrc + "_" + string(fitKind) + sprintf("_C%02d", round(100*lvl));
 switch ref
-    case "C50",     tArr = t50;  src = "C50";
+    case "levels",  tArr = tLv;  src = lvTag;
+    case "C50",     tArr = t50;  src = "C50_" + lvlSrc;
     case "contour", tArr = tC;   src = "contour";
     case "lines",   tArr = tL;   src = "lines";
-    otherwise,      error('arrivalTime: unknown reference "%s" (C50 | contour | lines)', ref);
+    otherwise,      error('arrivalTime: unknown reference "%s" (levels | C50 | contour | lines)', ref);
 end
-if ~isfinite(tArr) && src == "C50"
-    warning('%s (%s): no C = 0.5 front line -> contour arrival', fd.Key, ds);
+if ~isfinite(tArr) && startsWith(src, "levels")
+    warning('%s (%s, %s): no level arrival (run main_CTpostproc with arrivalLevels) -> C50 line', fd.Key, ds, lvlSrc);
+    tArr = t50;  src = "C50_" + lvlSrc;
+end
+if ~isfinite(tArr) && startsWith(src, "C50")
+    warning('%s (%s, %s): no C = 0.5 centre line -> contour arrival', fd.Key, ds, lvlSrc);
     tArr = tC;  src = "contour";
 end
 if ~isfinite(tArr) && src == "contour"
     warning('%s (%s): no contour arrival -> line volume', fd.Key, ds);
     tArr = tL;  src = "lines";
+end
+end
+
+function L = centreLine(rA, lvlSrc)
+% C = 0.5 centre line z = v (t - t0) of one source (profile / contour), never mixed:
+%   1) the C = 0.5 row of resultsAll.(ds).arrLevels.(lvlSrc).perLevel (x-trimmed straight line)
+%   2) fallback: contour = vFront (main_CTpreproc, full image); profile = vFrontProf.xtrim (main_CTpostproc)
+L = struct('v',NaN, 't0',NaN, 'src',"none");
+lvlSrc = string(lvlSrc);
+if isfield(rA, 'arrLevels') && isfield(rA.arrLevels, lvlSrc)
+    P = rA.arrLevels.(lvlSrc).perLevel;  r = P(abs(P.C - 0.5) < 1e-9, :);
+    if height(r) > 0 && isfinite(r.v_line_cmmin(1)) && r.v_line_cmmin(1) > 0
+        L = struct('v',r.v_line_cmmin(1), 't0',r.t0_line_min(1), 'src',"arrLevels_" + lvlSrc + "_C50");  return
+    end
+end
+if lvlSrc == "contour" && isfield(rA, 'vFront') && isstruct(rA.vFront) && rA.vFront.v_front_cmmin > 0
+    L = struct('v',rA.vFront.v_front_cmmin, 't0',-rA.vFront.intercept_cm/rA.vFront.v_front_cmmin, 'src',"vFront");
+elseif lvlSrc == "profile" && isfield(rA, 'vFrontProf') && isfield(rA.vFrontProf, 'xtrim') && rA.vFrontProf.xtrim.v_front_cmmin > 0
+    L = struct('v',rA.vFrontProf.xtrim.v_front_cmmin, 't0',rA.vFrontProf.xtrim.t0_min, 'src',"vFrontProf_xtrim");
 end
 end
 
@@ -3246,13 +3339,13 @@ if ~isempty(j) && j < numel(Cn), zc(2) = z(j) + (Cn(j) - lv(2))*(z(j+1) - z(j))/
 end
 
 function Tk = klAllFrames(ctData, fd, hasPostI, ds, variant, pair)
-% KL per frame from the width of the level pair (KL_allProfileWidths) for one experiment,
-% KL = W^2/(4 k^2 tau), tau = t - t_arr. Arrival, first one found:
-%   1) resultsAll.(ds).tArr_plot_min -- tResRef arrival set at load in this script (default C50),
-%      the same origin as the t_D,res axis (column tD_res)
-%   2) resultsAll.(ds).tArr_profKL_min -- arrival selected in main_CTpostproc (tArrProfRef)
-%   3) contour arrival stored with the mid-profile KL (older postproc results)
-%   4) line volume before the core
+% KL per frame from the width of the level pair (KL_allProfileWidths), KL = W^2/(4 k^2 tau), with
+% each source on its OWN arrival (never mixed):
+%   profile  columns (KL_prof_*, tau_min, tauD, tD_arrival, zD_center_C50 = profile C = 0.5 crossing):
+%            tau = t - resultsAll.(ds).tArr_plot_prof_min (profile arrival of the load block)
+%   contour  columns (KL_cont_*, dKL_cont_*, tau_cont_min, tauD_cont, tD_arrival_cont,
+%            zD_center_cont = C = 0.5 contour centre): tau = t - tArr_plot_cont_min (contour arrival)
+% Fallback for both: tArr_plot_min -> tArr_profKL_min (main_CTpostproc) -> line volume.
 Tk = table();
 vars = ctData.varsAll.(ds);
 tag  = sprintf('%02d_%02d', round(100*pair));
@@ -3260,23 +3353,38 @@ if ~ismember("zDWidthProf_" + tag + variant + "_cm", string(vars.Properties.Vari
     warning('klAllFrames: zDWidthProf_%s%s_cm missing for %s -- run main_CTpostproc first', tag, variant, fd.Key);
     return
 end
-tArr  = fd.Vlinesbefore/fd.Q;                         % 4) fallback: line volume before the core [min]
-vName = "full";  if variant == "_xtrim", vName = "xtrim"; end
-if isfield(ctData, 'resultsAll') && isfield(ctData.resultsAll, ds)
-    rs = ctData.resultsAll.(ds);
-    if isfield(rs, 'tArr_plot_min') && isfinite(rs.tArr_plot_min)
-        tArr = rs.tArr_plot_min;                                                     % 1)
-    elseif hasPostI && isfield(rs, 'tArr_profKL_min') && isfinite(rs.tArr_profKL_min)
-        tArr = rs.tArr_profKL_min;                                                   % 2)
-    elseif hasPostI && isfield(rs, vName) && isfield(rs.(vName), 'KL_midProfile') && ...
-            isfield(rs.(vName).KL_midProfile.methods, 'erfc_contour')
-        tc = rs.(vName).KL_midProfile.methods.erfc_contour.tArr_min;                 % 3)
-        if isfinite(tc), tArr = tc; end
-    end
+tP = fd.Vlinesbefore/fd.Q;  rs = struct();
+if isfield(ctData, 'resultsAll') && isfield(ctData.resultsAll, ds), rs = ctData.resultsAll.(ds); end
+if isfield(rs, 'tArr_plot_prof_min') && isfinite(rs.tArr_plot_prof_min), tP = rs.tArr_plot_prof_min;
+elseif isfield(rs, 'tArr_plot_min') && isfinite(rs.tArr_plot_min),      tP = rs.tArr_plot_min;
+elseif hasPostI && isfield(rs, 'tArr_profKL_min') && isfinite(rs.tArr_profKL_min), tP = rs.tArr_profKL_min;
 end
-Tk = KL_allProfileWidths(vars, variant, pair, tArr, tArr*fd.Q/fd.Vtotal);
+tC = tP;
+if isfield(rs, 'tArr_plot_cont_min') && isfinite(rs.tArr_plot_cont_min), tC = rs.tArr_plot_cont_min; end
+Tk = KL_allProfileWidths(vars, variant, pair, tP, tP*fd.Q/fd.Vtotal);             % profile arrival
+Tc = KL_allProfileWidths(vars, variant, pair, tC, tC*fd.Q/fd.Vtotal);             % contour arrival
+if ~isequal(Tk.frame, Tc.frame), error('klAllFrames: frames of the two arrivals differ (%s)', fd.Key); end
+for c_ = ["KL_cont_" + tag + "_cm2min", "dKL_cont_" + tag + "_cm2min"]
+    Tk.(c_) = Tc.(c_);                                                             % contour KL, contour tau
 end
- 
+Tk.tau_cont_min    = Tc.tau_min;
+Tk.tauD_cont       = Tc.tauD;
+Tk.tD_arrival_cont = Tc.tD_arrival;
+zcC = nan(height(vars),1);
+if ismember("zDFront50" + variant, string(vars.Properties.VariableNames)), zcC = vars.("zDFront50" + variant); end
+Tk.zD_center_cont  = zcC(Tk.frame);
+end
+
+function sel = rotZDselSrc(Tk, src, rot, tol, zDr, z0)
+% rotZDsel with the front centre of one source: src = "prof" (zD_center_C50, profile crossing) |
+% "cont" (zD_center_cont, C = 0.5 contour)
+if nargin < 6, z0 = []; end
+if src == "cont" && ismember('zD_center_cont', Tk.Properties.VariableNames)
+    Tk.zD_center_C50 = Tk.zD_center_cont;
+end
+sel = rotZDsel(Tk, rot, tol, zDr, z0);
+end
+
 function sel = rotZDsel(Tk, rot, tol, zDr, z0)
 % frames at rotation rot +/- tol [deg] (wrapped) with the front centre (C = 0.5) inside zDr;
 % of those, ONLY the one frame whose centre is closest to z0 (default: middle of zDr, i.e. 0.5
