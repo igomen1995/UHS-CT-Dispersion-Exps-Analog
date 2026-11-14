@@ -23,6 +23,8 @@ function P = profileWidth(z, C, Ci, Cj, levelPairs, nSmooth, doErfc, trimFrac)
 %   zz, Cn, Cs  distance from the injection end [cm], normalized profile, smoothed profile
 %   tags        "C10_90", ... per pair;  k = erfcinv(2 low) - erfcinv(2 high)
 %   W           width per pair [cm] = z(Cn = low) - z(Cn = high) (NaN if not crossed)
+%   z50_cross   front centre: position of the Cn = 0.5 crossing of the smoothed profile, the
+%               down-crossing with the steepest drop (no fit; as the C = 0.5 contour) [cm]
 %   z50_erfc, w_erfc, dw_erfc, rmse_erfc, r2_erfc
 %               free erfc fit Cn = 0.5 erfc((z - z50)/w) (first ADE term); w = 2 sqrt(KL tau)
 %   sigma, skew, kurt
@@ -41,7 +43,7 @@ if nargin < 8 || isempty(trimFrac),   trimFrac = 0.02; end
 nP = size(levelPairs,1);
 
 P = struct('zz',[], 'Cn',[], 'Cs',[], 'tags',strings(1,nP), 'k',nan(1,nP), 'W',nan(1,nP), ...
-    'z50_erfc',NaN, 'w_erfc',NaN, 'dw_erfc',NaN, 'rmse_erfc',NaN, 'r2_erfc',NaN, ...
+    'z50_cross',NaN, 'z50_erfc',NaN, 'w_erfc',NaN, 'dw_erfc',NaN, 'rmse_erfc',NaN, 'r2_erfc',NaN, ...
     'sigma',NaN, 'skew',NaN, 'kurt',NaN, 'frontInside',false, 'note',"");
 for p = 1:nP
     P.tags(p) = sprintf("C%02d_%02d", round(100*levelPairs(p,1)), round(100*levelPairs(p,2)));
@@ -81,6 +83,7 @@ for p = 1:nP
 end
 z10 = crossDown(zz, Cm, 0.1, k50);  z90 = crossUp(zz, Cm, 0.9, k50);
 z5  = interpX(zz, Cm, k50, 0.5);
+P.z50_cross = z5;                                  % front centre without fit
 P.frontInside = isfinite(z10) && isfinite(z90);
 if ~P.frontInside
     P.note = sprintf("front not inside the core (Cn range %.2f .. %.2f)", min(Cm), max(Cm));

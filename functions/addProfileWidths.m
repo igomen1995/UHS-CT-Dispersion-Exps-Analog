@@ -15,6 +15,8 @@ function vars = addProfileWidths(vars, Ci, Cj, levelPairs, L_cm, doErfc, trimFra
 %   zDWidthProf_<lo>_<hi><sfx>_cm   same in cm
 %   zDWidthProfErfc_10_90<sfx>[_cm] erfc-fit width as its 10-90 equivalent, 2 erfcinv(0.2) w,
 %                                   so that W^2/(4k^2) = w^2/4 in fitKL_frontWidth
+%   zDFrontProfC50<sfx>[_cm]        front centre = Cn = 0.5 crossing of the profile (steepest
+%                                   down-crossing, no fit; as the C = 0.5 contour) [-, cm]
 %   zDFrontProf50<sfx>[_cm]         front centre z50 of the erfc fit [-, cm; from the injection end]
 %   wProfErfc<sfx>_cm, dwProfErfc<sfx>_cm   erfc width w and its standard error [cm]
 %   rmseProfErfc<sfx>, r2ProfErfc<sfx>      goodness of the erfc fit (normalized C)
@@ -41,7 +43,7 @@ vars(:, old) = [];
 kErfc = 2*erfcinv(0.2);                    % 10-90 width of erfc((z - z50)/w) is kErfc*w
 for sfx = ["", "_xtrim"]
     cCol = "CVert" + sfx;
-    W = nan(n,nP);  z50 = nan(n,1);  w = nan(n,1);  dw = nan(n,1);  rm = nan(n,1);  r2 = nan(n,1);
+    W = nan(n,nP);  z50 = nan(n,1);  zc50 = nan(n,1);  w = nan(n,1);  dw = nan(n,1);  rm = nan(n,1);  r2 = nan(n,1);
     sg = nan(n,1);  sk = nan(n,1);  ku = nan(n,1);  tags = strings(1,nP);  notes = strings(n,1);
     Limg = L_cm*ones(n,1);                 % image length per frame [cm] (fallback: core length)
     for r = 1:n
@@ -50,7 +52,7 @@ for sfx = ["", "_xtrim"]
         zc = pr.zVertcm;  if any(isfinite(zc)), Limg(r) = max(zc); end   % = Lcm of populate_CTframeVars
         P = profileWidth(pr.zVertcm, pr.(cCol), Ci, Cj, levelPairs, [], doErfc, trimFrac);
         notes(r) = P.note;
-        W(r,:) = P.W;  z50(r) = P.z50_erfc;  w(r) = P.w_erfc;  dw(r) = P.dw_erfc;
+        W(r,:) = P.W;  z50(r) = P.z50_erfc;  zc50(r) = P.z50_cross;  w(r) = P.w_erfc;  dw(r) = P.dw_erfc;
         rm(r) = P.rmse_erfc;  r2(r) = P.r2_erfc;
         sg(r) = P.sigma;  sk(r) = P.skew;  ku(r) = P.kurt;
     end
@@ -77,7 +79,9 @@ for sfx = ["", "_xtrim"]
     end
     vars.("zDWidthProfErfc_10_90" + sfx)         = kErfc*w./Limg;
     vars.("zDWidthProfErfc_10_90" + sfx + "_cm") = kErfc*w;
-    vars.("zDFrontProf50" + sfx)          = z50./Limg;
+    vars.("zDFrontProfC50" + sfx)         = zc50./Limg;   % C = 0.5 crossing (no fit)
+    vars.("zDFrontProfC50" + sfx + "_cm") = zc50;
+    vars.("zDFrontProf50" + sfx)          = z50./Limg;    % erfc-fit centre
     vars.("zDFrontProf50" + sfx + "_cm")  = z50;
     vars.("wProfErfc" + sfx + "_cm")  = w;
     vars.("dwProfErfc" + sfx + "_cm") = dw;

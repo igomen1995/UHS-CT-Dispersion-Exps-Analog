@@ -28,9 +28,14 @@
 %     with W0 from the fit and from the inlet BTC
 %   - plot fitted BTC vs scatter, and compare all methods
 %   - ARRIVAL TIME of the single-profile KL (mid-profile, every frame, W0 fit, theta = klRot frame):
-%     tArrProfRef = "C50" (default) | "contour" | "lines"
-%       C50     : t0 = -b/v of the straight line z = v t + b through the C = 0.5 front centres
-%                 (frontVel, main_CTpreproc) -> time the front centre enters the rock
+%     tArrProfRef = "C50" (default) | "C50prof" | "contour" | "lines"
+%       C50     : t0 = -b/v of the straight line z = v t + b through the C = 0.5 2D-contour centres
+%                 (frontVel on zDFront50_cm, full image, main_CTpreproc) -> time the front centre
+%                 enters the rock
+%       C50prof : same, through the AVERAGED-PROFILE centres, computed here (frontVel on
+%                 zDFrontProfC50<vfProfVariant>_cm = Cn = 0.5 crossing of the profile, no fit, as the
+%                 C = 0.5 contour; vfProfCenter = "erfc" uses the erfc-fit z50 instead) -> the time
+%                 origin of the profile's own centre, consistent with the profile widths used for KL
 %       contour : first frame with a C = 0.01 contour (leading edge)
 %       lines   : line volume before the core / Q
 %     stored in resultsAll.(ds).tArr_profKL_min / tArr_profKL_ref (read by klAllFrames in main_CTplots)
@@ -105,11 +110,15 @@ for i = 1:height(inputFileConfig)
 
     % arrival time (origin of tau = t - t_arr) of every KL from single profiles / per-frame widths:
     % mid-profile (KL_profileAt), every frame (KL_allProfileWidths), W0 fit, theta = klRot frame
-    tArrProfRef  = "C50";     % "C50" (centre line, -b/v) | "contour" (C = 0.01) | "lines" (Vlines/Q)
+    tArrProfRef  = "C50";     % "C50" (contour centre line, -b/v) | "C50prof" (profile centre line)
+                              % | "contour" (C = 0.01) | "lines" (Vlines/Q)
+    vfProfVariant = "_xtrim"; % profile centre used for C50prof: "_xtrim" (as the profile KL) | "" (full)
+    vfProfCenter  = "crossing"; % profile centre: "crossing" (Cn = 0.5 crossing, no fit, zDFrontProfC50)
+                                % | "erfc" (erfc-fit z50, zDFrontProf50)
     sigmaTau_mid = tArrProfRef; % arrival used by the sigma alias of the mid-profile KL
     % arrival time of the width-growth / moment fits vs time (fitKL_frontWidth, fitKL_moments,
     % widthVsTime plot): "lines" keeps the previous results; "C50" / "contour" also possible
-    tArrFitRef   = "lines";
+    tArrFitRef   = "lines";   % "lines" | "C50" | "C50prof" | "contour"
 
     % front width from the averaged profile (addProfileWidths -> columns of varsAll)
     profWidthPairs = [0.10 0.90; 0.20 0.80; 0.30 0.70; 0.40 0.60];   % [low high] levels
@@ -192,13 +201,37 @@ for i = 1:height(inputFileConfig)
             vf = expCTData.resultsAll.(dataSource).vFront;
             if isfinite(vf.v_front_cmmin) && vf.v_front_cmmin > 0, t0C50_min = -vf.intercept_cm/vf.v_front_cmmin; end
         end
-        fprintf(['%s (%s): v_front = %.4g cm/min (u_int = %.4g); t_arr contour C=0.01 = %.3g min, ' ...
-                 't_arr lines = %.3g min, t0 of the C=0.5 line = %.3g min\n'], ...
-            filedataExp.Key, dataSource, vFront_cmmin, uint_cmmin, tArrContour_min, tLines_min, t0C50_min);
+        % front velocity and t0 from the AVERAGED-PROFILE centre (vfProfCenter: Cn = 0.5 crossing
+        % zDFrontProfC50, or erfc-fit z50 zDFrontProf50; addProfileWidths), same fit as frontVel in
+        % main_CTpreproc (z [cm] vs t [min], 0.03 < z_D < 0.97, >= 5 frames), full and x-trimmed; t0 = -b/v
+        tMinAll = vars.secondsElapsed/60;
+        vFrontProf = struct();
+        for pv = ["", "_xtrim"]
+            pvName = ternary_str(pv == "", "full", "xtrim");
+            cZ = ternary_str(vfProfCenter == "erfc", "zDFrontProf50", "zDFrontProfC50") + pv;
+            if all(ismember([cZ, cZ + "_cm"], string(vars.Properties.VariableNames)))
+                vp = frontVel(tMinAll, vars.(cZ + "_cm"), vars.(cZ));
+            else
+                warning('%s (%s): %s / %s_cm missing, no profile front velocity', filedataExp.Key, dataSource, cZ, cZ);
+                vp = struct('v_front_cmmin',NaN, 'intercept_cm',NaN, 'R2',NaN, 'nValidPts',0);
+            end
+            vp.t0_min = NaN;  vp.center = string(vfProfCenter);  vp.column = cZ;
+            if isfinite(vp.v_front_cmmin) && vp.v_front_cmmin > 0, vp.t0_min = -vp.intercept_cm/vp.v_front_cmmin; end
+            vFrontProf.(pvName) = vp;
+        end
+        vpSel = vFrontProf.(ternary_str(vfProfVariant == "", "full", "xtrim"));
+        vFrontProf_cmmin = vpSel.v_front_cmmin;
+        t0C50prof_min    = vpSel.t0_min;
 
-        % arrival times used below (fallback C50 -> contour -> lines when one is missing)
+        fprintf(['%s (%s): v_front contour = %.4g cm/min, v_front profile%s (%s) = %.4g cm/min (u_int = %.4g); ' ...
+                 't_arr contour C=0.01 = %.3g min, t_arr lines = %.3g min, t0 of the C=0.5 line: contour = %.3g, ' ...
+                 'profile = %.3g min\n'], ...
+            filedataExp.Key, dataSource, vFront_cmmin, vfProfVariant, vfProfCenter, vFrontProf_cmmin, uint_cmmin, ...
+            tArrContour_min, tLines_min, t0C50_min, t0C50prof_min);
+
+        % arrival times used below (fallback C50prof -> C50 -> contour -> lines when one is missing)
         tArrC = tArrContour_min;  if ~isfinite(tArrC), tArrC = tLines_min; end     % contour, else lines
-        tArrAll = struct('C50', t0C50_min, 'contour', tArrC, 'lines', tLines_min);
+        tArrAll = struct('C50', t0C50_min, 'C50prof', t0C50prof_min, 'contour', tArrC, 'lines', tLines_min);
         tArrP = pickArrival(tArrAll, tArrProfRef, filedataExp.Key, dataSource);     % single-profile KL
         tArrF = pickArrival(tArrAll, tArrFitRef,  filedataExp.Key, dataSource);     % width-growth fits
         t_arrival_min = max(tArrF, 0);   % scalar, broadcasts in fitKL_frontWidth/fitKL_moments
@@ -330,10 +363,10 @@ for i = 1:height(inputFileConfig)
 
             % KL from the profile(s) with the front centre at zDtarget_mid
             plotFile_mid = fullfile(pathExportAll, filedataExp.Key + "_KLmidProfile_" + dataSource + "_" + variant);
-            % every arrival is evaluated (methods <m>_C50, <m>_contour, <m>_lines); the selected one
+            % every arrival is evaluated (methods <m>_C50, <m>_C50prof, <m>_contour, <m>_lines); the selected one
             % first, so the per-frame KL plot of KL_profileAt uses it
             tArr = struct();  tArr.(tArrProfRef) = tArrP;
-            for a = ["C50","contour","lines"]
+            for a = ["C50","C50prof","contour","lines"]
                 if ~isfield(tArr, a) && isfinite(tArrAll.(a)), tArr.(a) = tArrAll.(a); end
             end
             resultsOut.(variant).KL_midProfile = KL_profileAt(vars, variantSuffix, ...
@@ -455,6 +488,11 @@ for i = 1:height(inputFileConfig)
         resultsOut.tArr_fitKL_ref    = string(tArrFitRef);
         resultsOut.tArr_fitKL_min    = tArrF;
         resultsOut.t0_C50line_min    = t0C50_min;
+        resultsOut.vFrontProf        = vFrontProf;            % .full / .xtrim: v_front_cmmin, intercept_cm, R2, nValidPts, t0_min
+        resultsOut.vFrontProf_cmmin  = vFrontProf_cmmin;      % of vfProfVariant
+        resultsOut.t0_C50prof_min    = t0C50prof_min;
+        resultsOut.vFrontProf_variant = string(vfProfVariant);
+        resultsOut.vFrontProf_center  = string(vfProfCenter);
         resultsOut.MFM_fitData       = fitDataMFM;
         resultsOut.KL_MFM_CT         = KL_MFM_CT;
         resultsOut.dKL_MFM_CT        = dKL_MFM_CT;
@@ -578,6 +616,19 @@ for i = 1:height(inputFileConfig)
         summaryT.tArr_contour_min  = tArrContour_min;
         summaryT.tArr_lines_min    = tLines_min;
         summaryT.t0_C50line_min    = t0C50_min;
+        summaryT.R2_vFront_contour = NaN;
+        if isfield(expCTData, 'resultsAll') && isfield(expCTData.resultsAll, dataSource) && ...
+                isfield(expCTData.resultsAll.(dataSource), 'vFront') && isfield(expCTData.resultsAll.(dataSource).vFront, 'R2')
+            summaryT.R2_vFront_contour = expCTData.resultsAll.(dataSource).vFront.R2;
+        end
+        for pvName = ["full","xtrim"]
+            vp = vFrontProf.(pvName);  sfxP = ternary_str(pvName == "full", "", "_xtrim");
+            summaryT.("vFrontProf_cmmin" + sfxP)  = vp.v_front_cmmin;
+            summaryT.("t0_C50prof_min" + sfxP)    = vp.t0_min;
+            summaryT.("R2_vFrontProf" + sfxP)     = vp.R2;
+            summaryT.("nFit_vFrontProf" + sfxP)   = vp.nValidPts;
+        end
+        summaryT.vFrontProf_center = string(vfProfCenter);
         summaryT.tArr_profKL_ref   = string(tArrProfRef);
         summaryT.tArr_profKL_min   = tArrP;
         summaryT.tD_arr_profKL     = tArrD_P;
@@ -601,17 +652,23 @@ for i = 1:height(inputFileConfig)
 
 end
 
+
 %% local helpers
 function out = ternary_str(cond, a, b)
 if cond, out = a; else, out = b; end
 end
 
 function t = pickArrival(tArrAll, ref, key, ds)
-% arrival time [min] of reference ref ("C50" | "contour" | "lines"); a missing C50 line falls
-% back to the contour arrival, a missing contour arrival is already the line-volume time
+% arrival time [min] of reference ref ("C50" | "C50prof" | "contour" | "lines"); a missing profile
+% centre line falls back to the contour centre line, a missing C50 line to the contour arrival, a
+% missing contour arrival is already the line-volume time
 ref = string(ref);
-if ~isfield(tArrAll, ref), error('unknown arrival reference "%s" (C50 | contour | lines)', ref); end
+if ~isfield(tArrAll, ref), error('unknown arrival reference "%s" (C50 | C50prof | contour | lines)', ref); end
 t = tArrAll.(ref);
+if ~isfinite(t) && ref == "C50prof"
+    warning('%s (%s): no profile C = 0.5 front line (t0_C50prof) -> contour C = 0.5 line used', key, ds);
+    t = tArrAll.C50;  ref = "C50";
+end
 if ~isfinite(t) && ref == "C50"
     warning('%s (%s): no C = 0.5 front line (t0_C50) -> contour arrival used', key, ds);
     t = tArrAll.contour;
