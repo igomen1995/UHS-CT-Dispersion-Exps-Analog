@@ -652,10 +652,18 @@ for i = 1:height(inputFileConfig)
 
 end
 
-%% check_arrivalLevels.m
-% Stand-alone check, NOTHING is re-run or saved back: reads the <Key>_postproc.mat files already
-% written by main_CTpostproc (fallback: <Key>.mat of main_CTpreproc) and estimates the arrival time
-% from the trajectories of every level C = 0.01 ... 0.5, run twice (arrSources):
+%% Arrival time from the trajectories of every level (C = 0.01 ... 0.5), stored for main_CTplots
+% Run AFTER the main section above (it reads the <Key>_postproc.mat files that section writes; a re-run
+% of the main section rebuilds those files without these fields, so run this section again after it).
+% With arrStore = true the results are stored like the main section:
+%   resultsAll.(ds).arrLevels.(contour|profile) .perLevel / .joint / .KL_byOrigin (tables), .v50, .levels
+%   resultsAll.(ds).tArr_levels_min / tArr_levels_ref / tD_arr_levels   <- arrival for t_res in main_CTplots
+%                                                                          (tResRef = "levels")
+%   saved back into <Key>_postproc.mat; sheets arrLevels_perLevel / arrLevels_joint / arrLevels_KL and
+%   Summary columns tArr_levels_* added to <Key>_KLresultsAll_<ds>.xlsx
+% The stored arrival is chosen with arrRefSource / arrRefLevel / arrRefFit (default: profile, C = 0.01,
+% curved per-level ADE fit = the time the C = 0.01 level of the averaged profile is at z = 0).
+% Levels are estimated from the trajectories of every level C = 0.01 ... 0.5, run twice (arrSources):
 %   contour: mean z of the C contour (zDFront<CC><arrVar>_cm vs t)
 %   profile: crossing of level C on the averaged profile CVert<arrVar> (computed here, as profileWidth;
 %            low levels also before the C = 0.5 crossing exists, anchored at the inlet side)
@@ -679,7 +687,12 @@ end
 Root = CT_setupPaths;
 cfg  = readtable('inputCTExpConfig.xlsx');
 
-arrDS     = "conc";                                 % data source(s), e.g. ["rhoNorm","conc"]
+arrStore     = true;                                % store in resultsAll / _postproc.mat / Excel (false = check only)
+arrRefSource = "profile";                           % stored arrival from: "profile" | "contour"
+arrRefLevel  = 0.01;                                % ... level C (for arrRefFit "curve" / "line")
+arrRefFit    = "curve";                             % ... "curve" (per-level ADE form, t0 at z = 0) | "line" (straight
+                                                    %     line) | "t0s" (joint two-origin fit, spreading start)
+arrDS     = ["rhoNorm","conc"];                     % data source(s); both, as the main section                                 % data source(s), e.g. ["rhoNorm","conc"]
 arrVar    = "_xtrim";                               % "" = full image | "_xtrim" (as the profile KL)
 arrLevels = [0.01 0.05 0.1 0.16 0.2 0.3 0.4 0.5];   % levels not traced in main_CTpreproc are skipped
 arrSearch = 120;                                    % t0 searched up to this many min before the first point
@@ -703,6 +716,7 @@ for i = 1:height(cfg)
     if isfile(fPost), S = load(fPost); else, S = load(fPre); warning('%s: no _postproc.mat, preproc file used (no KL check)', fd.Key); end
     E = S.expCTDataSave;
     for ds = arrDS
+        if ~isfield(E.varsAll, ds), continue, end
         vars = E.varsAll.(ds);  vn = string(vars.Properties.VariableNames);
         rA   = struct();  if isfield(E,'resultsAll') && isfield(E.resultsAll, ds), rA = E.resultsAll.(ds); end
         t    = vars.secondsElapsed/60;
@@ -710,7 +724,9 @@ for i = 1:height(cfg)
         % level positions on the averaged profile, every frame (computed here from C1Profile)
         [Zprof, ZDprof] = profLevels(vars.C1Profile, "CVert" + arrVar, fd.C1init/100, fd.C1j/100, arrLevels);
 
+        AL = struct();                                     % results of this experiment / data source
         for src = arrSources
+        nL0 = numel(rowsLvl);  nJ0 = numel(rowsJ);  nK0 = numel(rowsKL);
         % ---- data of every level
         T = [];  lv = [];
         for qL = 1:numel(arrLevels)
@@ -852,7 +868,58 @@ for i = 1:height(cfg)
                 saveas(fig, fullfile(exportPathChk, sprintf('arrival_levels_%s_%s_%s_%s%s.png', src, pk, fd.Key, ds, arrVar)));
             end
         end
+        % this source: store its tables
+        KLt = table();  if numel(rowsKL) > nK0, KLt = vertcat(rowsKL{nK0+1:end}); end
+        AL.(src) = struct('perLevel', vertcat(rowsLvl{nL0+1:end}), 'joint', vertcat(rowsJ{nJ0+1:end}), ...
+            'KL_byOrigin', KLt, 'v50', v50, 'levels', lv, 'variant', arrVar, 'useV50', arrUseV50);
         end   % src
+
+        % ---- arrival stored for main_CTplots (arrRefSource / arrRefLevel / arrRefFit)
+        tArrLev = NaN;  refTag = arrRefSource + "_" + arrRefFit;
+        if arrRefFit ~= "t0s", refTag = refTag + sprintf("_C%02d", round(100*arrRefLevel)); end
+        if isfield(AL, arrRefSource)
+            A = AL.(arrRefSource);
+            rL = A.perLevel(abs(A.perLevel.C - arrRefLevel) < 1e-9, :);
+            switch arrRefFit
+                case "curve", if height(rL) > 0, tArrLev = rL.t0_curve_min(1); end
+                case "line",  if height(rL) > 0, tArrLev = rL.t0_line_min(1);  end
+                case "t0s",   tArrLev = A.joint.t0s_joint2(1);
+                otherwise,    error('arrRefFit must be "curve", "line" or "t0s"');
+            end
+        end
+        if ~isfinite(tArrLev)
+            warning('%s (%s): no arrival from %s -- tArr_levels_min = NaN', fd.Key, ds, refTag);
+        end
+        E.resultsAll.(ds).arrLevels       = AL;
+        E.resultsAll.(ds).tArr_levels_min = tArrLev;
+        E.resultsAll.(ds).tArr_levels_ref = refTag;
+        E.resultsAll.(ds).tD_arr_levels   = tArrLev*fd.Q/fd.Vtotal;
+        fprintf('%s (%s): stored arrival tArr_levels = %.3g min (tD = %.3f), %s\n', ...
+            fd.Key, ds, tArrLev, tArrLev*fd.Q/fd.Vtotal, refTag);
+
+        % ---- Excel of the main section: tables + Summary columns
+        xl = fullfile(pth, fd.Key + "_KLresultsAll_" + ds + ".xlsx");
+        if arrStore && isfile(fPost) && isfile(xl)
+            srcs = string(fieldnames(AL))';
+            writetable(vertcat2(AL, srcs, 'perLevel'),    xl, 'Sheet','arrLevels_perLevel', 'WriteMode','overwritesheet');
+            writetable(vertcat2(AL, srcs, 'joint'),       xl, 'Sheet','arrLevels_joint',    'WriteMode','overwritesheet');
+            KLall = vertcat2(AL, srcs, 'KL_byOrigin');
+            if ~isempty(KLall), writetable(KLall, xl, 'Sheet','arrLevels_KL', 'WriteMode','overwritesheet'); end
+            Sm = readtable(xl, 'Sheet','Summary', 'TextType','string');
+            Sm.tArr_levels_min = tArrLev;  Sm.tArr_levels_ref = refTag;  Sm.tD_arr_levels = tArrLev*fd.Q/fd.Vtotal;
+            writetable(Sm, xl, 'Sheet','Summary', 'WriteMode','overwritesheet');
+        end
+    end
+
+    % ---- save back into <Key>_postproc.mat (same file and variable as the main section)
+    if arrStore
+        if isfile(fPost)
+            expCTDataSave = E;
+            save(fPost, 'expCTDataSave', '-v7.3')
+            fprintf('%s: arrival levels saved in %s\n', fd.Key, fPost);
+        else
+            warning('%s: no _postproc.mat -- run the main section first, nothing saved', fd.Key);
+        end
     end
 end
 
@@ -905,6 +972,15 @@ if isfinite(z0) && nnz(sel) > 1
 end
 end
 
+
+function T = vertcat2(AL, srcs, fld)
+% stack table AL.(src).(fld) over the sources (empty tables skipped)
+c = {};
+for s_ = srcs
+    if isfield(AL.(s_), fld) && ~isempty(AL.(s_).(fld)), c{end+1,1} = AL.(s_).(fld); end %#ok<AGROW>
+end
+T = table();  if ~isempty(c), T = vertcat(c{:}); end
+end
 
 function [t0, v, a] = fitLevelCurve(t, z, tLo, tHi, sgn, vFix)
 % z = v (t - t0) + a sqrt(t - t0); linear in v, a for a given t0 -> 1D search on t0.
