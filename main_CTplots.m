@@ -29,8 +29,8 @@
 %  CT breakthrough curves and front positions
 %   3   CT outlet BTC vs time, t_D (tAxis) and front-velocity-scaled t_D,core
 %   3b  CT BTCs at every zD level (one figure per experiment)
-%   3c  front position of every C level vs the four t_D definitions (one figure per experiment)
-%   3d  front position of one C level, all experiments together (one figure per level)
+%   3c  front position of every C level, contours and profile, each vs its own t_D,res and scaled time
+%   3d  same four panels for one C level, all experiments together (one figure per level)
 %  MFM breakthrough curves
 %   4   MFM analog BTC;  4b with the fitted curve (16-84 %)
 %   5   MFM UHS BTC;     5b with the fitted curve (16-84 %)
@@ -677,129 +677,90 @@ for ds = dataSources
             sprintf('BT_CT_allZD_%s_%s%s_%s', expKeys(i), ds, btcVariant, tXtag), closeAfterSave)
     end
 end
-%% 3c) Front position of every C-level vs tD_total and the three tD_core definitions (one figure per experiment)
+%% 3c) Front position of every C level, contours and averaged profile, with their own arrival (one figure per experiment)
+% Four panels, each source with its OWN arrival and velocity (never mixed; load block):
+%   1) 2D contours, z_D vs t_D,res,cont = t_D - t_D,arr,cont        (contour level arrival, tD_res_cont)
+%   2) 2D contours, z_D vs v_cont (t - t_arr,cont) / L_img          (contour C = 0.5 centre line, cLine_cont)
+%   3) averaged profile, z_D vs t_D,res,prof = t_D - t_D,arr,prof   (profile level arrival, tD_res_prof)
+%   4) averaged profile, z_D vs v_prof (t - t_arr,prof) / L_img     (profile C = 0.5 centre line, cLine_prof)
+% Contours: mean z of the C contour (zDFront<CC><posVariant>). Profile: crossing of level C on the averaged
+% profile CVert<posVariant>, searched outward from its C = 0.5 crossing (profLevels, as main_CTpostproc;
+% low levels also before the centre is inside). Arrival tResRef (default: C = 0.01 level t0 of each source).
+% In panels 2 and 4 a front moving at its centre-line velocity puts the C = 0.5 level on z_D = x.
 
-CplotLevels  = [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9];   % must be among Clevels in main_CTpreproc
-frontVariant = "";           % "" = full x-range mean, "_xtrim" = x-trimmed mean
-xLimPos      = [0 1.5];      % x-range for all four panels
-lvlCols = parula(numel(CplotLevels) + 1);
-lvlCols = lvlCols(1:numel(CplotLevels),:);              % one colour per C-level
-
-% {x column, x label, arrival-corrected?}
-posAxes = { ...
-    'tDtotal',                't_{D,total} = Qt/V_{total} [-]  (no arrival correction)',          false; ...
-    'tD_corr_lines',          't_{D,core} = t_{D,total} - t_{D,arrival,lines} [-]',                true; ...
-    'tD_corr_contour',        't_{D,core,front} = t_{D,total} - t_{D,arrival,front} [-]',           true; ...
-    'tD_corr_contour_scaled', 't_{D,core,front,scaled} = v_{front}(t - t_{arrival,front})/L [-]',  true};
+CplotLevels = [0.01 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9];   % contour levels must be among Clevels of main_CTpreproc
+posVariant  = "_xtrim";      % "" = full x-range | "_xtrim" (as the level arrivals of main_CTpostproc)
+xLimPos     = [-0.1 1.2];    % x-range of all four panels
+lvlCols = parula(numel(CplotLevels) + 1);  lvlCols = lvlCols(1:numel(CplotLevels),:);
+posPanels = frontPosPanels(tResRef);       % {source, axis kind, x label}
 
 for ds = dataSources
     for i = 1:nExp
-        vars   = expCTDataAll{i}.varsAll.(ds);
-        cols_i = string(vars.Properties.VariableNames);
-
+        [X, ZD] = frontPosData(expCTDataAll{i}, filedataExpAll{i}, ds, CplotLevels, posVariant);
         fig = figure('Position',[50 50 1400 1000]);
         tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
-
-        for a = 1:size(posAxes,1)
+        for a = 1:size(posPanels,1)
             ax = nexttile(tl);  hold(ax,'on')
-            xVar = posAxes{a,1};
-            if ~ismember(xVar, cols_i)
-                text(ax, 0.5, 0.5, xVar + " not available", 'Units','normalized', ...
-                    'HorizontalAlignment','center', 'Interpreter','none')
-                continue
+            src = posPanels{a,1};  x = X.(src).(posPanels{a,2});  Z = ZD.(src);
+            if all(~isfinite(x))
+                text(ax, 0.5, 0.5, "no " + src + " arrival", 'Units','normalized', 'HorizontalAlignment','center');  continue
             end
-            x = vars.(xVar);
-
             for m = 1:numel(CplotLevels)
-                tag     = sprintf('%02d', round(CplotLevels(m)*100));
-                meanCol = "zDFront" + tag + frontVariant;
-                if ~ismember(meanCol, cols_i)
-                    warning('%s (%s): %s missing, level skipped', expKeys(i), ds, meanCol);
-                    continue
-                end
-                zMean = vars.(meanCol);
-                ok = isfinite(x) & isfinite(zMean);
-                scatter(ax, x(ok), zMean(ok), 14, lvlCols(m,:), 'filled', ...
-                    'DisplayName', sprintf('C = %.1f', CplotLevels(m)))
+                ok = isfinite(x) & isfinite(Z(:,m));
+                if ~any(ok), continue, end
+                scatter(ax, x(ok), Z(ok,m), 14, lvlCols(m,:), 'filled', 'DisplayName', sprintf('C = %.2f', CplotLevels(m)))
             end
-
-            if posAxes{a,3}
-                xline(ax, 0, '--k', 'LineWidth',1, 'HandleVisibility','off')   % arrival
+            xline(ax, 0, '--k', 'LineWidth',1, 'HandleVisibility','off')            % arrival
+            if posPanels{a,2} == "scaled"
+                plot(ax, [0 1], [0 1], 'k:', 'LineWidth',1.5, 'HandleVisibility','off')  % centre line
             end
-
-            % legend with every C_D level, in each panel
             legend(ax, 'Location','southeast', 'FontSize',8)
-
-            xlabel(ax, posAxes{a,2}, 'FontSize',12)
-            ylabel(ax, 'z_D front position [-]', 'FontSize',12)
-            xlim(ax, xLimPos);  ylim(ax, [-0.02 1.02])
-            set(ax,'FontSize',11);  grid(ax,'on')
+            xlabel(ax, posPanels{a,3}, 'FontSize',12);  ylabel(ax, "z_D [-] (" + src + ")", 'FontSize',12)
+            xlim(ax, xLimPos);  ylim(ax, [-0.02 1.02]);  set(ax,'FontSize',11);  grid(ax,'on')
         end
-
-        if frontVariant == "", xTxt = "full x-range mean"; else, xTxt = "x-trimmed mean"; end
-        title(tl, sprintf('%s (%s): zD front position of each CD level (%s) vs tD', ...
-            expKeys(i), ds, xTxt), 'Interpreter','none')
-        saveFigBoth(fig, exportPath, ...
-            sprintf('frontPos_allC_%s_%s%s', expKeys(i), ds, frontVariant), closeAfterSave)
+        title(tl, sprintf('%s (%s): z_D of each C level, contours (top) and averaged profile (bottom), %s, t_{arr}: %s', ...
+            strrep(expKeys(i),'_','\_'), ds, strrep(posVariant,'_',''), tResRef), 'Interpreter','tex')
+        saveFigBoth(fig, exportPath, sprintf('frontPos_allC_%s_%s%s_%s', expKeys(i), ds, posVariant, tXtagRes(tResRef)), closeAfterSave)
     end
 end
 
-%% 3d) Front position of one C_D level, all experiments together (one figure per level)
+%% 3d) Front position of one C level, all experiments together, contours and profile (one figure per level)
+% Same four panels as 3c (contours / averaged profile, each vs its own t_D,res and its own scaled time),
+% one figure per level with every experiment.
 
-CplotLevels  = [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9];   % must be among Clevels in main_CTpreproc
-frontVariant = "";           % "" = full x-range mean, "_xtrim" = x-trimmed mean
-xLimPos      = [0 1.5];      % x-range for all four panels
-
-% {x column, x label, arrival-corrected?}
-posAxes = { ...
-    'tDtotal',                't_{D,total} = Qt/V_{total} [-]  (no arrival correction)',          false; ...
-    'tD_corr_lines',          't_{D,core} = t_{D,total} - t_{D,arrival,lines} [-]',                true; ...
-    'tD_corr_contour',        't_{D,core,front} = t_{D,total} - t_{D,arrival,front} [-]',           true; ...
-    'tD_corr_contour_scaled', 't_{D,core,front,scaled} = v_{front}(t - t_{arrival,front})/L [-]',  true};
-
-if frontVariant == "", xTxt = "full x-range mean"; else, xTxt = "x-trimmed mean"; end
+CplotLevels = [0.01 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9];
+posVariant  = "_xtrim";
+xLimPos     = [-0.1 1.2];
+posPanels   = frontPosPanels(tResRef);
 
 for ds = dataSources
+    X = cell(nExp,1);  ZD = cell(nExp,1);
+    for i = 1:nExp
+        [X{i}, ZD{i}] = frontPosData(expCTDataAll{i}, filedataExpAll{i}, ds, CplotLevels, posVariant);
+    end
     for m = 1:numel(CplotLevels)
-        tag     = sprintf('%02d', round(CplotLevels(m)*100));
-        meanCol = "zDFront" + tag + frontVariant;
-
         fig = figure('Position',[50 50 1400 1000]);
         tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
-
-        for a = 1:size(posAxes,1)
-            ax = nexttile(tl);  hold(ax,'on')
-            xVar = posAxes{a,1};
-
+        for a = 1:size(posPanels,1)
+            ax = nexttile(tl);  hold(ax,'on');  src = posPanels{a,1};
             for i = 1:nExp
-                vars   = expCTDataAll{i}.varsAll.(ds);
-                cols_i = string(vars.Properties.VariableNames);
-                if ~all(ismember([string(xVar) meanCol], cols_i))
-                    warning('%s (%s): %s or %s missing, skipped', expKeys(i), ds, xVar, meanCol);
-                    continue
-                end
-                x = vars.(xVar);
-                z = vars.(meanCol);
+                x = X{i}.(src).(posPanels{a,2});  z = ZD{i}.(src)(:,m);
                 ok = isfinite(x) & isfinite(z);
-                scatter(ax, x(ok), z(ok), 14, cols(i,:), markers{mod(i-1,numel(markers))+1}, ...
-                    'filled', 'DisplayName', expKeys(i))
+                if ~any(ok), continue, end
+                scatter(ax, x(ok), z(ok), 14, expCol(i,:), 'filled', 'DisplayName', expName(i))
             end
-
-            if posAxes{a,3}
-                xline(ax, 0, '--k', 'LineWidth',1, 'HandleVisibility','off')   % arrival
+            xline(ax, 0, '--k', 'LineWidth',1, 'HandleVisibility','off')
+            if posPanels{a,2} == "scaled"
+                plot(ax, [0 1], [0 1], 'k:', 'LineWidth',1.5, 'HandleVisibility','off')
             end
-
-            xlabel(ax, posAxes{a,2}, 'FontSize',12)
-            ylabel(ax, 'z_D front position [-]', 'FontSize',12)
-            xlim(ax, xLimPos);  ylim(ax, [-0.02 1.02])
-            set(ax,'FontSize',11);  grid(ax,'on')
+            xlabel(ax, posPanels{a,3}, 'FontSize',12);  ylabel(ax, "z_D [-] (" + src + ")", 'FontSize',12)
+            xlim(ax, xLimPos);  ylim(ax, [-0.02 1.02]);  set(ax,'FontSize',11);  grid(ax,'on')
             legend(ax, 'Location','southeast', 'FontSize',8, 'Interpreter','none')
         end
-
-        title(tl, sprintf('z_D front position at C_D = %.1f, all experiments (%s, %s)', ...
-            CplotLevels(m), ds, xTxt), 'Interpreter','tex')
-        saveFigBoth(fig, exportPath, ...
-            sprintf('frontPos_C%s_allExp_%s%s', tag, ds, frontVariant), closeAfterSave)
+        title(tl, sprintf('z_D at C = %.2f, all experiments: contours (top), averaged profile (bottom) (%s, %s, t_{arr}: %s)', ...
+            CplotLevels(m), ds, strrep(posVariant,'_',''), tResRef), 'Interpreter','tex')
+        saveFigBoth(fig, exportPath, sprintf('frontPos_C%02d_allExp_%s%s_%s', round(100*CplotLevels(m)), ds, ...
+            posVariant, tXtagRes(tResRef)), closeAfterSave)
     end
 end
 
@@ -3387,6 +3348,110 @@ if ~(isfinite(T_K) && isfinite(P_kPa)), return, end
 p1 = getFluidProps_REFPROP(RP, upper(ep.Fluid1(1)), T_K, P_kPa);
 p2 = getFluidProps_REFPROP(RP, upper(ep.Fluid2(1)), T_K, P_kPa);
 M  = p2.mu / p1.mu;
+end
+
+function P = frontPosPanels(ref)
+% panels of 3c / 3d: {source, x kind ("res" = t_D,res | "scaled" = v (t - t_arr)/L_img), x label}
+P = {"contour", "res",    't_{D,res,cont} = t_D - t_{D,arr,cont} [-]'; ...
+     "contour", "scaled", 'v_{cont} (t - t_{arr,cont}) / L_{img} [-]'; ...
+     "profile", "res",    't_{D,res,prof} = t_D - t_{D,arr,prof} [-]'; ...
+     "profile", "scaled", 'v_{prof} (t - t_{arr,prof}) / L_{img} [-]'};
+if string(ref) ~= "levels"
+    P(:,3) = cellfun(@(s) [s '  (t_{arr}: ' char(ref) ')'], P(:,3), 'UniformOutput', false);
+end
+end
+
+function [X, ZD] = frontPosData(ctData, fd, ds, levels, variant)
+% level positions z_D (frames x levels) and the two x axes of each source, each with its own arrival
+% (resultsAll.(ds).tArr_plot_<src>_min) and centre-line velocity (cLine_<src>) from the load block:
+%   X.(src).res = t_D - t_D,arr,src,   X.(src).scaled = v_src (t - t_arr,src) / L_img
+vars = ctData.varsAll.(ds);  vn = string(vars.Properties.VariableNames);  n = height(vars);
+rq   = ctData.resultsAll.(ds);  t = vars.secondsElapsed/60;
+ZD.contour = nan(n, numel(levels));
+for m = 1:numel(levels)
+    c_ = "zDFront" + sprintf('%02d', round(100*levels(m))) + variant;
+    if ismember(c_, vn), ZD.contour(:,m) = vars.(c_); end
+end
+[Zp, ZD.profile] = profLevels(vars.C1Profile, "CVert" + variant, fd.C1init/100, fd.C1j/100, levels);
+% image length of each source [cm]
+LC = NaN;  c50 = "zDFront50" + variant;
+if all(ismember([c50, c50 + "_cm"], vn))
+    okL = vars.(c50) > 0.05;  LC = median(vars.(c50 + "_cm")(okL) ./ vars.(c50)(okL), 'omitnan');
+end
+k50 = find(abs(levels - 0.5) < 1e-9, 1);  LP = NaN;
+if ~isempty(k50), okL = ZD.profile(:,k50) > 0.05;  LP = median(Zp(okL,k50) ./ ZD.profile(okL,k50), 'omitnan'); end
+if ~isfinite(LC), LC = fd.L*2.54; end
+if ~isfinite(LP), LP = LC; end
+src = ["contour","profile"];  tag = ["cont","prof"];  Ls = [LC LP];
+for k = 1:2
+    tA = NaN;  v = NaN;
+    if isfield(rq, "tArr_plot_" + tag(k) + "_min"), tA = rq.("tArr_plot_" + tag(k) + "_min"); end
+    if isfield(rq, "cLine_" + tag(k)), v = rq.("cLine_" + tag(k)).v; end
+    X.(src(k)).res    = vars.tDtotal - tA*fd.Q/fd.Vtotal;
+    X.(src(k)).scaled = v*(t - tA)/Ls(k);
+end
+end
+
+function [Z, ZD] = profLevels(profCol, cCol, Ci, Cj, levels, trimFrac, nSmooth)
+% Position of every level C on the averaged profile of every frame, as profileWidth / main_CTpostproc:
+% Cn = (C - Ci)/(Cj - Ci), 2 % of the column dropped at each end, injection end first, 5-slice moving
+% median; anchor = the Cn = 0.5 down-crossing with the steepest drop; levels < 0.5 searched downstream
+% of it, levels > 0.5 upstream. Before the centre is inside (no Cn = 0.5 crossing), the anchor is the
+% highest Cn in the first 20 % of the column (inlet side), so the low levels are found from their first
+% appearance; levels >= 0.5 stay NaN. Z [cm from the injection end], ZD = Z / image length.
+if nargin < 6, trimFrac = 0.02; end
+if nargin < 7, nSmooth = 5; end
+if iscell(profCol) || isstruct(profCol), n = numel(profCol); else, n = height(profCol); end
+Z = nan(n, numel(levels));  ZD = Z;
+for r = 1:n
+    pr = getProfRow(profCol, r);
+    if isempty(pr) || ~ismember(cCol, string(pr.Properties.VariableNames)), continue, end
+    z = double(pr.zVertcm(:));  C = double(pr.(cCol)(:));
+    ok = isfinite(z) & isfinite(C);  z = z(ok);  C = C(ok);
+    if numel(z) < 10, continue, end
+    Limg = max(z);
+    [z, o] = sort(z);  C = C(o);  Cn = (C - Ci)/(Cj - Ci);
+    L  = z(end) - z(1);
+    in = z >= z(1) + trimFrac*L & z <= z(end) - trimFrac*L;  z = z(in);  Cn = Cn(in);
+    nE = ceil(numel(Cn)/5);
+    if mean(Cn(1:nE)) < mean(Cn(end-nE+1:end)), Cn = flipud(Cn); end
+    zz = z - z(1) + trimFrac*L;  Cm = movmedian(Cn, nSmooth);
+    k50 = find(Cm(1:end-1) >= 0.5 & Cm(2:end) < 0.5);
+    if isempty(k50)
+        nA = max(2, ceil(0.2*numel(Cm)));  [cMax, k50] = max(Cm(1:nA));
+        if cMax <= min(levels), continue, end
+        noCentre = true;
+    else
+        g = -gradient(Cm, zz);  [~, b] = max(g(k50));  k50 = k50(b);
+        noCentre = false;
+    end
+    for q = 1:numel(levels)
+        c = levels(q);
+        if noCentre && c >= 0.5, continue, end
+        if abs(c - 0.5) < 1e-9
+            zc = interpLev(zz, Cm, k50, 0.5);
+        elseif c < 0.5
+            j = find(Cm(k50+1:end) < c, 1);  zc = NaN;
+            if ~isempty(j), j = k50 + j;  zc = interpLev(zz, Cm, j-1, c); end
+        else
+            j = find(Cm(1:k50) > c, 1, 'last');  zc = NaN;
+            if ~isempty(j) && j < numel(Cm), zc = interpLev(zz, Cm, j, c); end
+        end
+        Z(r,q) = zc;  ZD(r,q) = zc/Limg;
+    end
+end
+end
+
+function zc = interpLev(z, C, k, c0)
+% position of c0 between samples k and k+1
+if C(k) == C(k+1), zc = z(k); return, end
+zc = z(k) + (c0 - C(k))*(z(k+1) - z(k))/(C(k+1) - C(k));
+end
+
+function pr = getProfRow(col, l)
+if iscell(col), pr = col{l}; elseif istable(col), pr = col(l,:); else, pr = col(l); end
+if iscell(pr), pr = pr{1}; end
+if isstruct(pr), pr = struct2table(pr); end
 end
 
 function tag = tXtagRes(ref)
