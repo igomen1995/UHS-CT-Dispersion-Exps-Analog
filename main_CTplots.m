@@ -22,7 +22,6 @@
 %   1b  same, with the erfc fit of each curve
 %   1c  mid-core profile with the C = 0.4 / 0.6 crossings (width of the mid-profile KL)
 %   1d  profiles of the 8f frames (theta = rsRot, centre in rsZD) with the C = 0.4 / 0.6 crossings
-%   1e  profiles used for the theta = rsRot KL of 8f, as section 1
 %   2   Z profiles at a range of t_D,total targets (all experiments, one figure per t_D)
 %   2a  same at a range of t_D,res targets
 %   2b  profile evolution with t_D,total, one figure per experiment
@@ -65,11 +64,21 @@
 %   16  mixing length vs sqrt(t - t_arr)
 %   17  similarity plot C vs (z_D - t_D,res)/sqrt(t_D,res) at theta = 226 deg, with the ADE solution
 %
-% Sections 1d, 1e, 7d, 15b, 15c and 17 use the rs* settings of 8f (defaults are set if 8f has not run).
+% Sections 1d, 7d, 8f, 8g, 8h, 15b, 15c and 17 use the rs* frame settings of SETTINGS.
 
 %% SETTINGS
 
 Root = CT_setupPaths;
+
+% frame of the KL-by-method value: theta = rsRot +/- rsTol, front centre closest to zD = 0.5
+% within rsZD, width rsPair (rsVar) -- shared by 1d, 7d, 8f, 8g, 8h, 15b, 15c and 17
+rsRot  = 226;            % rotation position [deg]
+rsTol  = 1;              % tolerance [deg]
+rsZD   = [0.2 0.8];      % front-centre zD window
+rsPair = [0.40 0.60];    % level pair of the width
+rsVar  = "_xtrim";       % "" = full image | "_xtrim"
+rsStat = "wmean";        % "wmean" (inverse-variance weighted mean +/- its error) | "mean" (mean +/- std);
+                         % only used if several frames are kept (rotZDsel keeps one)
 
 inputFileConfigName = 'inputCTExpConfig.xlsx';
 inputFileConfig = readtable(inputFileConfigName);
@@ -366,9 +375,7 @@ end
 % is W_40-60. Several frames of one experiment: light (early) -> dark (late).
 % Prints / saves per frame: run, theta, t_D, time elapsed, arrival, crossings, W and KL +/- dKL
 % (profile and 2D contours, KL_allProfileWidths) -- the values behind the section-8f bars.
-% Uses the settings of section 8f (rsRot, rsTol, rsZD, rsPair, rsVar): run 8f first, or set them here.
-
-if ~exist('rsRot','var'), rsRot = 270; rsTol = 1; rsZD = [0.3 0.7]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; end
+% frame settings rsRot, rsTol, rsZD, rsPair, rsVar, rsStat: SETTINGS (same frame as the 8f-8h bars)
 ds17b   = "conc";              % data sources (as section 8f), e.g. dataSources for both
 trim17b = 0.02;                % fraction of the core ignored at each end (as profileWidth)
 fs17b   = 16;
@@ -440,57 +447,6 @@ for ds = ds17b
     fn17b = sprintf('CT_profile_rot%d_zD%02d_%02d_W%s_%s%s', rsRot, round(100*rsZD), tagW17b, ds, rsVar);
     writetable(T17b, fullfile(exportPath, fn17b + ".xlsx"));
     saveFigBoth(fig, exportPath, fn17b, closeAfterSave)
-end
-
-%% 1e) Profiles used for the theta = rsRot KL (section 8f), as section 1
-% Every frame of section 8f (rotPos = rsRot +/- rsTol, front centre at zD in rsZD), averaged
-% x-trimmed profile vs zD, with the two levels of rsPair (dashed) and the crossings (dots) whose
-% distance is the width W used for KL. Several frames of one experiment: light -> dark with t_D.
-% Uses the settings of section 8f (rsRot, rsTol, rsZD, rsPair, rsVar): run 8f first, or set them here.
- 
-if ~exist('rsRot','var'), rsRot = 270; rsTol = 5; rsZD = [0.4 0.6]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; end
-trim18 = 0.02;                 % fraction of the core ignored at each end (as profileWidth)
-fs18   = 16;
- 
-for ds = dataSources
-    fig = figure('Position',[100 100 1000 650], 'NumberTitle','off', 'Name', ...
-        sprintf('Profiles at theta = %d deg with the centre at zD %.1f-%.1f (%s%s)', rsRot, rsZD, ds, rsVar));
-    ax = axes(fig);  hold(ax,'on');  h = gobjects(0);
-    for i = 1:nExp
-        Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, rsVar, rsPair);
-        if isempty(Tk), continue, end
-        Ts = sortrows(Tk(rotZDsel(Tk, rsRot, rsTol, rsZD), :), 'tDtotal');
-        if isempty(Ts), continue, end
-        vars = expCTDataAll{i}.varsAll.(ds);
-        Ci = filedataExpAll{i}.C1init/100;  Cj = filedataExpAll{i}.C1j/100;
-        nF = height(Ts);
-        for q = 1:nF
-            prof = cellRow(vars.C1Profile, Ts.frame(q));  if iscell(prof), prof = prof{1}; end
-            zD = prof.zDimLess(:);  C = prof.("CVert" + rsVar)(:);
-            cq = expCol(i,:);                                % one frame: experiment colour
-            if nF > 1                                        % several: light (early) -> dark (late)
-                f  = (q - 1)/(nF - 1);
-                cq = (1 - f)*(0.3 + 0.7*expCol(i,:)) + f*(0.6*expCol(i,:));
-            end
-            h(end+1) = plot(ax, zD, C, '-', 'LineWidth',2.5, 'Color',cq, 'DisplayName', ...
-                sprintf('%s, t_D = %.2f, \\theta = %.0f°', expName(i), Ts.tDtotal(q), Ts.rotPos_deg(q))); %#ok<SAGROW>
-            zc = levelCrossings(zD, C, Ci, Cj, rsPair, trim18);
-            Cl = Ci + (Cj - Ci)*rsPair;  ok = isfinite(zc);
-            scatter(ax, zc(ok), Cl(ok), 90, cq, 'filled', 'MarkerEdgeColor','k', 'LineWidth',0.8, ...
-                'HandleVisibility','off')
-        end
-    end
-    if isempty(h)
-        close(fig);  warning('1e: no frame at theta = %g deg with the centre in zD [%.2f %.2f] (%s)', rsRot, rsZD, ds);
-        continue
-    end
-    yline(ax, rsPair, '--k', 'LineWidth',1.2, 'HandleVisibility','off');
-    xline(ax, rsZD, ':k', 'LineWidth',1, 'HandleVisibility','off');
-    set(ax, 'FontSize',fs18, 'LabelFontSizeMultiplier',1);  grid(ax,'on');  box(ax,'on')
-    xlabel(ax, 'z_D [-]', 'FontSize',fs18);  ylabel(ax, 'C_1 [-]', 'FontSize',fs18)
-    xlim(ax, [0 1]);  ylim(ax, [0 1.02])
-    legend(ax, h, 'Location','northeast', 'FontSize',fs18-4, 'Interpreter','tex')
-    saveFigBoth(fig, exportPath, sprintf('CT_profiles_rot%d_zD%02d_%02d_%s%s', rsRot, round(100*rsZD), ds, rsVar), closeAfterSave)
 end
 
 %% 2) Z profiles at a range of tD targets (all experiments, one figure per tD)
@@ -1184,7 +1140,7 @@ end
 % Uses the settings of section 8f (rsRot, rsTol, rsZD, rsPair, rsVar): run it first, or the
 % defaults below are used.
 
-if ~exist('rsRot','var'), rsRot = 226; rsTol = 1; rsZD = [0.2 0.8]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; end
+% frame settings rsRot, rsTol, rsZD, rsPair, rsVar, rsStat: SETTINGS (same frame as the 8f-8h bars)
 widthPairs7d = {sprintf('%02d_%02d', round(100*rsPair))};   % e.g. {'40_60'}; more pairs: {'10_90','40_60'}
 widthVar7d   = rsVar;              % "" = full image, "_xtrim" = x-trimmed (same as the bar)
 widthUnit7d  = "";                 % "" = zD [-], "_cm" = cm
@@ -1882,16 +1838,10 @@ end
 % XCT 2D contours : same frames, 2D-contour width W_40-60
 % XCT MFM, UHS MFM: as section 8e
 % Replaces the mid-profile KL of 8e. Figure 1: grouped bars per case; figure 2: M-Pe quadrants.
-% The frames used are printed and saved (KL_byMethod_rot<rsRot>_frames_<ds>.xlsx); sections 1d / 1e
+% The frames used are printed and saved (KL_byMethod_rot<rsRot>_frames_<ds>.xlsx); section 1d
 % plot their profiles. Needs 5b for the UHS run swap (otherwise the configured UHS key is used).
  
-rsRot   = 226;                 % rotation position [deg]
-rsTol   = 1;                   % tolerance [deg]
-rsZD    = [0.2 0.8];           % front-centre zD range
-rsPair  = [0.40 0.60];
-rsVar   = "_xtrim";
-rsStat  = "wmean";             % "wmean" (inverse-variance weighted mean +/- its error, not below
-                               % the scatter) | "mean" (mean +/- std; one frame: its own dKL)
+% frame settings rsRot, rsTol, rsZD, rsPair, rsVar, rsStat: SETTINGS (same frame as the 8f-8h bars)
 fs17    = 16;
 tagW17  = sprintf('%02d_%02d', round(100*rsPair));
 rsSrcNames = [sprintf("XCT 1D profile (\\theta = %d°)", rsRot), sprintf("XCT 2D contours (\\theta = %d°)", rsRot), ...
@@ -1989,13 +1939,7 @@ end
 % Figure 1: grouped bars per case; figure 2: M-Pe quadrants. Files ..._noBTC_noCont_...
 % Needs 5b for the UHS run swap (otherwise the configured UHS key is used).
  
-rsRot   = 226;                 % rotation position [deg]
-rsTol   = 1;                   % tolerance [deg]
-rsZD    = [0.2 0.8];           % front-centre zD range
-rsPair  = [0.40 0.60];
-rsVar   = "_xtrim";
-rsStat  = "wmean";             % "wmean" (inverse-variance weighted mean +/- its error, not below
-                               % the scatter) | "mean" (mean +/- std; one frame: its own dKL)
+% frame settings rsRot, rsTol, rsZD, rsPair, rsVar, rsStat: SETTINGS (same frame as the 8f-8h bars)
 fs17    = 16;
 tagW17  = sprintf('%02d_%02d', round(100*rsPair));
 rsSrcNames = [sprintf("XCT 1D profile (\\theta = %d°)", rsRot), "XCT MFM", "UHS MFM"];
@@ -2089,12 +2033,7 @@ end
 % Uses the frame selection of 8g (rotZDsel: theta = rsRot +/- rsTol, centre closest to zD = 0.5
 % within rsZD) and mfmKL for the MFM KL.
 
-rsRot   = 226;                 % rotation position [deg]
-rsTol   = 1;                   % tolerance [deg]
-rsZD    = [0.2 0.8];           % front-centre zD window
-rsPair  = [0.40 0.60];
-rsVar   = "_xtrim";
-rsStat  = "wmean";             % only used if several frames are kept (rotZDsel keeps one)
+% frame settings rsRot, rsTol, rsZD, rsPair, rsVar, rsStat: SETTINGS (same frame as the 8f-8h bars)
 fs17e   = 20;                  % font size (ticks, labels, legend)
 leg17e  = "all";               % legend: "all" figures | "first" (top-left only) | "none"
 yLim17e = [];                  % common y limits; [] = 0 to 1.1 x max over the four cases
@@ -2227,7 +2166,9 @@ for ds = dataSources
                 if ~isfield(fr, nm) || ~all(isfield(fr.(nm), {'t_fit','KL_pts'})), continue, end
                 Sm = fr.(nm);
                 if isempty(Sm.KL_pts) || all(~isfinite(Sm.KL_pts)), continue, end
-                tD_pts = (Sm.t_fit*fd.Q + fd.Vlinesbefore) / fd.Vtotal;   % back to tD_total
+                tFitArr = fd.Vlinesbefore/fd.Q;                            % arrival of the fits
+                if isfield(rs, 'tArr_fitKL_min') && isfinite(rs.tArr_fitKL_min), tFitArr = rs.tArr_fitKL_min; end
+                tD_pts = (Sm.t_fit + tFitArr)*fd.Q / fd.Vtotal;           % back to tD_total
                 if tAxis == "tDres"                                       % t_D,res, arrival of the source
                     if startsWith(nm, "width_"), tD_pts = tD_pts - rs.tD_arr_plot_cont;   % 2D contours
                     else,                        tD_pts = tD_pts - rs.tD_arr_plot_prof;   % profile (sigma, profW)
@@ -2663,7 +2604,7 @@ end
 % Uses the settings of section 8f (rsRot, rsTol, rsZD, rsPair, rsVar, rsStat): run it first,
 % or the defaults below are used.
 
-if ~exist('rsRot','var'), rsRot = 226; rsTol = 1; rsZD = [0.2 0.8]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; rsStat = "wmean"; end
+% frame settings rsRot, rsTol, rsZD, rsPair, rsVar, rsStat: SETTINGS (same frame as the 8f-8h bars)
 klfPair  = rsPair;             % level pair of the width (same as the bar)
 klfVar   = rsVar;              % "_xtrim" or "" (same as the bar)
 klfXVar  = tXkl;               % from tAxis: "tauD" (t_D,res) or "tDtotal" (t_D,total)
@@ -2749,8 +2690,7 @@ end
 % Uses the settings of section 8f (rsRot, rsTol, rsZD, rsPair, rsVar, rsStat): run it first,
 % or the defaults below are used.
 
-if ~exist('rsRot','var'), rsRot = 226; rsTol = 1; rsZD = [0.2 0.8]; rsPair = [0.40 0.60]; rsVar = "_xtrim"; rsStat = "wmean"; end
-if ~exist('rsStat','var'), rsStat = "wmean"; end    % only matters if several frames are kept
+% frame settings rsRot, rsTol, rsZD, rsPair, rsVar, rsStat: SETTINGS (same frame as the 8f-8h bars)
 klfPair  = rsPair;             % level pair of the width (same as the bar)
 klfVar   = rsVar;              % "_xtrim" or "" (same as the bar)
 klfXVar  = "rotPos_deg";       % x-axis: rotation position [deg]
@@ -2883,7 +2823,7 @@ for ds = dataSources
     saveFigBoth(fig, exportPath, sprintf('mixingLength_W%s_%s_%s%s', tagW16, mlMode, ds, mlVar), closeAfterSave)
 end
 
-%% 17) Similarity plot at theta = 226 deg: C vs (z_D - t_D,res)/sqrt(t_D,res), with the ADE solution
+%% 17) Similarity plot at theta = rsRot: C vs (z_D - t_D,res)/sqrt(t_D,res), with the ADE solution
 % For a 1D ADE front moving at velocity v with dispersion KL (step injection, first term):
 %   C(z, t) = 0.5 erfc( (z - v tau) / (2 sqrt(KL tau)) ),  tau = t - t0
 % In units of the image length L_img (z_D = z / L_img, t_D,res = v tau / L_img, Pe = v L_img / KL):
@@ -2901,12 +2841,12 @@ end
 % ssScaled = true: x = eta sqrt(Pe)/2 with the bar Pe -> all experiments on the single curve 0.5 erfc(x)
 % Figures: one per experiment (profiles coloured by t_D) + all experiments together.
 
-ssRot       = 226;            % rotation position [deg]
-ssTol       = 1;              % tolerance [deg]
+ssRot       = rsRot;          % rotation position [deg] (SETTINGS)
+ssTol       = rsTol;          % tolerance [deg] (SETTINGS)
 ssVar       = "_xtrim";       % "" = full image | "_xtrim" = x-trimmed
 ssZDc       = [0.1 0.9];      % front-centre zD range: frames plotted and centres used for v, t0
-ssPair      = [0.40 0.60];    % width of the KL bar (as 8g)
-ssRotZD     = [0.2 0.8];      % zD window of the bar frame (as 8g)
+ssPair      = rsPair;         % width of the KL bar (SETTINGS, as 8g)
+ssRotZD     = rsZD;           % zD window of the bar frame (SETTINGS, as 8g)
 ssScaled    = false;          % false: x = eta (theory differs per experiment); true: eta sqrt(Pe)/2
 ssTheoryMFM = true;           % also the ADE curve with the MFM KL (dotted)
 ssXLim      = [];             % [] = auto (eta: [-1.5 1.5]; scaled: [-3 3])
@@ -2927,9 +2867,9 @@ for ds = "conc"
         Ci = fd.C1init/100;  Cj = fd.C1j/100;
         t  = vars.secondsElapsed/60;                              % [min]
         cen = nan(height(vars),1);
-        if ismember("zDFrontProf50" + ssVar, vn), cen = vars.("zDFrontProf50" + ssVar); end
-        if ismember("zDFront50" + ssVar, vn)
-            miss = ~isfinite(cen);  cen(miss) = vars.("zDFront50" + ssVar)(miss);
+        if ismember("zDFrontProfC50" + ssVar, vn), cen = vars.("zDFrontProfC50" + ssVar); end   % profile C = 0.5 crossing
+        if ismember("zDFrontProf50" + ssVar, vn)                                              % fallback: erfc centre
+            miss = ~isfinite(cen);  cen(miss) = vars.("zDFrontProf50" + ssVar)(miss);
         end
 
         % front velocity and time origin from the centres: z_D,c = b (t - t0)
