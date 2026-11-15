@@ -115,6 +115,11 @@ for i = 1:height(inputFileConfig)
 
     zDlevels_KLfit = 0.1:0.1:1.0;
 
+    % optional (slow) parts, off by default -- not used by main_CTplots
+    plotPerRun   = false;     % per-run figures: widthVsTime, KL_profileAt plot (arrival-level figures: arrOpt.doPlot)
+    plotKLfits   = false;     % plotKLComparison figures 2-4 (one per BTC / width / sigma fit); figures 0-1 always
+    runKLbyArr   = false;     % KL_byArrival: every-frame KL for every candidate arrival
+
     % KL from the profile with the front centre (C = 0.5) at mid-core
     zDtarget_mid = 0.5;       % target position zD of the profile ...
     CDtarget_mid = 0.5;       % ... at this concentration (0.5 = front centre)
@@ -131,7 +136,7 @@ for i = 1:height(inputFileConfig)
     % arrival time of the width-growth / moment fits vs time (fitKL_frontWidth, fitKL_moments,
     % widthVsTime plot, widths_vs_time sheet): same as the single-profile KL by default, so every KL
     % uses the same t_res origin ("lines" = the previous results)
-    tArrFitRef   = "levels";   % "levels" | "lines" | "C50" | "C50prof" | "contour"
+    tArrFitRef   = tArrProfRef;   % "levels" (= tArrProfRef) | "lines" | "C50" | "C50prof" | "contour"
 
     % arrival from the trajectories of every level (arrivalLevels): "levels" arrival above
     arrOpt = struct( ...
@@ -143,18 +148,20 @@ for i = 1:height(inputFileConfig)
         'refSource', "profile", ...             % stored arrival: "profile" | "contour"
         'refLevel',  0.01, ...                  % ... of level C (refFit "curve" / "line")
         'refFit',    "curve", ...               % ... "curve" (per-level ADE form, t0 at z = 0) | "line" | "t0s"
-        'doPlot',    true, ...                  % figures per data source and level source
+        'doPlot',    false, ...                 % figures per data source and level source (true: check)
         'plots',     ["joint2","perLevel"], ... % "joint2" (common v, two origins) | "perLevel" | "joint1"
         'closeFig',  true);
 
     % front width from the averaged profile (addProfileWidths -> columns of varsAll)
     profWidthPairs = [0.10 0.90; 0.20 0.80; 0.30 0.70; 0.40 0.60];   % [low high] levels
-    profErfcFit    = true;    % also fit C = 0.5 erfc((z - z50)/w) to every profile (w, RMSE, R2);
-                              % false = level-pair widths and sigma only (much faster)
+    profErfcFit    = false;   % true: also fit C = 0.5 erfc((z - z50)/w) to every profile (w, RMSE, R2,
+                              % erfc centre zDFrontProf50, erfc width); false = level-pair widths, C = 0.5
+                              % crossing and sigma only (much faster; erfc columns NaN, erfc fits skipped)
     % width definitions fitted against time by fitKL_frontWidth: {column prefix, result tag}
     widthSources   = {"zDWidth",         "width_"; ...      % 2D contours
                       "zDWidthProf",     "profW_"; ...      % averaged profile, level pairs
                       "zDWidthProfErfc", "profWerfc_"};     % averaged profile, erfc width
+    if ~profErfcFit, widthSources(strcmp(cellstr(string(widthSources(:,1))), 'zDWidthProfErfc'), :) = []; end
 
     % KL from the width of EVERY frame (KL_allProfileWidths): KL = W^2/(4 k^2 tau), contour arrival
     klAllPair     = [0.40 0.60];   % level pair of the width (must be one of profWidthPairs)
@@ -163,7 +170,7 @@ for i = 1:height(inputFileConfig)
     klAllZDrange  = [0.1 0.9];     % front centre zD range of the frames in the summary value
 
     % KL with initial width W0: W^2 = W0^2 + 4 k^2 KL (t - t_arr), every pair of profWidthPairs
-    klW0Variants  = "xtrim";       % "xtrim", "full" or ["full","xtrim"]
+    klW0Variants  = strings(0);    % W0 block off (not used by main_CTplots); "xtrim", "full" or ["full","xtrim"] to run it
     klW0ZDrange   = [0.1 0.9];     % front centre zD range of the frames in the fit
     klW0Plot      = true;          % figure W^2 vs t - t_arr with both fits, per data source / variant
     klW0PlotTD    = true;          % (temporary) figure W_pair and per-frame KL vs tD_total, with / without W0
@@ -340,10 +347,12 @@ for i = 1:height(inputFileConfig)
             resultsOut.(variant).KL_BTC_CT  = KL_fit_byZD.zD1p0;
             resultsOut.(variant).BTCMetrics = BTCMetrics_byZD.zD1p0;
 
-            % front width vs time: averaged profile vs 2D contours
-            plotWidthVsTime(vars, t_arrival_min, variantSuffix, ...
-                fullfile(pathExportAll, filedataExp.Key + "_widthVsTime_" + dataSource + "_" + variant), ...
-                "(" + filedataExp.Key + ", " + dataSource + ", " + variant + ")");
+            % front width vs time: averaged profile vs 2D contours (per-run figure)
+            if plotPerRun
+                plotWidthVsTime(vars, t_arrival_min, variantSuffix, ...
+                    fullfile(pathExportAll, filedataExp.Key + "_widthVsTime_" + dataSource + "_" + variant), ...
+                    "(" + filedataExp.Key + ", " + dataSource + ", " + variant + ")");
+            end
 
             % KL from front width growth and from moments (sigma),
             % each fitted twice: through the origin (int0) and with intercept (int1)
@@ -398,7 +407,8 @@ for i = 1:height(inputFileConfig)
             resultsOut.(variant).KL_front_CT = KL_front;
 
             % KL from the profile(s) with the front centre at zDtarget_mid
-            plotFile_mid = fullfile(pathExportAll, filedataExp.Key + "_KLmidProfile_" + dataSource + "_" + variant);
+            plotFile_mid = "";                                   % "" = no KL_profileAt figure
+            if plotPerRun, plotFile_mid = fullfile(pathExportAll, filedataExp.Key + "_KLmidProfile_" + dataSource + "_" + variant); end
             % every arrival is evaluated (methods <m>_levels, <m>_C50, <m>_C50prof, <m>_contour, <m>_lines);
             % the selected one first, so the per-frame KL plot of KL_profileAt uses it
             tArr = struct();  tArr.(tArrProfRef) = tArrP;
@@ -442,13 +452,15 @@ for i = 1:height(inputFileConfig)
                 % sensitivity of KL to the arrival: the same every-frame KL (W klAllPair) and the
                 % theta = klRot frame for every candidate arrival (tArrAll, every level t0 of
                 % arrLevels, joint2 t0s / t0c)
-                resultsOut.(variant).KL_byArrival = KL_byArrival(vars, variantSuffix, klAllPair, ...
-                    candidateArrivals(tArrAll, arrLevels), filedataExp, klAllDtArr, klAllZDrange, ...
-                    klRot, klRotTol, klRotZD);
-                fprintf(['  %s (%s) KL from every frame, W %02d-%02d, for every candidate arrival ' ...
-                         '(centre zD in [%.2f %.2f]; theta = %d deg frame):\n'], dataSource, variant, ...
-                    round(100*klAllPair), klAllZDrange, klRot);
-                disp(resultsOut.(variant).KL_byArrival)
+                if runKLbyArr
+                    resultsOut.(variant).KL_byArrival = KL_byArrival(vars, variantSuffix, klAllPair, ...
+                        candidateArrivals(tArrAll, arrLevels), filedataExp, klAllDtArr, klAllZDrange, ...
+                        klRot, klRotTol, klRotZD);
+                    fprintf(['  %s (%s) KL from every frame, W %02d-%02d, for every candidate arrival ' ...
+                             '(centre zD in [%.2f %.2f]; theta = %d deg frame):\n'], dataSource, variant, ...
+                        round(100*klAllPair), klAllZDrange, klRot);
+                    disp(resultsOut.(variant).KL_byArrival)
+                end
             end
 
             % KL with an initial width (spreading before the core):
@@ -714,9 +726,11 @@ for i = 1:height(inputFileConfig)
         end
         writetable(summaryT, xlsxName, 'Sheet', 'Summary');
 
-        % comparison plot
-        % mid-profile bar = erfc width with the selected arrival (tArrProfRef)
-        plotKLComparison(resultsOut, filedataExp.Key, dataSource, pathExportAll, [], [], "erfc_" + tArrProfRef);
+        % comparison plot (figures 0 mid-core and 1 bar chart; per-fit figures only with plotKLfits)
+        % mid-profile bar = 40-60 crossing width of the profile with the selected arrival (tArrProfRef)
+        % ("erfc_" + tArrProfRef needs profErfcFit = true)
+        plotKLComparison(resultsOut, filedataExp.Key, dataSource, pathExportAll, [], [], ...
+            "C40_60_" + tArrProfRef, plotKLfits);
 
     end
 

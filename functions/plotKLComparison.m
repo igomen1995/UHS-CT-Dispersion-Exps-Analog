@@ -1,4 +1,4 @@
-function plotKLComparison(resultsOut, Key, dataSource, pathExportAll, plotSources, zDcompare, midMethod)
+function plotKLComparison(resultsOut, Key, dataSource, pathExportAll, plotSources, zDcompare, midMethod, plotFits)
 % PLOTKLCOMPARISON
 %   Runs only for the data sources in plotSources (default "conc"); others return at once.
 %   0) mid-core comparison (KLmidCompare_<Key>_<ds>): BTC at every zD in zDcompare (default [0.5 1]),
@@ -13,18 +13,27 @@ function plotKLComparison(resultsOut, Key, dataSource, pathExportAll, plotSource
 %   4) one figure per front width pair / sigma fit (variant x method):
 %      all frames, frames used, fitted line + overview per variant
 %   Individual fits -> <pathExportAll>/KLfits_<Key>_<dataSource>/
+%   plotFits (default false): figures 2-4 (one per fit, dozens of files) only when true;
+%   figures 0 and 1 are always made.
+%   midMethod: any method of KL_profileAt, e.g. "C40_60_levels" (40-60 crossing width, level arrival)
+%   or "erfc_C50" (erfc width, C = 0.5 line arrival); the legend shows its width and arrival.
 
 if nargin < 5 || isempty(plotSources), plotSources = "conc"; end
 if nargin < 6 || isempty(zDcompare),   zDcompare   = [0.5 1.0]; end   % BTC zD of the mid-core figure
 if nargin < 7 || isempty(midMethod),   midMethod   = "contour"; end
+if nargin < 8 || isempty(plotFits),    plotFits    = false; end
 midMethod = string(midMethod);
-% arrival tag of midMethod for the legend ("erfc_C50" -> "C50", alias "contour" -> "contour")
-midArr = midMethod;  if contains(midArr, "_"), midArr = extractAfter(midArr, "_"); end
+% width and arrival of midMethod for the legend ("C40_60_levels" -> W_{40-60}, "levels";
+% "erfc_C50" -> w, "C50"; alias "contour" -> w, "contour")
+midArr = string(regexp(midMethod, '[^_]+$', 'match', 'once'));
+tokW   = regexp(midMethod, '^C(\d+)_(\d+)_', 'tokens', 'once');
+if ~isempty(tokW), midW = "W_{" + tokW{1} + "-" + tokW{2} + "}^2/4k^2\tau";
+else,              midW = "w^2/4\tau"; end
 Key = string(Key);  dataSource = string(dataSource);
 if ~ismember(dataSource, string(plotSources)), return, end
 if ~isfolder(pathExportAll), mkdir(pathExportAll); end
 fitDir = fullfile(pathExportAll, "KLfits_" + Key + "_" + dataSource);
-if ~isfolder(fitDir), mkdir(fitDir); end
+if plotFits && ~isfolder(fitDir), mkdir(fitDir); end
 
 mfmTag = "";
 if isfield(resultsOut, 'MFM_fitData'), mfmTag = " (" + string(resultsOut.MFM_fitData) + ")"; end
@@ -186,7 +195,7 @@ mVals(end+1) = NaN;  sVals(end+1) = NaN;
 errs(~isfinite(errs)) = 0;
 grpNames = ["BTC full","BTC xtrim","front full (no int)","front xtrim (no int)", ...
             "MFM CT","MFM UHS","front full (int)","front xtrim (int)", ...
-            "mid w^2/4\tau " + midArr + " full","mid w^2/4\tau " + midArr + " xtrim", ...
+            "mid " + midW + " " + midArr + " full","mid " + midW + " " + midArr + " xtrim", ...
             "mid w^2/4\tau lines full","mid w^2/4\tau lines xtrim", ...
             "mid sigma full","mid sigma xtrim", ...
             "profile width full (no int)","profile width xtrim (no int)", ...
@@ -243,7 +252,8 @@ fname = sprintf('KLcomparison_%s_%s', Key, dataSource);
 saveas(figBar, fullfile(pathExportAll, fname), 'png');
 saveas(figBar, fullfile(pathExportAll, fname), 'fig');
 
-%% 2) one figure per completed BTC fit + 3) overview per variant
+%% 2) one figure per completed BTC fit + 3) overview per variant  (only with plotFits = true)
+if ~plotFits, return, end
 for v = 1:numel(variants)
     variant = variants(v);
     zDn = fieldnames(resultsOut.(variant).KL_BTC_CT_byZD);
