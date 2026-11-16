@@ -1350,7 +1350,7 @@ for ds = "conc"
     if klfXVar == "tDtotal", xLimU = klfXLimT; else, xLimU = klfXLim; end
     if ~isempty(xLimU), xlim(ax, xLimU); end
     if klfXVar ~= "tDtotal", xlabel(ax, 't_{D,res} [-]', 'FontSize',fs15Lbl)
-    else,                 xlabel(ax, 't_{D,total} [-]', 'FontSize',fs15Lbl); end
+    else,                 xlabel(ax, 't_D [-]', 'FontSize',fs15Lbl); end
     ylabel(ax, sprintf('K_L from W_{%d-%d}, %s [cm^2/min]', round(100*klfPair), S.name), 'FontSize',fs15Lbl)
     grid(ax,'on');  box(ax,'on')
     legend(ax, [hLeg hBar], 'Location','northeast', 'FontSize',fs15Leg, 'Interpreter','tex')
