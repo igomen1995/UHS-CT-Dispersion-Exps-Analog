@@ -1524,12 +1524,18 @@ end
 %% 8a2) Front centre vs t_D,res with the centre-line velocity, profile and contours as two variants
 % Dots = front centre of each source (profile: C = 0.5 crossing zDFrontProfC50, erfc centre as fallback;
 % contours: C = 0.5 contour zDFront50), x = t_D,res of the same source (its C = 0.01 level arrival).
-% Line (dashed, same colour) = the source's C = 0.5 centre line z = v (t - t0) (resultsAll.(ds).cLine_<src>:
-% C = 0.5 row of arrLevels.<src>, fallback vFrontProf / vFront), drawn in t_D: never mixed between sources.
-% One figure per x axis (env8XAxes): t_D,res of the source and t_D (file tags tDres_levels / tD).
+% Line (dashed, same colour) = centre line z = v (t - t0) of the SAME source and the SAME image variant:
+%   stored line resultsAll.(ds).cLine_<src> (C = 0.5 row of arrLevels.<src>, computed on lineVar8 =
+%   arrOpt.variant of main_CTpostproc, "_xtrim") for that variant; for the other variant ("" = full image)
+%   a straight line fitted to the plotted centres (0.03 < z_D < 0.97), see lineMode8.
+% Never mixed between sources or variants. One figure per image variant (envVarsP2) and x axis (env8XAxes).
 % Legend: one entry per experiment + one dashed entry "u_front". Print: v, t0 and t_arr per experiment.
 
-envVarP2  = "_xtrim";           % "" = full image | "_xtrim" = x-trimmed (as the level arrivals)
+envVarsP2 = ["", "_xtrim"];     % image variants: "" = full image | "_xtrim" = x-trimmed (as the level arrivals)
+lineVar8  = "_xtrim";           % variant of the stored centre lines cLine_<src> (arrOpt.variant)
+lineMode8 = "own";              % "own"    = stored line for lineVar8, fit to the dots for the other variant
+                                % "fit"    = always the fit to the plotted dots
+                                % "stored" = always the stored lineVar8 line (old behaviour)
 fsEnvP2   = 16;
 mkEnvP2   = 18;
 if ~exist('env8XAxes','var'), env8XAxes = ["res","total"]; env8XLimT = [0 1.2]; end   % section 8 settings
@@ -1538,7 +1544,9 @@ if tAxis ~= "tDres", env8XAxes = "total"; end
 for ds = dataSources
   for src = plotSrc
     S = srcSpec(src, tXcolP, tXcolC, tXklP, tXklC);
+   for envVarP2 = envVarsP2
     cField = S.cen + envVarP2;  cFall = "";  if S.cenFall ~= "", cFall = S.cenFall + envVarP2; end
+    useStored = lineMode8 == "stored" || (lineMode8 == "own" && envVarP2 == lineVar8);
    for xa = env8XAxes                                 % x = t_D,res of the source and t_D
     if xa == "total", tX8 = "tDtotal"; xLbl8 = 't_D [-]'; xLim8 = env8XLimT; xTag8 = "tD";
     else,             tX8 = S.x;       xLbl8 = tXlbl;     xLim8 = tXlim;     xTag8 = tXtag; end
@@ -1552,22 +1560,23 @@ for ds = dataSources
         vars = expCTDataAll{i}.varsAll.(ds);  vn = string(vars.Properties.VariableNames);
         fd   = filedataExpAll{i};  rP = expCTDataAll{i}.resultsAll.(ds);
         tD   = vars.(tX8);
-        cen  = nan(size(tD));
-        if ismember(cField, vn), cen = vars.(cField); end
-        if cFall ~= "" && ismember(cFall, vn)
-            miss = ~isfinite(cen);  cen(miss) = vars.(cFall)(miss);
-        end
+        [cen, cenCm] = centreCols8(vars, vn, cField, cFall);
         ok = isfinite(tD) & isfinite(cen);
         if ~any(ok), continue, end
         h(end+1) = scatter(ax, tD(ok), cen(ok), mkEnvP2, expCol(i,:), 'filled', ...
             'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName', expName(i)); %#ok<SAGROW>
 
-        % centre line z = v (t - t0) of this source, in this axis: t = t_arr,x + x V/Q, z_D = z / L_img
-        L = rP.(S.cLine);
+        % image length of this variant: z [cm] / z_D
+        okL  = isfinite(cenCm) & cen > 0.05;
+        Limg = median(cenCm(okL) ./ cen(okL), 'omitnan');  if ~isfinite(Limg), Limg = fd.L*2.54; end
+        % centre line z = v (t - t0) of this source and variant
+        if useStored
+            L = rP.(S.cLine);  lineSrc = string(L.src) + lineVar8;
+        else
+            L = lineFit8(vars.secondsElapsed/60, cen*Limg, cen);  lineSrc = "fit" + envVarP2;
+        end
         if ~(isfinite(L.v) && L.v > 0), continue, end
-        okL  = ok & cen > 0.05 & ismember(cField + "_cm", vn);
-        Limg = NaN;  if any(okL), Limg = median(vars.(cField + "_cm")(okL) ./ cen(okL), 'omitnan'); end
-        if ~isfinite(Limg), Limg = fd.L*2.54; end
+        % in this axis: t = t_arr,x + x V/Q, z_D = z / L_img
         tA0 = 0;  if xa == "res" && tAxis == "tDres", tA0 = rP.(S.tArr); end   % t_D: no arrival
         p   = [L.v*fd.Vtotal/(fd.Q*Limg), L.v*(tA0 - L.t0)/Limg];
         tD0 = -p(2)/p(1);  tD1 = (1 - p(2))/p(1);
@@ -1575,7 +1584,7 @@ for ds = dataSources
         if isempty(hLine)
             hLine = plot(ax, NaN, NaN, '--', 'Color',[0.3 0.3 0.3], 'LineWidth',2, 'DisplayName','u_{front}');
         end
-        rows8a2{end+1,1} = table(expName(i), L.src, L.v, L.t0, rP.(S.tArr), Limg, tD0, tD1, ...
+        rows8a2{end+1,1} = table(expName(i), lineSrc, L.v, L.t0, rP.(S.tArr), Limg, tD0, tD1, ...
             'VariableNames', {'experiment','line','v_cmmin','t0_C50_min','t_arr_min','L_img_cm', ...
             char(xTag8 + "_at_zD0"), char(xTag8 + "_at_zD1")}); %#ok<SAGROW>
     end
@@ -1585,35 +1594,76 @@ for ds = dataSources
     xlabel(ax, xLbl8, 'FontSize',fsEnvP2);  ylabel(ax, "z_D front centre [-] (" + S.name + ")", 'FontSize',fsEnvP2)
     ylim(ax, [-0.02 1.02]);  xlim(ax, xLim8);  grid(ax,'on');  box(ax,'on')
     legend(ax, [h hLine], 'Interpreter','tex', 'FontSize',fsEnvP2-2, 'Location','southeast')
-    if ~isempty(rows8a2)
-        fprintf('\n8a2) Front centre line per experiment, %s (%s%s, x = %s):\n', S.name, ds, envVarP2, xTag8);
+    title(ax, sprintf('%s, %s', S.name, ternaryStr(envVarP2 == "", "full image", "x-trimmed")), 'FontWeight','normal')
+    if ~isempty(rows8a2) && xa == env8XAxes(1)        % same line for both axes: print once
+        fprintf('\n8a2) Front centre line per experiment, %s (%s%s):\n', S.name, ds, envVarP2);
         disp(vertcat(rows8a2{:}))
     end
     saveFigBoth(fig, exportPath, sprintf('frontCentre_%s_ufront_allExp_%s%s_%s', S.file, ds, envVarP2, xTag8), closeAfterSave)
    end   % xa
+   end   % envVarP2
   end   % src
 end
 
+% %% OLD 8a2 exactly: profile ERFC centre (fallback: contour C = 0.5 centre), line FITTED to these
+% % centres with zD in [0.1 0.9] (vfSrc "C50" column never existed -> fallback "fit"), x = t_D
+% ds8 = "conc";  var8 = "_xtrim";  zfit8 = [0.1 0.9];  showCross8 = false;   % true: + C = 0.5 crossing (open)
+% figure('Position',[100 100 1000 650]);  ax8 = axes;  hold(ax8,'on');  h8 = gobjects(0);
+% for i = 1:nExp
+%     v8 = expCTDataAll{i}.varsAll.(ds8);  fd8 = filedataExpAll{i};
+%     Ci8 = fd8.C1init/100;  Cj8 = fd8.C1j/100;  n8 = height(v8);
+%     zE = nan(n8,1);  zX = nan(n8,1);
+%     for r = 1:n8
+%         pr = v8.C1Profile;  if iscell(pr), pr = pr{r}; else, pr = pr(r,:); end
+%         if iscell(pr), pr = pr{1}; end,  if isstruct(pr), pr = struct2table(pr); end
+%         if isempty(pr) || ~ismember("CVert" + var8, string(pr.Properties.VariableNames)), continue, end
+%         P = profileWidth(pr.zVertcm, pr.("CVert" + var8), Ci8, Cj8, [0.4 0.6], [], true);
+%         Lr = max(pr.zVertcm);  zE(r) = P.z50_erfc/Lr;  zX(r) = P.z50_cross/Lr;
+%     end
+%     nE = nnz(isfinite(zE));
+%     m8 = ~isfinite(zE);  zE(m8) = v8.("zDFront50" + var8)(m8);          % fallback: contour centre
+%     tD8 = v8.tDtotal;  ok8 = isfinite(tD8) & isfinite(zE);
+%     h8(end+1) = scatter(ax8, tD8(ok8), zE(ok8), 18, expCol(i,:), 'filled', ...
+%         'MarkerEdgeColor',0.6*expCol(i,:), 'DisplayName',expName(i)); %#ok<SAGROW>
+%     if showCross8
+%         okX = isfinite(tD8) & isfinite(zX);
+%         scatter(ax8, tD8(okX), zX(okX), 18, 0.6*expCol(i,:), 'HandleVisibility','off')
+%     end
+%     okf = ok8 & zE >= zfit8(1) & zE <= zfit8(2);
+%     p8  = polyfit(tD8(okf), zE(okf), 1);
+%     plot(ax8, [-p8(2) 1-p8(2)]/p8(1), [0 1], '--', 'Color',0.6*expCol(i,:), 'LineWidth',2, 'HandleVisibility','off')
+%     fprintf('%-14s erfc centres %d, contour fallback %d | line: slope %.3f, tD(zD=0) = %.3f | erfc - crossing median %+.3f\n', ...
+%         expName(i), nE, nnz(ok8) - nE, p8(1), -p8(2)/p8(1), median(zE - zX, 'omitnan'));
+% end
+% h8(end+1) = plot(ax8, NaN, NaN, '--', 'Color',[0.3 0.3 0.3], 'LineWidth',2, 'DisplayName','u_{front}');
+% xlabel(ax8, 't_D [-]');  ylabel(ax8, 'z_D front centre [-]')
+% ylim(ax8, [-0.02 1.02]);  xlim(ax8, [0 1.2]);  grid(ax8,'on');  box(ax8,'on');  set(ax8,'FontSize',16)
+% legend(ax8, h8, 'Interpreter','tex', 'Location','southeast', 'FontSize',14)
+
 %% 8a2a) Front center in dimensions: z [cm] vs t_res [min] with the u_front line, profile and contours as two variants
 % Same dots and lines as 8a2 in physical units: z = centre [cm] of the source, t_res = t - t_arr of the
-% same source (its C = 0.01 level arrival), line z = v (t - t0) of its C = 0.5 centre line (cLine_<src>).
+% same source (its C = 0.01 level arrival), line z = v (t - t0) of the same source and image variant
+% (stored cLine_<src> for lineVar8, else fitted to the dots: lineMode8 of 8a2).
 % Here the slopes ARE the front velocities (faster, higher-Q fronts are steeper).
 % Filled dots = frames with 0.03 < z_D < 0.97 (the frames of the centre-line fit); open = the rest.
 % ufLineA = true also draws z = u_int t_res, u_int = Q/(A phi) (dotted, piston flow).
 % Printed: v, u_int and v/u_int (> 1: centre faster than piston flow).
-% One figure per x axis (env8XAxes): "res" = t_res = t - t_arr [min], "total" = t [min] since the
-% injection start (no arrival subtracted; the piston-flow line then starts at t_arr).
+% One figure per image variant (vars8a2a) and x axis (env8XAxes): "res" = t_res = t - t_arr [min],
+% "total" = t [min] since the injection start (no arrival subtracted; the piston-flow line starts at t_arr).
 
 ufLineA   = false;              % true: also the piston-flow line z = u_int t_res (dotted)
-var8a2a   = "_xtrim";           % "" (full image) | "_xtrim" (as the level arrivals)
+vars8a2a  = ["", "_xtrim"];     % "" (full image) | "_xtrim" (as the level arrivals)
 fsA       = 16;
 mkA       = 18;
 if ~exist('env8XAxes','var'), env8XAxes = ["res","total"]; env8XLimT = [0 1.2]; end   % section 8 settings
+if ~exist('lineMode8','var'), lineMode8 = "own"; lineVar8 = "_xtrim"; end            % section 8a2 settings
 
 for ds = dataSources
   for src = plotSrc
     S = srcSpec(src, tXcolP, tXcolC, tXklP, tXklC);
-    cz8 = S.cen + var8a2a;
+   for var8a2a = vars8a2a
+    cz8 = S.cen + var8a2a;  cFall = "";  if S.cenFall ~= "", cFall = S.cenFall + var8a2a; end
+    useStored = lineMode8 == "stored" || (lineMode8 == "own" && var8a2a == lineVar8);
    for xa = env8XAxes                                 % x = t_res [min] and t [min]
     if xa == "total", xLblA = 't [min]';       xTagA = "t";
     else,             xLblA = 't_{res} [min]'; xTagA = tXtagRes(tResRef); end
@@ -1625,14 +1675,14 @@ for ds = dataSources
     for i = 1:nExp
         vars = expCTDataAll{i}.varsAll.(ds);  vn = string(vars.Properties.VariableNames);
         fd   = filedataExpAll{i};  rA = expCTDataAll{i}.resultsAll.(ds);
-        if ~all(ismember([cz8 + "_cm", cz8], vn))
-            warning('8a2a: %s (%s): %s_cm / %s missing', expKeys(i), ds, cz8, cz8);  continue
+        [zD, z] = centreCols8(vars, vn, cz8, cFall);
+        if ~any(isfinite(z))
+            warning('8a2a: %s (%s): %s_cm missing', expKeys(i), ds, cz8);  continue
         end
         tArr = rA.(S.tArr);
         if ~isfinite(tArr), warning('8a2a: %s (%s): no %s arrival', expKeys(i), ds, S.name);  continue, end
         t    = vars.secondsElapsed/60;  tRes = t - tArr;
         tSh  = tArr;  if xa == "total", tRes = t;  tSh = 0; end      % x shift: t_arr (t_res) or 0 (t)
-        z    = vars.(cz8 + "_cm");  zD = vars.(cz8);
         ok   = isfinite(tRes) & isfinite(z);
         if ~any(ok), continue, end
         inFit = ok & zD > 0.03 & zD < 0.97;
@@ -1643,7 +1693,12 @@ for ds = dataSources
         Limg = median(rL, 'omitnan');  if ~isfinite(Limg), Limg = fd.L*2.54; end
         zMax = max(zMax, Limg);
 
-        L = rA.(S.cLine);  v = L.v;  t0 = L.t0;
+        if useStored
+            L = rA.(S.cLine);  lineSrc = string(L.src) + lineVar8;
+        else
+            L = lineFit8(t, z, zD);  lineSrc = "fit" + var8a2a;
+        end
+        v = L.v;  t0 = L.t0;
         uInt = fd.Q/(fd.phi*pi*(fd.D*2.54/2)^2);
         if isfinite(v) && v > 0
             tRes0 = t0 - tSh;  tRes1 = t0 + Limg/v - tSh;
@@ -1660,7 +1715,7 @@ for ds = dataSources
                 hU = plot(ax, NaN, NaN, ':', 'Color',[0.3 0.3 0.3], 'LineWidth',2, 'DisplayName','u_{int} = Q/(A\phi)');
             end
         end
-        rowsA{end+1,1} = table(expName(i), L.src, tArr, t0, Limg, v, uInt, v/uInt, tRes0, tRes1, nnz(inFit), ...
+        rowsA{end+1,1} = table(expName(i), lineSrc, tArr, t0, Limg, v, uInt, v/uInt, tRes0, tRes1, nnz(inFit), ...
             'VariableNames', {'experiment','line','t_arr_min','t0_C50_min','L_cm','v_front_cmmin','u_int_cmmin', ...
             'v_front_over_u_int', char(xTagA + "_at_z0_min"), char(xTagA + "_at_L_min"),'n_fit'}); %#ok<SAGROW>
     end
@@ -1670,12 +1725,14 @@ for ds = dataSources
     xlabel(ax, xLblA, 'FontSize',fsA);  ylabel(ax, "z front center [cm] (" + S.name + ")", 'FontSize',fsA)
     ylim(ax, [-0.02 1.02]*zMax);  xlim(ax, [0 inf]);  grid(ax,'on');  box(ax,'on')
     legend(ax, [h hLine hU], 'Interpreter','tex', 'FontSize',fsA-2, 'Location','southeast')
+    title(ax, sprintf('%s, %s', S.name, ternaryStr(var8a2a == "", "full image", "x-trimmed")), 'FontWeight','normal')
     if ~isempty(rowsA) && xa == env8XAxes(1)         % same numbers for both axes: print once
         fprintf('\n8a2a) Front center in dimensions, %s (%s%s): v_front vs u_int = Q/(A phi):\n', S.name, ds, var8a2a);
         disp(vertcat(rowsA{:}))
     end
     saveFigBoth(fig, exportPath, sprintf('frontCenter_%s_ufront_dim_allExp_%s%s_%s', S.file, ds, var8a2a, xTagA), closeAfterSave)
    end   % xa
+   end   % var8a2a
   end   % src
 end
 
@@ -3468,4 +3525,26 @@ end
 function tag = tXtagRes(ref)
 % file-name tag of t_D,res for arrival ref: "C50" -> "tDres", others -> "tDres_<ref>"
 if string(ref) == "C50", tag = "tDres"; else, tag = "tDres_" + string(ref); end
+end
+
+function [cen, cenCm] = centreCols8(vars, vn, cField, cFall)
+% front centre z_D and z [cm] of one source / image variant (sections 8a2, 8a2a);
+% scans without the main centre cField take the fallback centre cFall ("" = none)
+cen = nan(height(vars),1);  cenCm = cen;
+if ismember(cField, vn),         cen   = vars.(cField);         end
+if ismember(cField + "_cm", vn), cenCm = vars.(cField + "_cm"); end
+if cFall ~= ""
+    if ismember(cFall, vn),         m = ~isfinite(cen);   cen(m)   = vars.(cFall)(m);         end
+    if ismember(cFall + "_cm", vn), m = ~isfinite(cenCm); cenCm(m) = vars.(cFall + "_cm")(m); end
+end
+end
+
+function L = lineFit8(t, z, zD)
+% straight centre line z = v (t - t0) [cm, min] through the front centres with 0.03 < z_D < 0.97
+% (same frame window as the stored centre lines); L.v [cm/min], L.t0 [min], L.n frames
+k = isfinite(t) & isfinite(z) & isfinite(zD) & zD > 0.03 & zD < 0.97;
+L = struct('v',NaN, 't0',NaN, 'n',nnz(k), 'src',"fit");
+if nnz(k) < 3, return, end
+pp = polyfit(t(k), z(k), 1);
+L.v = pp(1);  L.t0 = -pp(2)/pp(1);
 end
