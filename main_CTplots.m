@@ -1410,14 +1410,23 @@ widthPairsEnv = {'10_90','30_70','40_60'};
 % sources: plotSrc (profile: zDWidthProf_ on the profile C = 0.5 crossing vs tD_res_prof;
 %          contours: zDWidth_ on the C = 0.5 contour vs tD_res_cont)
 envVar8       = "";            % "" = full image | "_xtrim" = x-trimmed (width and front centre)
+% x axes of sections 8, 8a, 8a2, 8a2a and 8b (one figure each):
+%   "res"   = t_D,res of the source (its C = 0.01 level arrival); 8a2a: t_res [min]
+%   "total" = t_D = Q t / V_total (no arrival subtracted);       8a2a: t [min]
+env8XAxes     = ["res","total"];
+env8XLimT     = [0 1.2];       % x limits of the t_D figures ([] = auto)
+if tAxis ~= "tDres", env8XAxes = "total"; end   % axis already t_D: one figure only
 
 for ds = dataSources
   for src = plotSrc                                   % profile and contours as two variants
     S = srcSpec(src, tXcolP, tXcolC, tXklP, tXklC);
+    for xa = env8XAxes
+    if xa == "total", tX8 = "tDtotal"; xLbl8 = 't_D [-]'; xLim8 = env8XLimT; xTag8 = "tD";
+    else,             tX8 = S.x;       xLbl8 = tXlbl;     xLim8 = tXlim;     xTag8 = tXtag; end
+    if isempty(xLim8), xLim8 = [0 inf]; end
     for p = 1:numel(widthPairsEnv)
         measField = S.wPre + widthPairsEnv{p} + envVar8;
         cenField  = S.cen + envVar8;                          % centre of the same source
-        tX8       = S.x;                                      % t_D,res of the same source
         fig = figure('Position',[100 100 1000 650]);  hold on
 
         for i = 1:nExp
@@ -1438,14 +1447,15 @@ for ds = dataSources
                 'DisplayName', expName(i))
         end
 
-        xlabel(tXlbl,'FontSize',14);  ylabel('z_D [-]','FontSize',14)
-        ylim([-0.02 1.02]);  xlim(tXlim);  set(gca,'FontSize',14);  grid on
+        xlabel(xLbl8,'FontSize',14);  ylabel('z_D [-]','FontSize',14)
+        ylim([-0.02 1.02]);  xlim(xLim8);  set(gca,'FontSize',14);  grid on
         legend('Interpreter','none','FontSize',12,'Location','southeast')
         title(sprintf('Front envelope, %s (%s, centred on C=0.5) (%s%s)', ...
             S.name, strrep(widthPairsEnv{p},'_','-'), ds, envVar8), 'Interpreter','none')
         saveFigBoth(fig, exportPath, sprintf('frontEnvelope_%s_allExp_%s_%s%s_%s', ...
-            S.file, widthPairsEnv{p}, ds, envVar8, tXtag), closeAfterSave)
+            S.file, widthPairsEnv{p}, ds, envVar8, xTag8), closeAfterSave)
     end
+    end   % xa
   end   % src
 end
 
@@ -1453,14 +1463,20 @@ end
 % Centre = front centre of the averaged profile (zDFrontProfC50: C = 0.5 crossing, no fit, addProfileWidths;
 % fallback: erfc-fit z50 zDFrontProf50 -- profile only, never the contour centre),
 % bar = centre +/- W/2 with W = averaged-profile width zDWidthProf_<lo>_<hi> (the width used for
-% the profile KL); x = t_D with the profile arrival (tXcolP).
+% the profile KL); x = t_D,res with the profile arrival (tXcolP) and t_D (env8XAxes, one figure each).
 % Legend XCT-loM-hiPe etc. (expName, expCol).
 
 widthPairsEnvP = {'10_90','20_80','30_70','40_60'};
 envVarP        = "_xtrim";      % "" = full image | "_xtrim" = x-trimmed (as the mid-profile KL)
 fsEnvP         = 16;
+if ~exist('env8XAxes','var'), env8XAxes = ["res","total"]; env8XLimT = [0 1.2]; end   % section 8 settings
+if tAxis ~= "tDres", env8XAxes = "total"; end
 
 for ds = dataSources
+  for xa = env8XAxes                                  % x = t_D,res (profile arrival) and t_D
+    if xa == "total", tX8a = "tDtotal"; xLbl8 = 't_D [-]'; xLim8 = env8XLimT; xTag8 = "tD";
+    else,             tX8a = tXcolP;    xLbl8 = tXlbl;     xLim8 = tXlim;     xTag8 = tXtag; end
+    if isempty(xLim8), xLim8 = [0 inf]; end
     for p = 1:numel(widthPairsEnvP)
         wField = "zDWidthProf_" + widthPairsEnvP{p} + envVarP;
         cField = "zDFrontProfC50" + envVarP;         % profile centre: C = 0.5 crossing
@@ -1476,7 +1492,7 @@ for ds = dataSources
             vn   = string(vars.Properties.VariableNames);
             if ~ismember(wField, vn), continue, end
 
-            tD   = vars.(tXcolP);
+            tD   = vars.(tX8a);
             half = abs(vars.(wField))/2;
             cen  = nan(size(tD));
             if ismember(cField, vn), cen = vars.(cField); end
@@ -1496,12 +1512,13 @@ for ds = dataSources
         if nPlotted == 0, close(fig); continue, end
 
         set(ax, 'FontSize',fsEnvP, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
-        xlabel(ax, tXlbl, 'FontSize',fsEnvP);  ylabel(ax, 'z_D [-]', 'FontSize',fsEnvP)
-        ylim(ax, [-0.02 1.02]);  xlim(ax, tXlim);  grid(ax,'on');  box(ax,'on')
+        xlabel(ax, xLbl8, 'FontSize',fsEnvP);  ylabel(ax, 'z_D [-]', 'FontSize',fsEnvP)
+        ylim(ax, [-0.02 1.02]);  xlim(ax, xLim8);  grid(ax,'on');  box(ax,'on')
         legend(ax, 'Interpreter','none', 'FontSize',fsEnvP, 'Location','southeast')
         saveFigBoth(fig, exportPath, sprintf('frontEnvelope_profile_allExp_%s_%s%s_%s', ...
-            widthPairsEnvP{p}, ds, envVarP, tXtag), closeAfterSave)
+            widthPairsEnvP{p}, ds, envVarP, xTag8), closeAfterSave)
     end
+  end   % xa
 end
 
 %% 8a2) Front centre vs t_D,res with the centre-line velocity, profile and contours as two variants
@@ -1509,17 +1526,24 @@ end
 % contours: C = 0.5 contour zDFront50), x = t_D,res of the same source (its C = 0.01 level arrival).
 % Line (dashed, same colour) = the source's C = 0.5 centre line z = v (t - t0) (resultsAll.(ds).cLine_<src>:
 % C = 0.5 row of arrLevels.<src>, fallback vFrontProf / vFront), drawn in t_D: never mixed between sources.
+% One figure per x axis (env8XAxes): t_D,res of the source and t_D (file tags tDres_levels / tD).
 % Legend: one entry per experiment + one dashed entry "u_front". Print: v, t0 and t_arr per experiment.
 
 envVarP2  = "_xtrim";           % "" = full image | "_xtrim" = x-trimmed (as the level arrivals)
 fsEnvP2   = 16;
 mkEnvP2   = 18;
+if ~exist('env8XAxes','var'), env8XAxes = ["res","total"]; env8XLimT = [0 1.2]; end   % section 8 settings
+if tAxis ~= "tDres", env8XAxes = "total"; end
 
 for ds = dataSources
   for src = plotSrc
     S = srcSpec(src, tXcolP, tXcolC, tXklP, tXklC);
     cField = S.cen + envVarP2;  cFall = "";  if S.cenFall ~= "", cFall = S.cenFall + envVarP2; end
-    figName = sprintf('Front centre with the u_front line, %s (%s%s)', S.name, ds, envVarP2);
+   for xa = env8XAxes                                 % x = t_D,res of the source and t_D
+    if xa == "total", tX8 = "tDtotal"; xLbl8 = 't_D [-]'; xLim8 = env8XLimT; xTag8 = "tD";
+    else,             tX8 = S.x;       xLbl8 = tXlbl;     xLim8 = tXlim;     xTag8 = tXtag; end
+    if isempty(xLim8), xLim8 = [0 inf]; end
+    figName = sprintf('Front centre with the u_front line, %s (%s%s, %s)', S.name, ds, envVarP2, xTag8);
     fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
     ax  = axes(fig);  hold(ax,'on')
     h = gobjects(0);  hLine = gobjects(0);  rows8a2 = {};
@@ -1527,7 +1551,7 @@ for ds = dataSources
     for i = 1:nExp
         vars = expCTDataAll{i}.varsAll.(ds);  vn = string(vars.Properties.VariableNames);
         fd   = filedataExpAll{i};  rP = expCTDataAll{i}.resultsAll.(ds);
-        tD   = vars.(S.x);
+        tD   = vars.(tX8);
         cen  = nan(size(tD));
         if ismember(cField, vn), cen = vars.(cField); end
         if cFall ~= "" && ismember(cFall, vn)
@@ -1544,7 +1568,7 @@ for ds = dataSources
         okL  = ok & cen > 0.05 & ismember(cField + "_cm", vn);
         Limg = NaN;  if any(okL), Limg = median(vars.(cField + "_cm")(okL) ./ cen(okL), 'omitnan'); end
         if ~isfinite(Limg), Limg = fd.L*2.54; end
-        tA0 = 0;  if tAxis == "tDres", tA0 = rP.(S.tArr); end
+        tA0 = 0;  if xa == "res" && tAxis == "tDres", tA0 = rP.(S.tArr); end   % t_D: no arrival
         p   = [L.v*fd.Vtotal/(fd.Q*Limg), L.v*(tA0 - L.t0)/Limg];
         tD0 = -p(2)/p(1);  tD1 = (1 - p(2))/p(1);
         plot(ax, [tD0 tD1], [0 1], '--', 'Color',0.6*expCol(i,:), 'LineWidth',2, 'HandleVisibility','off')
@@ -1553,19 +1577,20 @@ for ds = dataSources
         end
         rows8a2{end+1,1} = table(expName(i), L.src, L.v, L.t0, rP.(S.tArr), Limg, tD0, tD1, ...
             'VariableNames', {'experiment','line','v_cmmin','t0_C50_min','t_arr_min','L_img_cm', ...
-            char(tXtag + "_at_zD0"), char(tXtag + "_at_zD1")}); %#ok<SAGROW>
+            char(xTag8 + "_at_zD0"), char(xTag8 + "_at_zD1")}); %#ok<SAGROW>
     end
     if isempty(h), close(fig); continue, end
 
     set(ax, 'FontSize',fsEnvP2, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
-    xlabel(ax, tXlbl, 'FontSize',fsEnvP2);  ylabel(ax, "z_D front centre [-] (" + S.name + ")", 'FontSize',fsEnvP2)
-    ylim(ax, [-0.02 1.02]);  xlim(ax, tXlim);  grid(ax,'on');  box(ax,'on')
+    xlabel(ax, xLbl8, 'FontSize',fsEnvP2);  ylabel(ax, "z_D front centre [-] (" + S.name + ")", 'FontSize',fsEnvP2)
+    ylim(ax, [-0.02 1.02]);  xlim(ax, xLim8);  grid(ax,'on');  box(ax,'on')
     legend(ax, [h hLine], 'Interpreter','tex', 'FontSize',fsEnvP2-2, 'Location','southeast')
     if ~isempty(rows8a2)
-        fprintf('\n8a2) Front centre line per experiment, %s (%s%s):\n', S.name, ds, envVarP2);
+        fprintf('\n8a2) Front centre line per experiment, %s (%s%s, x = %s):\n', S.name, ds, envVarP2, xTag8);
         disp(vertcat(rows8a2{:}))
     end
-    saveFigBoth(fig, exportPath, sprintf('frontCentre_%s_ufront_allExp_%s%s_%s', S.file, ds, envVarP2, tXtag), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('frontCentre_%s_ufront_allExp_%s%s_%s', S.file, ds, envVarP2, xTag8), closeAfterSave)
+   end   % xa
   end   % src
 end
 
@@ -1576,17 +1601,23 @@ end
 % Filled dots = frames with 0.03 < z_D < 0.97 (the frames of the centre-line fit); open = the rest.
 % ufLineA = true also draws z = u_int t_res, u_int = Q/(A phi) (dotted, piston flow).
 % Printed: v, u_int and v/u_int (> 1: centre faster than piston flow).
+% One figure per x axis (env8XAxes): "res" = t_res = t - t_arr [min], "total" = t [min] since the
+% injection start (no arrival subtracted; the piston-flow line then starts at t_arr).
 
 ufLineA   = false;              % true: also the piston-flow line z = u_int t_res (dotted)
 var8a2a   = "_xtrim";           % "" (full image) | "_xtrim" (as the level arrivals)
 fsA       = 16;
 mkA       = 18;
+if ~exist('env8XAxes','var'), env8XAxes = ["res","total"]; env8XLimT = [0 1.2]; end   % section 8 settings
 
 for ds = dataSources
   for src = plotSrc
     S = srcSpec(src, tXcolP, tXcolC, tXklP, tXklC);
     cz8 = S.cen + var8a2a;
-    figName = sprintf('Front center z [cm] vs t_res [min] with the u_front line, %s (%s%s)', S.name, ds, var8a2a);
+   for xa = env8XAxes                                 % x = t_res [min] and t [min]
+    if xa == "total", xLblA = 't [min]';       xTagA = "t";
+    else,             xLblA = 't_{res} [min]'; xTagA = tXtagRes(tResRef); end
+    figName = sprintf('Front center z [cm] vs %s with the u_front line, %s (%s%s)', xLblA, S.name, ds, var8a2a);
     fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
     ax  = axes(fig);  hold(ax,'on')
     h = gobjects(0);  hLine = gobjects(0);  hU = gobjects(0);  rowsA = {};  zMax = 0;
@@ -1600,6 +1631,7 @@ for ds = dataSources
         tArr = rA.(S.tArr);
         if ~isfinite(tArr), warning('8a2a: %s (%s): no %s arrival', expKeys(i), ds, S.name);  continue, end
         t    = vars.secondsElapsed/60;  tRes = t - tArr;
+        tSh  = tArr;  if xa == "total", tRes = t;  tSh = 0; end      % x shift: t_arr (t_res) or 0 (t)
         z    = vars.(cz8 + "_cm");  zD = vars.(cz8);
         ok   = isfinite(tRes) & isfinite(z);
         if ~any(ok), continue, end
@@ -1614,7 +1646,7 @@ for ds = dataSources
         L = rA.(S.cLine);  v = L.v;  t0 = L.t0;
         uInt = fd.Q/(fd.phi*pi*(fd.D*2.54/2)^2);
         if isfinite(v) && v > 0
-            tRes0 = t0 - tArr;  tRes1 = t0 + Limg/v - tArr;
+            tRes0 = t0 - tSh;  tRes1 = t0 + Limg/v - tSh;
             plot(ax, [tRes0 tRes1], [0 Limg], '--', 'Color',0.6*expCol(i,:), 'LineWidth',2, 'HandleVisibility','off')
             if isempty(hLine)
                 hLine = plot(ax, NaN, NaN, '--', 'Color',[0.3 0.3 0.3], 'LineWidth',2, 'DisplayName','u_{front}');
@@ -1623,26 +1655,27 @@ for ds = dataSources
             tRes0 = NaN;  tRes1 = NaN;
         end
         if ufLineA
-            plot(ax, [0 Limg/uInt], [0 Limg], ':', 'Color',0.6*expCol(i,:), 'LineWidth',2, 'HandleVisibility','off')
+            plot(ax, tArr - tSh + [0 Limg/uInt], [0 Limg], ':', 'Color',0.6*expCol(i,:), 'LineWidth',2, 'HandleVisibility','off')
             if isempty(hU)
                 hU = plot(ax, NaN, NaN, ':', 'Color',[0.3 0.3 0.3], 'LineWidth',2, 'DisplayName','u_{int} = Q/(A\phi)');
             end
         end
         rowsA{end+1,1} = table(expName(i), L.src, tArr, t0, Limg, v, uInt, v/uInt, tRes0, tRes1, nnz(inFit), ...
             'VariableNames', {'experiment','line','t_arr_min','t0_C50_min','L_cm','v_front_cmmin','u_int_cmmin', ...
-            'v_front_over_u_int','tres_at_z0_min','tres_at_L_min','n_fit'}); %#ok<SAGROW>
+            'v_front_over_u_int', char(xTagA + "_at_z0_min"), char(xTagA + "_at_L_min"),'n_fit'}); %#ok<SAGROW>
     end
     if isempty(h), close(fig); continue, end
 
     set(ax, 'FontSize',fsA, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
-    xlabel(ax, 't_{res} [min]', 'FontSize',fsA);  ylabel(ax, "z front center [cm] (" + S.name + ")", 'FontSize',fsA)
+    xlabel(ax, xLblA, 'FontSize',fsA);  ylabel(ax, "z front center [cm] (" + S.name + ")", 'FontSize',fsA)
     ylim(ax, [-0.02 1.02]*zMax);  xlim(ax, [0 inf]);  grid(ax,'on');  box(ax,'on')
     legend(ax, [h hLine hU], 'Interpreter','tex', 'FontSize',fsA-2, 'Location','southeast')
-    if ~isempty(rowsA)
+    if ~isempty(rowsA) && xa == env8XAxes(1)         % same numbers for both axes: print once
         fprintf('\n8a2a) Front center in dimensions, %s (%s%s): v_front vs u_int = Q/(A phi):\n', S.name, ds, var8a2a);
         disp(vertcat(rowsA{:}))
     end
-    saveFigBoth(fig, exportPath, sprintf('frontCenter_%s_ufront_dim_allExp_%s%s_%s', S.file, ds, var8a2a, tXtagRes(tResRef)), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('frontCenter_%s_ufront_dim_allExp_%s%s_%s', S.file, ds, var8a2a, xTagA), closeAfterSave)
+   end   % xa
   end   % src
 end
 
@@ -1656,10 +1689,16 @@ end
 envPairs   = {'10_90','20_80','30_70','40_60'};
 envVariant = "_xtrim";              % "" = full image, "_xtrim" = x-trimmed
 greyProf   = [0.55 0.55 0.55];
+if ~exist('env8XAxes','var'), env8XAxes = ["res","total"]; env8XLimT = [0 1.2]; end   % section 8 settings
+if tAxis ~= "tDres", env8XAxes = "total"; end
 
 % experiment colours / names (expCol, expName): see the Load data section
 
 for ds = dataSources
+  for xa = env8XAxes                                  % x = t_D,res (each source its arrival) and t_D
+    if xa == "total", xCc = "tDtotal"; xCp = "tDtotal"; xLbl8 = 't_D [-]'; xLim8 = env8XLimT; xTag8 = "tD";
+    else,             xCc = tXcolC;    xCp = tXcolP;    xLbl8 = tXlbl;     xLim8 = tXlim;     xTag8 = tXtag; end
+    if isempty(xLim8), xLim8 = [0 inf]; end
     for i = 1:nExp
         vars   = expCTDataAll{i}.varsAll.(ds);
         cols_i = string(vars.Properties.VariableNames);
@@ -1671,8 +1710,8 @@ for ds = dataSources
 
         fig = figure('Position',[60 60 1400 950]);
         tl  = tiledlayout(fig, 2, 2, 'TileSpacing','compact');
-        tDc = vars.(tXcolC);  zc  = vars.("zDFront50" + envVariant);          % contours
-        tDp = vars.(tXcolP);  zcP = nan(height(vars),1);                       % profile
+        tDc = vars.(xCc);  zc  = vars.("zDFront50" + envVariant);             % contours
+        tDp = vars.(xCp);  zcP = nan(height(vars),1);                          % profile
         if ismember("zDFrontProfC50" + envVariant, cols_i), zcP = vars.("zDFrontProfC50" + envVariant); end
 
         for p = 1:numel(envPairs)
@@ -1689,16 +1728,17 @@ for ds = dataSources
             ok = isfinite(tDc) & isfinite(zc);
             scatter(ax, tDc(ok), zc(ok), 10, 0.6*expCol(i,:), 'filled', 'DisplayName','contour centre (C = 0.5)')
 
-            xlabel(ax, tXlbl, 'FontSize',13);  ylabel(ax, 'z_D [-]', 'FontSize',13)
-            ylim(ax, [-0.02 1.02]);  xlim(ax, tXlim);  set(ax, 'FontSize',12);  grid(ax,'on')
+            xlabel(ax, xLbl8, 'FontSize',13);  ylabel(ax, 'z_D [-]', 'FontSize',13)
+            ylim(ax, [-0.02 1.02]);  xlim(ax, xLim8);  set(ax, 'FontSize',12);  grid(ax,'on')
             title(ax, "width " + strrep(envPairs{p},'_','-'), 'FontSize',12)
             legend(ax, 'Location','southeast', 'FontSize',9)
         end
         title(tl, sprintf('%s (%s): front envelope, 2D contours (colour) vs averaged profile (grey)', ...
             expName(i), ds), 'Interpreter','none')
         saveFigBoth(fig, exportPath, sprintf('frontEnvelope_contour_vs_profile_%s_%s%s_%s', ...
-            expKeys(i), ds, envVariant, tXtag), closeAfterSave)
+            expKeys(i), ds, envVariant, xTag8), closeAfterSave)
     end
+  end   % xa
 end
 
 %% 8c) Contour width vs averaged-profile width, same frame, all experiments
