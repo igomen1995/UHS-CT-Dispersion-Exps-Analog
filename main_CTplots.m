@@ -974,10 +974,19 @@ for ds = dataSources
 end
 
 %% 7) Measured front width vs tD
+% x axes of every figure of sections 7-7f (one figure each, file tag tDres_levels / tD):
+%   "res"   = t_D,res of the source (its C = 0.01 level arrival)
+%   "total" = t_D = Q t / V_total (no arrival subtracted)
+sec7XAxes = ["res","total"];
+sec7XLim  = [0 1];             % x limits of the t_D,res figures ([] = auto)
+sec7XLimT = [0 1];             % x limits of the t_D figures     ([] = auto)
+if tAxis ~= "tDres", sec7XAxes = "total"; end   % axis already t_D: one figure only
 
 widthPairs = {'10_90','16_84','20_80','30_70','40_60'};
 
 for ds = dataSources
+  for xa = sec7XAxes
+    [xC7, xLbl7, xLim7, xTag7] = xAxis7(xa, tXcolC, tXlbl, tXtag, sec7XLim, sec7XLimT);   % contours: contour t_arr
     for p = 1:numel(widthPairs)
         measField = ['zDWidth_' widthPairs{p}];
         fig = figure('Position',[100 100 1000 650]);  hold on
@@ -986,19 +995,20 @@ for ds = dataSources
         for i = 1:nExp
             vars = expCTDataAll{i}.varsAll.(ds);
             if ~ismember(measField, vars.Properties.VariableNames), continue, end
-            scatter(vars.(tXcolC), vars.(measField), 8, 'filled', ...          % 2D contours -> contour t_arr
+            scatter(vars.(xC7), vars.(measField), 8, 'filled', ...
                 'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor','none', 'DisplayName', expKeys(i))
             nPlotted = nPlotted + 1;
         end
         if nPlotted == 0, close(fig); continue, end
 
-        xlabel(tXlbl,'FontSize',14);  ylabel('\DeltaZ_D [-]','FontSize',14)
-        ylim([-0.02 1]);  xlim(tXlim);  set(gca,'FontSize',14);  grid on
+        xlabel(xLbl7,'FontSize',14);  ylabel('\DeltaZ_D [-]','FontSize',14)
+        ylim([-0.02 1]);  xlim(xLim7);  set(gca,'FontSize',14);  grid on
         legend('Interpreter','none','FontSize',8,'Location','northeast')
         title(sprintf('Measured front width (%s) from CT (%s)', strrep(widthPairs{p},'_','-'), ds), ...
             'Interpreter','none')
-        saveFigBoth(fig, exportPath, sprintf('width_CT_%s_%s_%s', widthPairs{p}, ds, tXtag), closeAfterSave)
+        saveFigBoth(fig, exportPath, sprintf('width_CT_%s_%s_%s', widthPairs{p}, ds, xTag7), closeAfterSave)
     end
+  end   % xa
 end
 
 %% 7b) Front width vs tD: 2D contours (circles) and averaged profile (squares) together
@@ -1007,8 +1017,13 @@ end
 
 widthPairsCmp = {'10_90','20_80','30_70','40_60'};
 widthVarCmp   = "_xtrim";           % "" = full image, "_xtrim" = x-trimmed
+if ~exist('sec7XAxes','var'), sec7XAxes = ["res","total"]; sec7XLim = [0 1]; sec7XLimT = [0 1]; end  % section 7 settings
+if tAxis ~= "tDres", sec7XAxes = "total"; end
 
 for ds = dataSources
+  for xa = sec7XAxes
+    [xC7, xLbl7, xLim7, xTag7] = xAxis7(xa, tXcolC, tXlbl, tXtag, sec7XLim, sec7XLimT);   % contours: contour t_arr
+    xP7 = xAxis7(xa, tXcolP, tXlbl, tXtag, sec7XLim, sec7XLimT);                         % profile: profile t_arr
     for p = 1:numel(widthPairsCmp)
         cField = "zDWidth_"     + widthPairsCmp{p} + widthVarCmp;   % 2D contours
         pField = "zDWidthProf_" + widthPairsCmp{p} + widthVarCmp;   % averaged profile
@@ -1019,13 +1034,13 @@ for ds = dataSources
             vars = expCTDataAll{i}.varsAll.(ds);
             vn   = string(vars.Properties.VariableNames);
             if ismember(cField, vn)
-                scatter(vars.(tXcolC), abs(vars.(cField)), 10, 'filled', 'o', ...   % contours: contour t_arr
+                scatter(vars.(xC7), abs(vars.(cField)), 10, 'filled', 'o', ...   % contours: contour t_arr
                     'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor','none', ...
                     'DisplayName', expName(i) + " contours")
                 nPlotted = nPlotted + 1;
             end
             if ismember(pField, vn)
-                scatter(vars.(tXcolP), abs(vars.(pField)), 26, 's', ...   % profile: profile t_arr
+                scatter(vars.(xP7), abs(vars.(pField)), 26, 's', ...   % profile: profile t_arr
                     'MarkerFaceColor',cols(i,:), 'MarkerEdgeColor',colsDark(i,:), 'LineWidth',0.8, ...
                     'DisplayName', expName(i) + " profile")
                 nPlotted = nPlotted + 1;
@@ -1033,14 +1048,15 @@ for ds = dataSources
         end
         if nPlotted == 0, close(fig); continue, end
 
-        xlabel(tXlbl,'FontSize',14);  ylabel('\DeltaZ_D [-]','FontSize',14)
-        ylim([-0.02 1]);  xlim(tXlim);  set(gca,'FontSize',14);  grid on
+        xlabel(xLbl7,'FontSize',14);  ylabel('\DeltaZ_D [-]','FontSize',14)
+        ylim([-0.02 1]);  xlim(xLim7);  set(gca,'FontSize',14);  grid on
         legend('Interpreter','none','FontSize',8,'Location','northeast','NumColumns',2)
         title(sprintf('Front width (%s): 2D contours (circles) vs averaged profile (squares) (%s%s)', ...
             strrep(widthPairsCmp{p},'_','-'), ds, widthVarCmp), 'Interpreter','tex')
         saveFigBoth(fig, exportPath, sprintf('width_contour_profile_%s_%s%s_%s', ...
-            widthPairsCmp{p}, ds, widthVarCmp, tXtag), closeAfterSave)
+            widthPairsCmp{p}, ds, widthVarCmp, xTag7), closeAfterSave)
     end
+  end   % xa
 end
 
 %% 7c) Front width vs tD, averaged profile and 2D contours as two variants (one figure per level pair and source)
@@ -1048,6 +1064,7 @@ end
 % zDWidthProf_<lo>_<hi> (addProfileWidths, main_CTpostproc), one colour per experiment
 % (expCol: P900 blue / P725 green, light = Q1, dark = Q5), legend XCT-loM-hiPe etc.
 % No axes title: the description is the figure name.
+% One figure per x axis (sec7XAxes of section 7): t_D,res of the source and t_D, x from 0 to 1.
 
 widthPairsProf = {'10_90','20_80','30_70','40_60'};
 widthVarProf   = "_xtrim";         % "" = full image, "_xtrim" = x-trimmed
@@ -1058,14 +1075,18 @@ fs7cLeg        = 20;               % font size: legend
 mk7c           = 30;               % marker size
 yLim7c         = [0 0.5];          % y-axis limits (zD units; [] = auto)
 legMk7c        = 12;               % marker size in the legend [points]
+if ~exist('sec7XAxes','var'), sec7XAxes = ["res","total"]; sec7XLim = [0 1]; sec7XLimT = [0 1]; end  % section 7 settings
+if tAxis ~= "tDres", sec7XAxes = "total"; end
 
 for ds = dataSources
   for src = plotSrc                                   % profile and contours as two variants
     S = srcSpec(src, tXcolP, tXcolC, tXklP, tXklC);
+   for xa = sec7XAxes                                 % x = t_D,res of the source and t_D
+    [xS7, xLbl7, xLim7, xTag7] = xAxis7(xa, S.x, tXlbl, tXtag, sec7XLim, sec7XLimT);
     for p = 1:numel(widthPairsProf)
         pField  = S.wPre + widthPairsProf{p} + widthVarProf + widthUnitProf;
-        figName = sprintf('Front width %s vs t_D, %s (%s%s)', ...
-            strrep(widthPairsProf{p},'_','-'), S.name, ds, widthVarProf);
+        figName = sprintf('Front width %s vs %s, %s (%s%s)', ...
+            strrep(widthPairsProf{p},'_','-'), xTag7, S.name, ds, widthVarProf);
         fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
         ax  = axes(fig);  hold(ax,'on')
         hLeg = gobjects(0);
@@ -1074,9 +1095,9 @@ for ds = dataSources
             vars = expCTDataAll{i}.varsAll.(ds);
             if ~ismember(pField, string(vars.Properties.VariableNames)), continue, end
             w  = abs(vars.(pField));
-            ok = isfinite(vars.(S.x)) & isfinite(w);
+            ok = isfinite(vars.(xS7)) & isfinite(w);
             if ~any(ok), continue, end
-            scatter(ax, vars.(S.x)(ok), w(ok), mk7c, expCol(i,:), 'o', 'filled', ...
+            scatter(ax, vars.(xS7)(ok), w(ok), mk7c, expCol(i,:), 'o', 'filled', ...
                 'MarkerEdgeColor',0.6*expCol(i,:), 'LineWidth',0.5, 'HandleVisibility','off')
             % legend entry: invisible larger marker (scatter legend icons stay small)
             hLeg(end+1) = plot(ax, NaN, NaN, 'o', 'LineStyle','none', 'MarkerSize',legMk7c, ...
@@ -1085,7 +1106,7 @@ for ds = dataSources
         if isempty(hLeg), close(fig); continue, end
 
         set(ax, 'FontSize',fs7cAx, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
-        xlabel(ax, tXlbl, 'FontSize',fs7cLbl)
+        xlabel(ax, xLbl7, 'FontSize',fs7cLbl)
         if widthUnitProf == "_cm"
             ylabel(ax, "W_{" + strrep(widthPairsProf{p},'_','-') + "}, " + S.name + " [cm]", 'FontSize',fs7cLbl)
             ylim(ax, [0 inf])
@@ -1093,11 +1114,12 @@ for ds = dataSources
             ylabel(ax, "\Deltaz_{D," + strrep(widthPairsProf{p},'_','-') + "}, " + S.name + " [-]", 'FontSize',fs7cLbl)
             if isempty(yLim7c), ylim(ax, [0 inf]), else, ylim(ax, yLim7c), end
         end
-        xlim(ax, tXlim);  grid(ax,'on');  box(ax,'on')
+        xlim(ax, xLim7);  grid(ax,'on');  box(ax,'on')
         legend(ax, hLeg, 'Location','northeast', 'FontSize',fs7cLeg, 'Interpreter','none')
         saveFigBoth(fig, exportPath, sprintf('width_%s_%s_%s%s%s_%s', ...
-            S.file, widthPairsProf{p}, ds, widthVarProf, widthUnitProf, tXtag), closeAfterSave)
+            S.file, widthPairsProf{p}, ds, widthVarProf, widthUnitProf, xTag7), closeAfterSave)
     end
+   end   % xa
   end   % src
 end
 %% 7d) Front width vs tD with the frame of the KL-by-method value (red circle), profile and contours as two variants
@@ -1108,6 +1130,7 @@ end
 % Legend (top right): one entry per experiment + one red circle "theta = rsRot".
 % Uses the settings of section 8f (rsRot, rsTol, rsZD, rsPair, rsVar): run it first, or the
 % defaults below are used.
+% One figure per x axis (sec7XAxes of section 7): t_D,res of the source and t_D, x from 0 to 1.
 
 % frame settings rsRot, rsTol, rsZD, rsPair, rsVar, rsStat: SETTINGS (same frame as the 8f-8h bars)
 widthPairs7d = {sprintf('%02d_%02d', round(100*rsPair))};   % e.g. {'40_60'}; more pairs: {'10_90','40_60'}
@@ -1121,14 +1144,18 @@ alpha7d      = 0.5;                % face transparency of the dots (1 = opaque, 
 legMk7d      = 12;                 % marker size in the legend [points]
 yLim7d       = [0 0.5];            % y-axis limits (zD units; [] = auto)
 colBar7d     = [0.85 0 0];         % colour of the red circle
+if ~exist('sec7XAxes','var'), sec7XAxes = ["res","total"]; sec7XLim = [0 1]; sec7XLimT = [0 1]; end  % section 7 settings
+if tAxis ~= "tDres", sec7XAxes = "total"; end
 
 for ds = "conc"
   for src = plotSrc                                   % profile and contours as two variants
     S = srcSpec(src, tXcolP, tXcolC, tXklP, tXklC);
+   for xa = sec7XAxes                                 % x = t_D,res of the source and t_D
+    [xS7, xLbl7, xLim7, xTag7] = xAxis7(xa, S.x, tXlbl, tXtag, sec7XLim, sec7XLimT);
     for p = 1:numel(widthPairs7d)
         pField  = S.wPre + widthPairs7d{p} + widthVar7d + widthUnit7d;
-        figName = sprintf('Front width %s vs t_D, %s, with the theta = %d deg frame (%s%s)', ...
-            strrep(widthPairs7d{p},'_','-'), S.name, rsRot, ds, widthVar7d);
+        figName = sprintf('Front width %s vs %s, %s, with the theta = %d deg frame (%s%s)', ...
+            strrep(widthPairs7d{p},'_','-'), xTag7, S.name, rsRot, ds, widthVar7d);
         fig = figure('Position',[100 100 1000 650], 'Name',figName, 'NumberTitle','off');
         ax  = axes(fig);  hold(ax,'on')
         hLeg = gobjects(0);  hBar = gobjects(0);  hRed = gobjects(0);  rows7d = {};
@@ -1137,9 +1164,9 @@ for ds = "conc"
             vars = expCTDataAll{i}.varsAll.(ds);
             if ~ismember(pField, string(vars.Properties.VariableNames)), continue, end
             w  = abs(vars.(pField));
-            ok = isfinite(vars.(S.x)) & isfinite(w);
+            ok = isfinite(vars.(xS7)) & isfinite(w);
             if ~any(ok), continue, end
-            scatter(ax, vars.(S.x)(ok), w(ok), mk7d, expCol(i,:), 'o', 'filled', ...
+            scatter(ax, vars.(xS7)(ok), w(ok), mk7d, expCol(i,:), 'o', 'filled', ...
                 'MarkerEdgeColor',0.6*expCol(i,:), 'LineWidth',0.5, ...
                 'MarkerFaceAlpha',alpha7d, 'MarkerEdgeAlpha',min(1, alpha7d + 0.3), ...
                 'HandleVisibility','off')
@@ -1153,21 +1180,22 @@ for ds = "conc"
             fr = Tk.frame(rotZDselSrc(Tk, S.sel, rsRot, rsTol, rsZD));   % frame by this source's centre
             fr = fr(ok(fr));
             if isempty(fr), continue, end
-            hRed(end+1) = scatter(ax, vars.(S.x)(fr), w(fr), mk7d, 'o', 'MarkerEdgeColor',colBar7d, ...
+            hRed(end+1) = scatter(ax, vars.(xS7)(fr), w(fr), mk7d, 'o', 'MarkerEdgeColor',colBar7d, ...
                 'MarkerFaceColor','none', 'LineWidth',2.5, 'HandleVisibility','off'); %#ok<SAGROW>
             if isempty(hBar)                                     % one legend entry for all red circles
                 hBar = plot(ax, NaN, NaN, 'o', 'LineStyle','none', 'MarkerSize',legMk7d, ...
                     'MarkerEdgeColor',colBar7d, 'MarkerFaceColor','none', 'LineWidth',2.5, ...
                     'DisplayName', sprintf('\\theta = %d°', rsRot));
             end
-            rows7d{end+1,1} = table(repmat(expName(i),numel(fr),1), fr, vars.(S.x)(fr), vars.rotPos(fr), w(fr), ...
-                'VariableNames', {'experiment','frame',char(tXtag),'rotPos_deg', char(pField)}); %#ok<SAGROW>
+            rows7d{end+1,1} = table(repmat(expName(i),numel(fr),1), fr, vars.(S.x)(fr), vars.tDtotal(fr), ...
+                vars.rotPos(fr), w(fr), 'VariableNames', {'experiment','frame',char(tXtag),'tD_total', ...
+                'rotPos_deg', char(pField)}); %#ok<SAGROW>
         end
         if ~isempty(hRed), uistack(hRed, 'top'); end        % red circles above all dots
         if isempty(hLeg), close(fig); continue, end
 
         set(ax, 'FontSize',fs7dAx, 'LabelFontSizeMultiplier',1, 'TitleFontSizeMultiplier',1)
-        xlabel(ax, tXlbl, 'FontSize',fs7dLbl)
+        xlabel(ax, xLbl7, 'FontSize',fs7dLbl)
         if widthUnit7d == "_cm"
             ylabel(ax, "W_{" + strrep(widthPairs7d{p},'_','-') + "}, " + S.name + " [cm]", 'FontSize',fs7dLbl)
             ylim(ax, [0 inf])
@@ -1175,21 +1203,23 @@ for ds = "conc"
             ylabel(ax, "\Deltaz_{D," + strrep(widthPairs7d{p},'_','-') + "}, " + S.name + " [-]", 'FontSize',fs7dLbl)
             if isempty(yLim7d), ylim(ax, [0 inf]), else, ylim(ax, yLim7d), end
         end
-        xlim(ax, tXlim);  grid(ax,'on');  box(ax,'on')
+        xlim(ax, xLim7);  grid(ax,'on');  box(ax,'on')
         legend(ax, [hLeg hBar], 'Location','northeast', 'FontSize',fs7dLeg, 'Interpreter','tex')
-        if ~isempty(rows7d)
+        if ~isempty(rows7d) && xa == sec7XAxes(1)          % same frames for both axes: print once
             fprintf('\n7d) Frame of the KL-by-method value (theta = %g deg), %s width %s:\n', rsRot, S.name, pField);
             disp(vertcat(rows7d{:}))
         end
         saveFigBoth(fig, exportPath, sprintf('width_%s_%s_%s%s%s_%s_rot%d', ...
-            S.file, widthPairs7d{p}, ds, widthVar7d, widthUnit7d, tXtag, rsRot), closeAfterSave)
+            S.file, widthPairs7d{p}, ds, widthVar7d, widthUnit7d, xTag7, rsRot), closeAfterSave)
     end
+   end   % xa
   end   % src
 end
 %% 7e) KL vs tD from the 40-60 width of every frame, profile and contours as two variants (x-trimmed)
 % KL = W^2/(4 k^2 tau) for every frame (klAllFrames / KL_allProfileWidths), each source with its own
 % arrival: profile KL vs tauD (profile C = 0.01 level arrival), contour KL vs tauD_cont (contour arrival).
 % One figure per source (files ..._profile_... / ..._contour_...).
+% One figure per x axis (sec7XAxes of section 7): t_D,res of the source and t_D, x from 0 to 1.
 
 klfPair  = [0.40 0.60];        % level pair of the width
 klfVar   = "_xtrim";           % "_xtrim" or "" (full image)
@@ -1198,17 +1228,22 @@ klfYLim  = [];                 % [] = auto, e.g. [0.1 100]
 klfErr   = false;              % error bars
 fs15     = 16;  mk15 = 45;
 tagW15   = sprintf('%02d_%02d', round(100*klfPair));
+if ~exist('sec7XAxes','var'), sec7XAxes = ["res","total"]; sec7XLim = [0 1]; sec7XLimT = [0 1]; end  % section 7 settings
+if tAxis ~= "tDres", sec7XAxes = "total"; end
 
 for ds = "conc"
   for src = plotSrc
     S = srcSpec(src, tXcolP, tXcolC, tXklP, tXklC);
-    figName = sprintf('KL vs t_D from W%s per frame, %s (%s%s)', tagW15, S.name, ds, klfVar);
+   for xa = sec7XAxes                                 % x = t_D,res of the source (tauD / tauD_cont) and t_D
+    [xK7, xLbl7, xLim7] = xAxis7(xa, S.xkl, 't_{D,res} [-]', "", sec7XLim, sec7XLimT);
+    xTag7 = tTagOf(xK7);
+    figName = sprintf('KL vs %s from W%s per frame, %s (%s%s)', xTag7, tagW15, S.name, ds, klfVar);
     fig = figure('Position',[100 100 1100 700], 'Name',figName, 'NumberTitle','off');
     ax  = axes(fig);  hold(ax,'on');  h = gobjects(0);
     for i = 1:nExp
         Tk = klAllFrames(expCTDataAll{i}, filedataExpAll{i}, hasPost(i), ds, klfVar, klfPair);
         if isempty(Tk), continue, end
-        x = Tk.(S.xkl);
+        x = Tk.(xK7);
         y = Tk.("KL_" + S.tag + "_" + tagW15 + "_cm2min");  dy = Tk.("dKL_" + S.tag + "_" + tagW15 + "_cm2min");
         ok = isfinite(x) & isfinite(y) & y > 0;
         if ~any(ok), continue, end
@@ -1223,17 +1258,17 @@ for ds = "conc"
     set(ax, 'FontSize',fs15, 'LabelFontSizeMultiplier',1);  grid(ax,'on');  box(ax,'on')
     if klfLogY, set(ax, 'YScale','log'); end
     if ~isempty(klfYLim), ylim(ax, klfYLim); end
-    if S.xkl ~= "tDtotal", xlabel(ax, 't_{D,res} [-]', 'FontSize',fs15)
-    else,                  xlabel(ax, 't_D [-]', 'FontSize',fs15); end
+    xlabel(ax, xLbl7, 'FontSize',fs15);  xlim(ax, xLim7)
     ylabel(ax, sprintf('K_L from W_{%d-%d}, %s [cm^2/min]', round(100*klfPair), S.name), 'FontSize',fs15)
     legend(ax, h, 'Location','northeast', 'FontSize',fs15-4, 'NumColumns',1, 'Interpreter','none')
-    saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_%s_%s%s', tTagOf(S.xkl), tagW15, S.file, ds, klfVar), closeAfterSave)
+    saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_%s_%s%s', xTag7, tagW15, S.file, ds, klfVar), closeAfterSave)
+   end   % xa
   end   % src
 end
 
 %% 7f) KL vs t_D,res and vs t_D from the 40-60 width of every frame, with the KL-by-method value (red circle), profile and contours as two variants
 % Two figures per source: x = t_D,res of that source (tauD / tauD_cont, its C = 0.01 level arrival) and
-% x = t_D,total = Q t / V_total (no arrival correction) -- klfXAxes.
+% x = t_D,total = Q t / V_total (no arrival correction) -- klfXAxes = sec7XAxes, limits sec7XLim / sec7XLimT.
 % Same as section 7e, plus, per experiment, the bar value of the XCT 1D-profile KL
 % of section 8f / 8g (the frame at rotPos = rsRot +/- rsTol with the front centre closest to
 % zD = 0.5 within rsZD) as a red open circle, drawn on top of all dots. Dots semi-transparent.
@@ -1246,9 +1281,11 @@ klfPair  = rsPair;             % level pair of the width (same as the bar)
 klfVar   = rsVar;              % "_xtrim" or "" (same as the bar)
 klfLogY  = false;              % log K_L axis
 klfYLim  = [];                 % [] = auto, e.g. [0 2]
-klfXAxes = ["res","total"];   % x axes: "res" = t_D,res of the source | "total" = t_D,total
-klfXLim  = [0 0.8];            % x-axis limits of the t_D,res figure ([] = auto)
-klfXLimT = [];                 % x-axis limits of the t_D,total figure ([] = auto)
+if ~exist('sec7XAxes','var'), sec7XAxes = ["res","total"]; sec7XLim = [0 1]; sec7XLimT = [0 1]; end  % section 7 settings
+if tAxis ~= "tDres", sec7XAxes = "total"; end
+klfXAxes = sec7XAxes;          % x axes: "res" = t_D,res of the source | "total" = t_D,total (section 7)
+klfXLim  = sec7XLim;           % x-axis limits of the t_D,res figure ([] = auto)
+klfXLimT = sec7XLimT;          % x-axis limits of the t_D,total figure ([] = auto)
 klfErr   = false;              % error bars on the per-frame points
 fs15Ax   = 20;                 % font size: tick labels
 fs15Lbl  = 24;                 % font size: axis labels
@@ -1401,7 +1438,6 @@ for ds = "conc"
     saveFigBoth(fig, exportPath, sprintf('KL_vs_%s_W%s_%s_rot%d_bar_%s%s', "theta", tagW15, S.file, rsRot, ds, klfVar), closeAfterSave)
   end   % src
 end
- 
 
 %% 8) Measured front envelope, all experiments together, profile and contours as two variants
 % front centre (C = 0.5) +/- half width per scan; legend XCT-loM-hiPe etc. (expName, expCol)
@@ -3547,4 +3583,15 @@ L = struct('v',NaN, 't0',NaN, 'n',nnz(k), 'src',"fit");
 if nnz(k) < 3, return, end
 pp = polyfit(t(k), z(k), 1);
 L.v = pp(1);  L.t0 = -pp(2)/pp(1);
+end
+
+function [col, lbl, lim, tag] = xAxis7(xa, colRes, lblRes, tagRes, limRes, limTot)
+% x axis of the section 7 figures: xa = "res" -> column colRes (t_D,res of the source), label lblRes,
+% limits limRes, file tag tagRes; xa = "total" -> tDtotal, 't_D [-]', limTot, "tD". [] limits = auto.
+if string(xa) == "total"
+    col = "tDtotal";  lbl = 't_D [-]';  lim = limTot;  tag = "tD";
+else
+    col = string(colRes);  lbl = lblRes;  lim = limRes;  tag = string(tagRes);
+end
+if isempty(lim), lim = [0 inf]; end
 end
